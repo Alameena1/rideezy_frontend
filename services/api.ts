@@ -24,7 +24,7 @@ const api = axios.create({
 api.interceptors.request.use(
   (config) => {
     // Skip adding Authorization header for OTP-related endpoints
-    if (config.url?.includes("/verify-otp") || config.url?.includes("/resend-otp")) {
+    if (config.url?.includes("/auth/verify-otp") || config.url?.includes("/auth/resend-otp")) {
       return config;
     }
 
@@ -46,8 +46,8 @@ api.interceptors.response.use(
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
-      !originalRequest.url?.includes("/verify-otp") &&
-      !originalRequest.url?.includes("/resend-otp")
+      !originalRequest.url?.includes("/auth/verify-otp") &&
+      !originalRequest.url?.includes("/auth/resend-otp")
     ) {
       originalRequest._retry = true;
 
@@ -57,7 +57,7 @@ api.interceptors.response.use(
         if (!refreshToken) throw new Error("No refresh token found");
 
         const { data } = await axios.post(
-          `${process.env.NEXT_PUBLIC_API_BASE_URL}/refresh-token`,
+          `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/refresh-token`, // Updated to /auth/refresh-token
           { refreshToken }
         );
 
@@ -73,7 +73,7 @@ api.interceptors.response.use(
         console.error("Refresh token failed:", refreshError);
         localStorage.removeItem("accessToken");
         localStorage.removeItem("refreshToken");
-        window.location.href = "/login"; 
+        window.location.href = "/login";
       }
     }
 
@@ -83,33 +83,31 @@ api.interceptors.response.use(
 
 export const apiService = {
   login: async (credentials: { email: string; password: string }) => {
-    const response = await api.post("/login", credentials);
-
+    const response = await api.post("/auth/login", credentials); // Updated to /auth/login
     localStorage.setItem("accessToken", response.data.accessToken);
     localStorage.setItem("refreshToken", response.data.refreshToken);
-
     return response.data;
   },
 
   getProfile: async () => {
-    const response = await api.get("/profile");
+    const response = await api.get("/user/profile"); // Updated to /user/profile
     return response.data;
   },
 
   updateProfile: async (updatedData: UserProfile) => {
     console.log("Updating profile with data:", updatedData);
-    const response = await api.put("/profile", updatedData);
+    const response = await api.put("/user/profile", updatedData); // Updated to /user/profile
     console.log("Profile update response:", response);
     return response.data;
   },
 
   verifyOtp: async (data: { email: string; otp: string }) => {
-    const response = await api.post("/verify-otp", data);
+    const response = await api.post("/auth/verify-otp", data); // Updated to /auth/verify-otp
     return response.data;
   },
 
   resendOtp: async (data: { email: string }) => {
-    const response = await api.post("/resend-otp", data);
+    const response = await api.post("/auth/resend-otp", data); // Updated to /auth/resend-otp
     return response.data;
   },
 };
