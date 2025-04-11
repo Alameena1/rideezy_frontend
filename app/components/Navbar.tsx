@@ -3,22 +3,29 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { signOut, useSession } from "next-auth/react";
 
 const Navbar = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [localTokenExists, setLocalTokenExists] = useState(false);
   const router = useRouter();
+  const { data: session, status } = useSession(); // From NextAuth
 
   useEffect(() => {
-    
     const token = localStorage.getItem("token");
-    setIsLoggedIn(!!token);
+    setLocalTokenExists(!!token);
   }, []);
 
-  const handleLogout = () => {
+  const handleLocalLogout = () => {
     localStorage.removeItem("token");
-    setIsLoggedIn(false);
+    setLocalTokenExists(false);
     router.push("/user/login");
   };
+
+  const handleGoogleLogout = () => {
+    signOut({ callbackUrl: "/user/login" });
+  };
+
+  const isLoggedIn = session || localTokenExists;
 
   return (
     <nav className="bg-gray-300 p-4 shadow-sm">
@@ -41,7 +48,7 @@ const Navbar = () => {
                 </button>
               </Link>
               <button
-                onClick={handleLogout}
+                onClick={session ? handleGoogleLogout : handleLocalLogout}
                 className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
               >
                 Logout

@@ -10,7 +10,7 @@ const useAuth = () => {
     if (!token) {
       router.push('/user/login'); 
     }
-  }, [router]);
+  }, []);
 };
 
 export default useAuth;

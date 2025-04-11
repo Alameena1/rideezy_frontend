@@ -1,4 +1,3 @@
-// src/pages/admin/users.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -57,7 +56,7 @@ export default function UserManagement() {
   const handleToggleStatus = async (user: User) => {
     try {
       const newStatus = user.status === "Active" ? "Blocked" : "Active";
-      await adminApi.toggleUserStatus(user.email, newStatus); 
+      await adminApi.toggleUserStatus(user._id, newStatus); 
       setUsers(users.map(u => 
         u.email === user.email ? { ...u, status: newStatus } : u
       ));
