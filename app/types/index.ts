@@ -1,5 +1,6 @@
 
 export interface BackendUser {
+    createdAt: any;
     _id: string;
     fullName: string;
     email: string;

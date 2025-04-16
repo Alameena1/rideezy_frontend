@@ -71,7 +71,7 @@ api.interceptors.response.use(
         console.error("Refresh token failed:", refreshError);
         localStorage.removeItem("accessToken");
         localStorage.removeItem("refreshToken");
-        window.location.href = "/login";
+        window.location.href = "/user/login";
       }
     }
 
@@ -124,8 +124,9 @@ export const apiService = {
     vehicleImage?: string;
     documentImage?: string;
   }) => {
+    console.log("api request");
     const response = await api.post("/vehicles", vehicleData);
-    return response;
+    return response.data; 
   },
 };
 

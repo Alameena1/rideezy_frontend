@@ -7,7 +7,7 @@ import { apiService } from "@/services/api";
 import Sidebar from "@/app/components/Sidebar";
 
 export default function Home() {
-  useAuth();
+  const { status } = useAuth();
 
   const currentDate = new Date().toLocaleDateString("en-GB", {
     weekday: "short",
@@ -34,10 +34,11 @@ export default function Home() {
   useEffect(() => {
     const fetchUserData = async () => {
       try {
-        const token = localStorage.getItem("token");
+        const token = localStorage.getItem("accessToken");
         console.log("token", token);
         if (!token) {
           console.error("Token not found! Redirecting to login.");
+          window.location.href = "/login";
           return;
         }
 
@@ -73,6 +74,7 @@ export default function Home() {
 
       if (!token) {
         console.error("No token found! Redirecting to login.");
+        window.location.href = "/login";
         return;
       }
 
@@ -94,6 +96,15 @@ export default function Home() {
     }
   };
 
+  if (status === "loading") {
+    return <div>Loading...</div>;
+  }
+
+  if (status === "unauthenticated") {
+    window.location.href = "/login";
+    return null;
+  }
+
   return (
     <>
       <Navbar />
@@ -101,7 +112,7 @@ export default function Home() {
         <Sidebar
           isOpen={isSidebarOpen}
           toggleSidebar={toggleSidebar}
-          activeItem="Profile" // Set the active item for this page
+          activeItem="Profile"
         />
         {isSidebarOpen && (
           <div
@@ -120,8 +131,7 @@ export default function Home() {
               <button className="text-xl">🔔</button>
             </div>
 
-            <div className="mb-8 rounded-lg bg-gradient-to-r from-blue-100 via-white to-yellow-100 p-6">
-            </div>
+            <div className="mb-8 rounded-lg bg-gradient-to-r from-blue-100 via-white to-yellow-100 p-6"></div>
 
             <div className="mb-6 flex items-center justify-between">
               <div className="flex items-center gap-4">
@@ -160,7 +170,6 @@ export default function Home() {
               </div>
             </div>
 
-            {/* Form fields */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
@@ -237,7 +246,7 @@ export default function Home() {
                 <div className="relative">
                   <input
                     type="text"
-                    name="state"  
+                    name="state"
                     value={userData.state || ""}
                     onChange={handleInputChange}
                     className="w-full rounded-md border border-gray-300 py-2 px-3 text-gray-500"

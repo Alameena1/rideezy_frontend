@@ -2,13 +2,13 @@ import NextAuth, { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { DefaultSession, JWT } from "next-auth";
 
-// Define custom interfaces
 interface CustomUser {
   id: string;
   name?: string | null;
   email?: string | null;
   image?: string | null;
   access_token?: string;
+  refresh_token?: string;
 }
 
 interface CustomSession extends DefaultSession {
@@ -23,16 +23,13 @@ const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async signIn({ user, account }: { user: Partial<CustomUser>; account?: any }) {
+    async signIn({ user, account, profile }) {
       try {
-        console.log("User object received:", user);
         const payload = {
-          fullName: user.name || "", // Map name to fullName
+          fullName: user.name || "",
           email: user.email || "",
           image: user.image || "",
         };
-        console.log("User sent to API:", payload);
-        console.log("Full account object:", account);
 
         const response = await fetch("http://localhost:5000/api/auth/google-auth", {
           method: "POST",
@@ -43,37 +40,43 @@ const authOptions: NextAuthOptions = {
         });
 
         const responseData = await response.json();
-        console.log("Google Auth API Response with details:", {
-          status: response.status,
-          headers: response.headers,
-          ...responseData,
-        });
 
-        return response.ok;
-      } catch (error: unknown) {
-        if (error instanceof Error) {
-          console.error("Error during signIn:", error.message);
+        if (response.ok && responseData.accessToken) {
+          // Attach backend token to the user object
+          (user as CustomUser).access_token = responseData.accessToken;
+          (user as CustomUser).refresh_token = responseData.refreshToken;
+          return true;
         } else {
-          console.error("Unknown error during signIn:", error);
+          console.error("Google Auth API failed:", responseData);
+          return false;
         }
+      } catch (error) {
+        console.error("Error during Google signIn:", error);
         return false;
       }
     },
-    async session({ session, token }: { session: CustomSession; token: JWT }) {
-      if (token.sub) {
-        session.user.id = token.sub;
-      } else {
-        console.warn("Token does not contain sub:", token);
-        session.user.id = session.user.email || "default-id";
+
+    async jwt({ token, user }) {
+      if (user) {
+        token.sub = user.id;
+        token.access_token = (user as CustomUser).access_token;
+        token.refresh_token = (user as CustomUser).refresh_token;
       }
+      return token;
+    },
+
+    async session({ session, token }) {
+      (session.user as CustomUser).id = token.sub as string;
+      (session.user as CustomUser).access_token = token.access_token as string;
+      (session.user as CustomUser).refresh_token = token.refresh_token as string;
       return session;
     },
-    async redirect({ baseUrl }: { baseUrl: string }) {
-      return new URL("/", baseUrl).toString();
+
+    async redirect({ baseUrl }) {
+      return `${baseUrl}/`; // redirect to homepage
     },
   },
 };
 
 const handler = NextAuth(authOptions);
 export { handler as GET, handler as POST };
-

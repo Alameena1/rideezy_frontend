@@ -1,15 +1,16 @@
-// src/services/adminApi.ts
 import axios from "axios";
 
 const API_URL = "http://localhost:5000/admin";
 const axiosInstance = axios.create({
   baseURL: API_URL,
-  withCredentials: true, 
+  withCredentials: true,
 });
 
 axiosInstance.interceptors.response.use(
   response => response,
+  
   async error => {
+    
     console.log("Interceptor caught error:", error.response?.status, error.response?.data);
     if (error.response?.status === 401) {
       try {
@@ -19,7 +20,7 @@ axiosInstance.interceptors.response.use(
         return axiosInstance(error.config);
       } catch (refreshError) {
         console.error("Refresh failed:", refreshError.response?.data);
-        window.location.href = "/admin/login"; 
+        window.location.href = "/admin/login";
         return Promise.reject(refreshError);
       }
     }
@@ -71,6 +72,32 @@ export const adminApi = {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.message || "Failed to update user status");
+      }
+      throw new Error("An unknown error occurred");
+    }
+  },
+
+  getVehicles: async () => {
+    try {
+      const response = await axiosInstance.get("/vehicles");
+      const { vehicles } = response.data; // Destructure the vehicles array
+      return vehicles;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.message || "Failed to fetch vehicles");
+      }
+      throw new Error("An unknown error occurred");
+    }
+  },
+
+  // New method to update vehicle status (to support approve/reject functionality)
+  updateVehicleStatus: async (vehicleId: string, status: "Approved" | "Rejected", note?: string) => {
+    try {
+      const response = await axiosInstance.patch(`/vehicles/${vehicleId}/status`, { status, note });
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.message || "Failed to update vehicle status");
       }
       throw new Error("An unknown error occurred");
     }
