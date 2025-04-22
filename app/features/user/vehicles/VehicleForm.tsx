@@ -24,22 +24,26 @@ const vehicleSchema = z.object({
   insuranceNumber: z.string().min(1, { message: "Insurance number is required" }),
   vehicleImage: z
     .any()
-    .refine((file) => file instanceof File && file.size > 0, { message: "Vehicle image is required" }),
+    .refine((file) => !file || (file instanceof File && file.size > 0), { message: "Invalid vehicle image" })
+    .optional(),
   documentImage: z
     .any()
-    .refine((file) => file instanceof File && file.size > 0, { message: "Document image is required" }),
+    .refine((file) => !file || (file instanceof File && file.size > 0), { message: "Invalid document image" })
+    .optional(),
 });
 
 interface VehicleFormProps {
+  vehicleId?: string; // Optional for add mode, required for edit mode
   onSubmit: (vehicle: any) => void;
   onCancel: () => void;
   setError: (error: string | null) => void;
 }
 
-export default function VehicleForm({ onSubmit, onCancel, setError }: VehicleFormProps) {
+export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }: VehicleFormProps) {
   const [vehicleImagePreview, setVehicleImagePreview] = useState<string | null>(null);
-  const [documentImagePreview, setDocumentImagePreview] = useState<string | null>(null); // Fixed typo
+  const [documentImagePreview, setDocumentImagePreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const isEditMode = !!vehicleId;
 
   const form = useForm<z.infer<typeof vehicleSchema>>({
     resolver: zodResolver(vehicleSchema),
@@ -53,6 +57,35 @@ export default function VehicleForm({ onSubmit, onCancel, setError }: VehicleFor
       documentImage: null,
     },
   });
+
+  // Fetch vehicle data for edit mode
+  useEffect(() => {
+    if (isEditMode) {
+      const fetchVehicle = async () => {
+        try {
+          const response = await apiService.getVehicles();
+          const vehicle = response.find((v: any) => v._id === vehicleId);
+          if (!vehicle) {
+            throw new Error("Vehicle not found");
+          }
+          form.reset({
+            vehicleName: vehicle.vehicleName,
+            vehicleType: vehicle.vehicleType,
+            licensePlate: vehicle.licensePlate,
+            color: vehicle.color || "",
+            insuranceNumber: vehicle.insuranceNumber || "",
+            vehicleImage: null,
+            documentImage: null,
+          });
+          setVehicleImagePreview(vehicle.vehicleImage || null);
+          setDocumentImagePreview(vehicle.documentImage || null);
+        } catch (error: any) {
+          setError(error.message || "Failed to load vehicle data");
+        }
+      };
+      fetchVehicle();
+    }
+  }, [vehicleId, form, setError, isEditMode]);
 
   const handleVehicleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -86,14 +119,12 @@ export default function VehicleForm({ onSubmit, onCancel, setError }: VehicleFor
     });
     const data = await response.json();
     if (!response.ok) {
-      console.log("Upload error response:", data);
       throw new Error(data.error || "Upload failed");
     }
     return data.secure_url;
   };
 
   const handleSubmit = async (values: z.infer<typeof vehicleSchema>) => {
-    console.log("handle submit", values);
     setError(null);
     setIsLoading(true);
     try {
@@ -104,54 +135,64 @@ export default function VehicleForm({ onSubmit, onCancel, setError }: VehicleFor
         return;
       }
 
-      const vehicleImageUrl = await uploadFile(values.vehicleImage);
-      const documentImageUrl = await uploadFile(values.documentImage);
-
-      const payload = {
+      const payload: any = {
         vehicleName: values.vehicleName,
         vehicleType: values.vehicleType,
         licensePlate: values.licensePlate,
         color: values.color,
         insuranceNumber: values.insuranceNumber,
-        vehicleImage: vehicleImageUrl,
-        documentImage: documentImageUrl,
       };
 
-      console.log("Sending payload to apiService:", payload);
-      const response = await apiService.addVehicle(payload);
-      console.log("Add vehicle response:", response);
+      // Only upload new images if provided
+      if (values.vehicleImage instanceof File) {
+        payload.vehicleImage = await uploadFile(values.vehicleImage);
+      }
+      if (values.documentImage instanceof File) {
+        payload.documentImage = await uploadFile(values.documentImage);
+      }
+
+      let response;
+      if (isEditMode) {
+        response = await apiService.updateVehicle(vehicleId, payload);
+      } else {
+        response = await apiService.addVehicle(payload);
+      }
 
       if (!response.success) {
-        throw new Error(response.message || "Failed to add vehicle");
+        throw new Error(response.message || `Failed to ${isEditMode ? "update" : "add"} vehicle`);
       }
 
       onSubmit({
-        _id: response.data._id,
+        _id: isEditMode ? vehicleId : response.data._id,
         ...payload,
         status: response.data.status || "Pending",
-        imageUrl: vehicleImageUrl,
+        imageUrl: payload.vehicleImage || vehicleImagePreview,
       });
 
       form.reset();
       setVehicleImagePreview(null);
       setDocumentImagePreview(null);
     } catch (error: any) {
-      console.error("Error registering vehicle:", error);
-      console.log("Error details:", {
-        response: error.response,
-        data: error.response?.data,
-        message: error.message,
-      });
       const errorMessage =
         error.response?.data?.message ||
         error.response?.data?.error ||
         error.message ||
-        "Failed to register vehicle. Please try again.";
+        `Failed to ${isEditMode ? "update" : "register"} vehicle. Please try again.`;
       setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
   };
+
+  // Add updateVehicle to apiService if not present
+  useEffect(() => {
+    if (!apiService.updateVehicle) {
+      apiService.updateVehicle = async (vehicleId: string, vehicleData: any) => {
+        const response = await apiService.updateVehicle(`/vehicles/${vehicleId}`, vehicleData);
+        return response.data;
+      };
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -162,8 +203,10 @@ export default function VehicleForm({ onSubmit, onCancel, setError }: VehicleFor
 
   return (
     <div className="p-6 bg-gray-50 border border-gray-100 rounded-lg">
-      <h2 className="text-xl font-bold mb-2">Register New Vehicle</h2>
-      <p className="text-gray-500 mb-6">Fill in the details to register your vehicle</p>
+      <h2 className="text-xl font-bold mb-2">{isEditMode ? "Edit Vehicle" : "Register New Vehicle"}</h2>
+      <p className="text-gray-500 mb-6">
+        {isEditMode ? "Update the details of your vehicle" : "Fill in the details to register your vehicle"}
+      </p>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -326,7 +369,7 @@ export default function VehicleForm({ onSubmit, onCancel, setError }: VehicleFor
               Cancel
             </Button>
             <Button type="submit" disabled={isLoading}>
-              {isLoading ? "Registering..." : "Register Vehicle"}
+              {isLoading ? (isEditMode ? "Updating..." : "Registering...") : (isEditMode ? "Update Vehicle" : "Register Vehicle")}
             </Button>
           </div>
         </form>

@@ -1,33 +1,38 @@
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Edit, Trash2 } from "lucide-react"
+import { useState } from "react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Edit, Trash2 } from "lucide-react";
+import VehicleForm from "../../user/vehicles/VehicleForm";
 
 interface Vehicle {
-  _id: string
-  vehicleName: string
-  vehicleType: string
-  licensePlate: string
-  color?: string
-  insuranceNumber?: string
-  status: "Pending" | "Approved" | "Rejected"
-  imageUrl: string
+  _id: string;
+  vehicleName: string;
+  vehicleType: string;
+  licensePlate: string;
+  color?: string;
+  insuranceNumber?: string;
+  status: "Pending" | "Approved" | "Rejected";
+  imageUrl: string;
 }
 
 interface VehicleCardProps {
-  vehicle: Vehicle
+  vehicle: Vehicle;
 }
 
 export default function VehicleCard({ vehicle }: VehicleCardProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
       case "Approved":
-        return "bg-green-100 text-green-800 hover:bg-green-200"
+        return "bg-green-100 text-green-800 hover:bg-green-200";
       case "Rejected":
-        return "bg-red-100 text-red-800 hover:bg-red-200"
+        return "bg-red-100 text-red-800 hover:bg-red-200";
       default:
-        return "bg-yellow-100 text-yellow-800 hover:bg-yellow-200"
+        return "bg-yellow-100 text-yellow-800 hover:bg-yellow-200";
     }
-  }
+  };
 
   return (
     <div className="overflow-hidden border rounded-lg">
@@ -61,7 +66,12 @@ export default function VehicleCard({ vehicle }: VehicleCardProps) {
             </div>
           </div>
           <div className="flex sm:flex-col gap-2 mt-4 sm:mt-0">
-            <Button variant="outline" size="sm" className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-1"
+              onClick={() => setIsEditing(true)}
+            >
               <Edit className="h-3.5 w-3.5" />
               <span>Edit</span>
             </Button>
@@ -72,6 +82,19 @@ export default function VehicleCard({ vehicle }: VehicleCardProps) {
           </div>
         </div>
       </div>
+      {isEditing && (
+        <div className="p-4">
+          <VehicleForm
+            vehicleId={vehicle._id}
+            onSubmit={(updatedVehicle) => {
+              setIsEditing(false);
+              // Optionally update local state or refetch vehicles
+            }}
+            onCancel={() => setIsEditing(false)}
+            setError={setError}
+          />
+        </div>
+      )}
     </div>
-  )
+  );
 }

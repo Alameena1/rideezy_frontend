@@ -4,28 +4,46 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
+import Cookies from "js-cookie";
 
 const Navbar = () => {
-  const [localTokenExists, setLocalTokenExists] = useState(false);
+  const [isUserLoggedIn, setIsUserLoggedIn] = useState(false);
   const router = useRouter();
-  const { data: session, status } = useSession(); // From NextAuth
+  const { data: session, status } = useSession();
 
+  // Check for accessToken in cookies
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    setLocalTokenExists(!!token);
+    const token = Cookies.get("accessToken");
+    setIsUserLoggedIn(!!token);
   }, []);
 
-  const handleLocalLogout = () => {
-    localStorage.removeItem("token");
-    setLocalTokenExists(false);
-    router.push("/user/login");
+  // Update login state when session changes (Google login)
+  useEffect(() => {
+    if (status === "authenticated") {
+      setIsUserLoggedIn(true);
+    } else if (status === "unauthenticated") {
+      // Only set to false if no cookie-based token exists
+      const token = Cookies.get("accessToken");
+      setIsUserLoggedIn(!!token);
+    }
+  }, [status]);
+
+  const handleLogout = () => {
+    // Clear cookies for regular login
+    Cookies.remove("accessToken");
+    Cookies.remove("refreshToken");
+    setIsUserLoggedIn(false);
+
+    if (session) {
+      // Handle Google logout via NextAuth
+      signOut({ callbackUrl: "/user/login" });
+    } else {
+      // Redirect for regular login
+      router.push("/user/login");
+    }
   };
 
-  const handleGoogleLogout = () => {
-    signOut({ callbackUrl: "/user/login" });
-  };
-
-  const isLoggedIn = session || localTokenExists;
+  const isLoggedIn = session || isUserLoggedIn;
 
   return (
     <nav className="bg-gray-300 p-4 shadow-sm">
@@ -48,7 +66,7 @@ const Navbar = () => {
                 </button>
               </Link>
               <button
-                onClick={session ? handleGoogleLogout : handleLocalLogout}
+                onClick={handleLogout}
                 className="px-4 py-2 bg-red-600 text-white rounded hover:bg-red-700"
               >
                 Logout

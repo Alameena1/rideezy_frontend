@@ -1,6 +1,7 @@
 "use client";
 import { useSession } from "next-auth/react";
 import { useEffect } from "react";
+import Cookies from "js-cookie";
 import Navbar from "./components/Navbar";
 import Hero from "./components/Hero";
 import ServiceSection from "./components/ServiceSection";
@@ -14,12 +15,10 @@ export default function Home() {
       const accessToken = session.user.access_token;
       const refreshToken = session.user.refresh_token;
       if (accessToken) {
-        localStorage.setItem("accessToken", accessToken);
-        console.log("✅ Access token stored from Google login");
+        Cookies.set("accessToken", accessToken, { expires: 1, secure: true, sameSite: "strict" });
       }
       if (refreshToken) {
-        localStorage.setItem("refreshToken", refreshToken);
-        console.log("✅ Refresh token stored from Google login");
+        Cookies.set("refreshToken", refreshToken, { expires: 7, secure: true, sameSite: "strict" });
       }
     }
   }, [session, status]);

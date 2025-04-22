@@ -7,10 +7,8 @@ const axiosInstance = axios.create({
 });
 
 axiosInstance.interceptors.response.use(
-  response => response,
-  
-  async error => {
-    
+  (response) => response,
+  async (error) => {
     console.log("Interceptor caught error:", error.response?.status, error.response?.data);
     if (error.response?.status === 401) {
       try {
@@ -80,8 +78,7 @@ export const adminApi = {
   getVehicles: async () => {
     try {
       const response = await axiosInstance.get("/vehicles");
-      const { vehicles } = response.data; // Destructure the vehicles array
-      return vehicles;
+      return response.data.vehicles;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.message || "Failed to fetch vehicles");
@@ -90,7 +87,6 @@ export const adminApi = {
     }
   },
 
-  // New method to update vehicle status (to support approve/reject functionality)
   updateVehicleStatus: async (vehicleId: string, status: "Approved" | "Rejected", note?: string) => {
     try {
       const response = await axiosInstance.patch(`/vehicles/${vehicleId}/status`, { status, note });

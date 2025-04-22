@@ -1,5 +1,5 @@
-"use client";
 import axios from "axios";
+import Cookies from "js-cookie";
 
 interface UserProfile {
   fullName: string;
@@ -10,14 +10,35 @@ interface UserProfile {
   state: string;
 }
 
-const getToken = () => localStorage.getItem("accessToken");
-const getRefreshToken = () => localStorage.getItem("refreshToken");
+interface Vehicle {
+  _id: string;
+  vehicleName: string;
+  vehicleType: string;
+  licensePlate: string;
+  color?: string;
+  insuranceNumber?: string;
+  status: "Pending" | "Approved" | "Rejected";
+  vehicleImage: string;
+  documentImage?: string;
+  user: {
+    _id: string;
+    fullName: string;
+    email: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+  __v: number;
+}
+
+const getToken = () => Cookies.get("accessToken");
+const getRefreshToken = () => Cookies.get("refreshToken");
 
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api",
   headers: {
     "Content-Type": "application/json",
   },
+  withCredentials: true,
 });
 
 api.interceptors.request.use(
@@ -57,20 +78,21 @@ api.interceptors.response.use(
 
         const { data } = await axios.post(
           `${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/refresh-token`,
-          { refreshToken }
+          { refreshToken },
+          { withCredentials: true }
         );
 
-        localStorage.setItem("accessToken", data.accessToken);
+        Cookies.set("accessToken", data.accessToken, { expires: 1, secure: true, sameSite: "strict" });
         if (data.refreshToken) {
-          localStorage.setItem("refreshToken", data.refreshToken);
+          Cookies.set("refreshToken", data.refreshToken, { expires: 7, secure: true, sameSite: "strict" });
         }
 
         originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
         return api(originalRequest);
       } catch (refreshError) {
         console.error("Refresh token failed:", refreshError);
-        localStorage.removeItem("accessToken");
-        localStorage.removeItem("refreshToken");
+        Cookies.remove("accessToken");
+        Cookies.remove("refreshToken");
         window.location.href = "/user/login";
       }
     }
@@ -82,13 +104,14 @@ api.interceptors.response.use(
 export const apiService = {
   login: async (credentials: { email: string; password: string }) => {
     const response = await api.post("/auth/login", credentials);
-    localStorage.setItem("accessToken", response.data.accessToken);
-    localStorage.setItem("refreshToken", response.data.refreshToken);
+    Cookies.set("accessToken", response.data.accessToken, { expires: 1, secure: true, sameSite: "strict" });
+    Cookies.set("refreshToken", response.data.refreshToken, { expires: 7, secure: true, sameSite: "strict" });
     return response.data;
   },
 
   getProfile: async () => {
     const response = await api.get("/user/profile");
+    console.log("getProfile raw response:", response.data);
     return response.data;
   },
 
@@ -109,10 +132,21 @@ export const apiService = {
     return response.data;
   },
 
-  getVehicles: async () => {
-    const response = await api.get("/vehicles");
-    console.log(response)
-    return response; 
+  getVehicles: async (): Promise<Vehicle[]> => {
+    try {
+      const response = await api.get("/vehicles");
+      console.log("getVehicles raw response:", response.data);
+
+      const vehicles = response.data?.data?.data || response.data?.data || [];
+      if (!Array.isArray(vehicles)) {
+        console.error("Expected an array of vehicles, got:", vehicles);
+        return [];
+      }
+      return vehicles;
+    } catch (error) {
+      console.error("Failed to fetch vehicles:", error);
+      return [];
+    }
   },
 
   addVehicle: async (vehicleData: {
@@ -124,9 +158,21 @@ export const apiService = {
     vehicleImage?: string;
     documentImage?: string;
   }) => {
-    console.log("api request");
     const response = await api.post("/vehicles", vehicleData);
-    return response.data; 
+    return response.data;
+  },
+
+  updateVehicle: async (vehicleId: string, vehicleData: {
+    vehicleName: string;
+    vehicleType: string;
+    licensePlate: string;
+    color?: string;
+    insuranceNumber?: string;
+    vehicleImage?: string;
+    documentImage?: string;
+  }) => {
+    const response = await api.put(`/vehicles/${vehicleId}`, vehicleData);
+    return response.data;
   },
 };
 
