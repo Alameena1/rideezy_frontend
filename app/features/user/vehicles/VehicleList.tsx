@@ -1,5 +1,6 @@
+// VehicleList.tsx
 import { useState } from "react"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import VehicleCard from "./VehicleCard"
 import EmptyState from "./EmptyState"
 
@@ -17,9 +18,10 @@ interface Vehicle {
 interface VehicleListProps {
   vehicles: Vehicle[]
   isLoading: boolean
+  onDelete?: (vehicleId: string) => void // Add onDelete prop
 }
 
-export default function VehicleList({ vehicles, isLoading }: VehicleListProps) {
+export default function VehicleList({ vehicles, isLoading, onDelete }: VehicleListProps) {
   const [activeTab, setActiveTab] = useState("all")
 
   const filteredVehicles =
@@ -48,7 +50,11 @@ export default function VehicleList({ vehicles, isLoading }: VehicleListProps) {
           ) : (
             <div className="grid gap-4">
               {filteredVehicles.map((vehicle) => (
-                <VehicleCard key={vehicle._id} vehicle={vehicle} />
+                <VehicleCard 
+                  key={vehicle._id} 
+                  vehicle={vehicle} 
+                  onDelete={onDelete} // Pass onDelete prop
+                />
               ))}
             </div>
           )}

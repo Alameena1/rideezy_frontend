@@ -1,8 +1,12 @@
+"use client";
+
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Edit, Trash2 } from "lucide-react";
 import VehicleForm from "../../user/vehicles/VehicleForm";
+import { apiService } from "@/services/api";
+import Swal from "sweetalert2";
 
 interface Vehicle {
   _id: string;
@@ -17,11 +21,13 @@ interface Vehicle {
 
 interface VehicleCardProps {
   vehicle: Vehicle;
+  onDelete?: (vehicleId: string) => void;
 }
 
-export default function VehicleCard({ vehicle }: VehicleCardProps) {
+export default function VehicleCard({ vehicle, onDelete }: VehicleCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
@@ -31,6 +37,44 @@ export default function VehicleCard({ vehicle }: VehicleCardProps) {
         return "bg-red-100 text-red-800 hover:bg-red-200";
       default:
         return "bg-yellow-100 text-yellow-800 hover:bg-yellow-200";
+    }
+  };
+
+  const handleDelete = async () => {
+    const result = await Swal.fire({
+      title: "Are you sure?",
+      text: `You are about to delete ${vehicle.vehicleName}. This action cannot be undone.`,
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#d33",
+      cancelButtonColor: "#3085d6",
+      confirmButtonText: "Yes, delete it!",
+      cancelButtonText: "Cancel",
+    });
+
+    if (result.isConfirmed) {
+      setIsDeleting(true);
+      try {
+        await apiService.deleteVehicle(vehicle._id);
+        onDelete?.(vehicle._id);
+        Swal.fire({
+          title: "Deleted!",
+          text: `${vehicle.vehicleName} has been deleted.`,
+          icon: "success",
+          timer: 1500,
+          showConfirmButton: false,
+        });
+      } catch (error) {
+        setError("Failed to delete vehicle. Please try again.");
+        Swal.fire({
+          title: "Error!",
+          text: "Failed to delete the vehicle. Please try again.",
+          icon: "error",
+          confirmButtonColor: "#3085d6",
+        });
+      } finally {
+        setIsDeleting(false);
+      }
     }
   };
 
@@ -75,9 +119,15 @@ export default function VehicleCard({ vehicle }: VehicleCardProps) {
               <Edit className="h-3.5 w-3.5" />
               <span>Edit</span>
             </Button>
-            <Button variant="destructive" size="sm" className="flex items-center gap-1">
+            <Button
+              variant="destructive"
+              size="sm"
+              className="flex items-center gap-1"
+              onClick={handleDelete}
+              disabled={isDeleting}
+            >
               <Trash2 className="h-3.5 w-3.5" />
-              <span>Delete</span>
+              <span>{isDeleting ? "Deleting..." : "Delete"}</span>
             </Button>
           </div>
         </div>
@@ -88,13 +138,13 @@ export default function VehicleCard({ vehicle }: VehicleCardProps) {
             vehicleId={vehicle._id}
             onSubmit={(updatedVehicle) => {
               setIsEditing(false);
-              // Optionally update local state or refetch vehicles
             }}
             onCancel={() => setIsEditing(false)}
             setError={setError}
           />
         </div>
       )}
+      {error && <div className="p-4 text-red-600">{error}</div>}
     </div>
   );
 }

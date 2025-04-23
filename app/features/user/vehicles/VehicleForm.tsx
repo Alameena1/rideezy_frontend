@@ -33,7 +33,7 @@ const vehicleSchema = z.object({
 });
 
 interface VehicleFormProps {
-  vehicleId?: string; // Optional for add mode, required for edit mode
+  vehicleId?: string;
   onSubmit: (vehicle: any) => void;
   onCancel: () => void;
   setError: (error: string | null) => void;

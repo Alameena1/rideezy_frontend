@@ -1,3 +1,4 @@
+// VehicleDetails.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -54,7 +55,6 @@ export default function VehicleDetails() {
     setIsLoading(true);
     try {
       const response = await apiService.getVehicles();
-
       const vehiclesData = response?.data?.data || response || [];
       const fetchedVehicles = Array.isArray(vehiclesData)
         ? vehiclesData.map((vehicle: any) => ({
@@ -68,13 +68,16 @@ export default function VehicleDetails() {
       setError("Failed to fetch vehicles. Please try again.");
     } finally {
       setIsLoading(false);
-      console.log("Loading state set to false, vehicles:", vehicles);
     }
   };
 
   const handleAddVehicle = (newVehicle: Vehicle) => {
     setVehicles([...vehicles, newVehicle]);
     setIsAddingVehicle(false);
+  };
+
+  const handleDeleteVehicle = (vehicleId: string) => {
+    setVehicles(vehicles.filter(vehicle => vehicle._id !== vehicleId));
   };
 
   return (
@@ -85,6 +88,7 @@ export default function VehicleDetails() {
           isOpen={isSidebarOpen}
           toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
           items={sidebarItems}
+          activeItem="Vehicles" // Add this to align with Sidebar's logic
         />
         {isSidebarOpen && (
           <div
@@ -103,7 +107,9 @@ export default function VehicleDetails() {
                   </div>
                   <button
                     onClick={() => setIsAddingVehicle(!isAddingVehicle)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded ${isAddingVehicle ? "border border-gray-300" : "bg-blue-600 text-white"}`}
+                    className={`flex items-center gap-2 px-4 py-2 rounded ${
+                      isAddingVehicle ? "border border-gray-300" : "bg-blue-600 text-white"
+                    }`}
                   >
                     {isAddingVehicle ? "Cancel" : "Register New Vehicle"}
                   </button>
@@ -118,7 +124,11 @@ export default function VehicleDetails() {
                     setError={setError}
                   />
                 ) : (
-                  <VehicleList vehicles={vehicles} isLoading={isLoading} />
+                  <VehicleList
+                    vehicles={vehicles}
+                    isLoading={isLoading}
+                    onDelete={handleDeleteVehicle}
+                  />
                 )}
               </div>
             </Card>

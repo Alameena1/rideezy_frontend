@@ -174,6 +174,17 @@ export const apiService = {
     const response = await api.put(`/vehicles/${vehicleId}`, vehicleData);
     return response.data;
   },
+
+  // Add to apiService object in api.ts
+deleteVehicle: async (vehicleId: string) => {
+  try {
+    const response = await api.delete(`/vehicles/${vehicleId}`);
+    return response.data;
+  } catch (error) {
+    console.error("Failed to delete vehicle:", error);
+    throw error;
+  }
+},
 };
 
 export default api;
