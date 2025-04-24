@@ -10,7 +10,7 @@ axiosInstance.interceptors.response.use(
   (response) => response,
   async (error) => {
     console.log("Interceptor caught error:", error.response?.status, error.response?.data);
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && error.config.url !== "/login") {
       try {
         console.log("Attempting to refresh token...");
         await adminApi.refreshToken();
@@ -30,10 +30,24 @@ export const adminApi = {
   login: async (email: string, password: string) => {
     try {
       const response = await axiosInstance.post("/login", { email, password });
+      console.log("Login response:", response.data);
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.message || "Authentication failed");
+      }
+      throw new Error("An unknown error occurred");
+    }
+  },
+
+  logout: async () => {
+    try {
+      const response = await axiosInstance.post("/logout");
+      console.log("Logout response:", response.data);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.message || "Logout failed");
       }
       throw new Error("An unknown error occurred");
     }

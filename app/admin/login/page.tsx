@@ -1,4 +1,3 @@
-// src/pages/admin/login.tsx
 "use client";
 
 import { useState } from "react";
@@ -20,14 +19,18 @@ export default function AdminLoginPage() {
     e.preventDefault();
     setError("");
     setLoading(true);
-    
+  
     try {
-      await adminApi.login(formData.email, formData.password);
+      const response = await adminApi.login(formData.email, formData.password);
+      console.log("Login successful:", response);
       router.push("/admin/dashboard");
+      router.refresh(); 
     } catch (err) {
       if (err instanceof Error) {
+        console.error("Login error:", err.message);
         setError(err.message);
       } else {
+        console.error("Unknown login error:", err);
         setError("An unknown error occurred");
       }
     } finally {
