@@ -1,7 +1,21 @@
-import NextAuth from "next-auth";
+import NextAuth, { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
+import { DefaultSession, JWT } from "next-auth";
 
-const authOptions = {
+interface CustomUser {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  image?: string | null;
+  access_token?: string;
+  refresh_token?: string;
+}
+
+interface CustomSession extends DefaultSession {
+  user: CustomUser;
+}
+
+const authOptions: NextAuthOptions = {
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -9,37 +23,57 @@ const authOptions = {
     }),
   ],
   callbacks: {
-    async signIn({ user }) {
+    async signIn({ user, account, profile }) {
       try {
+        const payload = {
+          fullName: user.name || "",
+          email: user.email || "",
+          image: user.image || "",
+        };
+
         const response = await fetch("http://localhost:5000/api/auth/google-auth", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(user),
+          body: JSON.stringify(payload),
         });
 
-        const responseData = await response.json(); 
-        console.log("Google Auth API Response:", responseData);
+        const responseData = await response.json();
 
-        return response.ok;
+        if (response.ok && responseData.accessToken) {
+          // Attach backend token to the user object
+          (user as CustomUser).access_token = responseData.accessToken;
+          (user as CustomUser).refresh_token = responseData.refreshToken;
+          return true;
+        } else {
+          console.error("Google Auth API failed:", responseData);
+          return false;
+        }
       } catch (error) {
-        console.error("Error during signIn:", error);
+        console.error("Error during Google signIn:", error);
         return false;
       }
     },
 
-    async session({ session, token }) {
-      if (token.sub) {
-        session.user.id = token.sub;
-      } else {
-        console.warn("Token does not contain sub:", token);
+    async jwt({ token, user }) {
+      if (user) {
+        token.sub = user.id;
+        token.access_token = (user as CustomUser).access_token;
+        token.refresh_token = (user as CustomUser).refresh_token;
       }
+      return token;
+    },
+
+    async session({ session, token }) {
+      (session.user as CustomUser).id = token.sub as string;
+      (session.user as CustomUser).access_token = token.access_token as string;
+      (session.user as CustomUser).refresh_token = token.refresh_token as string;
       return session;
     },
 
-    async redirect({ url, baseUrl }) {
-      return new URL("/", baseUrl).toString();
+    async redirect({ baseUrl }) {
+      return `${baseUrl}/`; // redirect to homepage
     },
   },
 };

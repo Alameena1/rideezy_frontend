@@ -141,7 +141,7 @@ export default function VerifyOTP(): JSX.Element {
       if (response.success) {
         setResendSuccess(response.message);
         setCountdown(30);
-        const timer = setInterval(() => {
+        const timer = setInterval(() => {z
           setCountdown((prev) => {
             if (prev <= 1) {
               clearInterval(timer);

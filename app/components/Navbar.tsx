@@ -3,22 +3,47 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { signOut, useSession } from "next-auth/react";
+import Cookies from "js-cookie";
 
 const Navbar = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isUserLoggedIn, setIsUserLoggedIn] = useState(false);
   const router = useRouter();
+  const { data: session, status } = useSession();
 
+  // Check for accessToken in cookies
   useEffect(() => {
-    
-    const token = localStorage.getItem("token");
-    setIsLoggedIn(!!token);
+    const token = Cookies.get("accessToken");
+    setIsUserLoggedIn(!!token);
   }, []);
 
+  // Update login state when session changes (Google login)
+  useEffect(() => {
+    if (status === "authenticated") {
+      setIsUserLoggedIn(true);
+    } else if (status === "unauthenticated") {
+      // Only set to false if no cookie-based token exists
+      const token = Cookies.get("accessToken");
+      setIsUserLoggedIn(!!token);
+    }
+  }, [status]);
+
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    setIsLoggedIn(false);
-    router.push("/user/login");
+    // Clear cookies for regular login
+    Cookies.remove("accessToken");
+    Cookies.remove("refreshToken");
+    setIsUserLoggedIn(false);
+
+    if (session) {
+      // Handle Google logout via NextAuth
+      signOut({ callbackUrl: "/user/login" });
+    } else {
+      // Redirect for regular login
+      router.push("/user/login");
+    }
   };
+
+  const isLoggedIn = session || isUserLoggedIn;
 
   return (
     <nav className="bg-gray-300 p-4 shadow-sm">

@@ -118,7 +118,7 @@ export default function SignupPage() {
     setErrors({ ...errors, general: "" });
 
     try {
-      const response = await fetch(" http://localhost:5000/api/signup", {
+      const response = await fetch(" http://localhost:5000/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -137,9 +137,16 @@ export default function SignupPage() {
 
       router.push(`/user/otp?email=${formData.email}`);
 
-    } catch (err: any) {
-      setErrors(prev => ({ ...prev, general: err.message }));
-    } finally {
+    }catch (err: unknown) {
+      let message = "An unexpected error occurred.";
+    
+      if (err instanceof Error) {
+        message = err.message;
+      }
+    
+      setErrors(prev => ({ ...prev, general: message }));
+    }
+     finally {
       setLoading(false);
     }
   };
@@ -148,10 +155,14 @@ export default function SignupPage() {
     setLoading(true);
     try {
       window.location.href = "/api/auth/google";
-    } catch (err: any) {
-      setErrors(prev => ({ ...prev, general: "Failed to connect with Google. Please try again." }));
+    }catch (err: unknown) {
+      const errorMessage =
+        err instanceof Error ? err.message : "Failed to connect with Google. Please try again.";
+    
+      setErrors(prev => ({ ...prev, general: errorMessage }));
       setLoading(false);
     }
+    
   };
 
   return (

@@ -1,9 +1,10 @@
 "use client";
 
 import { ReactNode, useState, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation"; // Add useRouter
 import Link from "next/link";
 import { Menu, X, Home, Users, CheckSquare, Truck, LogOut } from "lucide-react";
+import { adminApi } from "@/services/adminApi"; // Import adminApi
 
 interface SidebarLinkProps {
   href: string;
@@ -34,6 +35,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const pathname = usePathname();
+  const router = useRouter(); // Add router for programmatic navigation
 
   useEffect(() => {
     const handleResize = () => {
@@ -57,14 +59,27 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
 
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
 
+  const handleLogout = async () => {
+    try {
+      await adminApi.logout(); // Call the logout API
+      closeSidebar(); // Close sidebar on mobile
+      router.push("/admin/login"); // Redirect to login page
+      router.refresh(); // Force refresh to ensure middleware re-evaluates
+    } catch (error) {
+      console.error("Logout failed:", error);
+      // Still redirect to login page even if API call fails
+      router.push("/admin/login");
+      router.refresh();
+    }
+  };
+
   const navigationItems = [
     { name: "Dashboard", href: "/admin/dashboard", icon: <Home size={18} /> },
     { name: "User Management", href: "/admin/usermanagement", icon: <Users size={18} /> },
     { name: "User Verification", href: "/admin/dashboard/user-verification", icon: <CheckSquare size={18} /> },
-    { name: "Vehicle Verification", href: "/admin/dashboard/vehicle-verification", icon: <CheckSquare size={18} /> },
+    { name: "Vehicle Verification", href: "/admin/vehicleverification", icon: <CheckSquare size={18} /> },
     { name: "Vehicle Management", href: "/admin/dashboard/vehicles", icon: <Truck size={18} /> },
   ];
-
 
   if (pathname === "/admin/login") {
     return <>{children}</>;
@@ -117,9 +132,13 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
           </nav>
 
           <div className="p-4 border-t border-gray-700">
-            <SidebarLink href="/admin/login" icon={<LogOut size={18} />} onClick={closeSidebar}>
-              Logout
-            </SidebarLink>
+            <button
+              onClick={handleLogout}
+              className="flex items-center gap-3 px-4 py-3 rounded-md transition-colors text-gray-300 hover:bg-gray-700 hover:text-white w-full text-left"
+            >
+              <LogOut size={18} />
+              <span>Logout</span>
+            </button>
           </div>
         </div>
 

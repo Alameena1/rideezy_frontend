@@ -1,4 +1,3 @@
-// src/pages/admin/users.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -6,7 +5,7 @@ import { adminApi } from "@/services/adminApi";
 import { BackendUser } from "@/app/types";
 
 interface User {
-  _id: string; 
+  _id: string;
   name: string;
   email: string;
   phone: string;
@@ -19,7 +18,7 @@ interface User {
 
 export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -30,22 +29,24 @@ export default function UserManagement() {
         console.log("Fetched users:", fetchedUsers);
 
         const mappedUsers: User[] = fetchedUsers.map((user: BackendUser) => ({
-          _id: user._id,
+          _id: user._id.toString(), 
           name: user.fullName || "Unknown",
           email: user.email || "N/A",
           phone: user.phoneNumber || "N/A",
-          totalRides: "0/0", 
-          registrationDate: user.createdAt ? new Date(user.createdAt).toLocaleDateString() : "N/A",
+          totalRides: "0/0",
+          registrationDate: user.createdAt
+            ? new Date(user.createdAt).toLocaleDateString()
+            : "N/A",
           status: user.status || "Active",
-          subscribed: false, 
+          subscribed: false,
           govtIdStatus: "Pending",
         }));
 
         setUsers(mappedUsers);
       } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : "Failed to fetch users";
         console.error("Fetch users failed:", err);
-        setError(err.message || "Failed to fetch users");
-        throw err;
+        setError(errorMessage);
       } finally {
         setLoading(false);
       }
@@ -57,13 +58,14 @@ export default function UserManagement() {
   const handleToggleStatus = async (user: User) => {
     try {
       const newStatus = user.status === "Active" ? "Blocked" : "Active";
-      await adminApi.toggleUserStatus(user.email, newStatus); 
-      setUsers(users.map(u => 
+      await adminApi.toggleUserStatus(user._id, newStatus);
+      setUsers(users.map((u) =>
         u.email === user.email ? { ...u, status: newStatus } : u
       ));
     } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to update user status";
       console.error("Toggle status failed:", err);
-      setError(err.message || "Failed to update user status");
+      setError(errorMessage);
     }
   };
 

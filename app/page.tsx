@@ -1,24 +1,38 @@
-
-
-
-import Footer from "./components/Footer";
-import Hero from "./components/Hero";
+"use client";
+import { useSession } from "next-auth/react";
+import { useEffect } from "react";
+import Cookies from "js-cookie";
 import Navbar from "./components/Navbar";
+import Hero from "./components/Hero";
 import ServiceSection from "./components/ServiceSection";
+import Footer from "./components/Footer";
 
 export default function Home() {
+  const { data: session, status } = useSession();
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      const accessToken = session.user.access_token;
+      const refreshToken = session.user.refresh_token;
+      if (accessToken) {
+        Cookies.set("accessToken", accessToken, { expires: 1, secure: true, sameSite: "strict" });
+      }
+      if (refreshToken) {
+        Cookies.set("refreshToken", refreshToken, { expires: 7, secure: true, sameSite: "strict" });
+      }
+    }
+  }, [session, status]);
 
   return (
     <>
       <Navbar />
       <Hero
-  title="Drive when you want"
-  subtitle="Make what you need with flexible hours and great earnings"
-  imageUrl="/15783581-e9c2-49ab-91f7-f2ca6d113efb.jpeg" 
-  ctaText="Start Driving"
-  ctaLink="/drive"
-/>
-
+        title="Drive when you want"
+        subtitle="Make what you need with flexible hours and great earnings"
+        imageUrl="/15783581-e9c2-49ab-91f7-f2ca6d113efb.jpeg"
+        ctaText="Start Driving"
+        ctaLink="/drive"
+      />
       <ServiceSection
         title="Plan Your Ride (Reserve a Ride)"
         description="Plan your trip in advance with our reservation system and secure your ride before your trip!"
@@ -44,8 +58,6 @@ export default function Home() {
         ctaLink="/safety"
       />
       <Footer />
-
-      
     </>
   );
 }
