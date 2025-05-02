@@ -17,6 +17,7 @@ interface Vehicle {
   insuranceNumber?: string;
   status: "Pending" | "Approved" | "Rejected";
   imageUrl: string;
+  mileage: number;
 }
 
 interface VehicleCardProps {
@@ -106,6 +107,9 @@ export default function VehicleCard({ vehicle, onDelete }: VehicleCardProps) {
               </div>
               <div>
                 <span className="text-gray-500 font-medium">Insurance:</span> {vehicle.insuranceNumber || "N/A"}
+              </div>
+              <div>
+                <span className="text-gray-500 font-medium">Mileage:</span> {vehicle.mileage} km
               </div>
             </div>
           </div>

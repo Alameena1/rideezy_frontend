@@ -29,7 +29,7 @@ const Navbar = () => {
   }, [status]);
 
   const handleLogout = () => {
-    // Clear cookies for regular login
+ 
     Cookies.remove("accessToken");
     Cookies.remove("refreshToken");
     setIsUserLoggedIn(false);
@@ -52,8 +52,7 @@ const Navbar = () => {
           RideEzy
         </Link>
         <div className="hidden md:flex space-x-20">
-          <Link href="/drive" className="hover:text-blue-600">Drive</Link>
-          <Link href="/ride" className="hover:text-blue-600">Ride</Link>
+          <Link href="/user/ride" className="hover:text-blue-600">Start Ride</Link>
           <Link href="/business" className="hover:text-blue-600">Business</Link>
           <Link href="/safety" className="hover:text-blue-600">Safety</Link>
         </div>

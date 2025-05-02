@@ -2,10 +2,10 @@
 import { useSession } from "next-auth/react";
 import { useEffect } from "react";
 import Cookies from "js-cookie";
-import Navbar from "./components/Navbar";
-import Hero from "./components/Hero";
-import ServiceSection from "./components/ServiceSection";
-import Footer from "./components/Footer";
+import Navbar from "./comp/Navbar";
+import Hero from "./comp/Hero";
+import ServiceSection from "./comp/ServiceSection";
+import Footer from "./comp/Footer";
 
 export default function Home() {
   const { data: session, status } = useSession();

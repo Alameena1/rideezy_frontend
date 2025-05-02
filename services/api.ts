@@ -19,7 +19,8 @@ interface Vehicle {
   insuranceNumber?: string;
   status: "Pending" | "Approved" | "Rejected";
   vehicleImage: string;
-  documentImage?: string;
+  documentImage: string;
+  mileage: number;
   user: {
     _id: string;
     fullName: string;
@@ -27,14 +28,13 @@ interface Vehicle {
   };
   createdAt: string;
   updatedAt: string;
-  __v: number;
 }
 
 const getToken = () => Cookies.get("accessToken");
 const getRefreshToken = () => Cookies.get("refreshToken");
 
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000/api",
+  baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001/api",
   headers: {
     "Content-Type": "application/json",
   },
@@ -111,14 +111,11 @@ export const apiService = {
 
   getProfile: async () => {
     const response = await api.get("/user/profile");
-    console.log("getProfile raw response:", response.data);
     return response.data;
   },
 
   updateProfile: async (updatedData: UserProfile) => {
-    console.log("Updating profile with data:", updatedData);
     const response = await api.put("/user/profile", updatedData);
-    console.log("Profile update response:", response);
     return response.data;
   },
 
@@ -135,11 +132,8 @@ export const apiService = {
   getVehicles: async (): Promise<Vehicle[]> => {
     try {
       const response = await api.get("/vehicles");
-      console.log("getVehicles raw response:", response.data);
-
-      const vehicles = response.data?.data?.data || response.data?.data || [];
+      const vehicles = response.data?.data || [];
       if (!Array.isArray(vehicles)) {
-        console.error("Expected an array of vehicles, got:", vehicles);
         return [];
       }
       return vehicles;
@@ -155,8 +149,9 @@ export const apiService = {
     licensePlate: string;
     color?: string;
     insuranceNumber?: string;
-    vehicleImage?: string;
-    documentImage?: string;
+    vehicleImage: string;
+    documentImage: string;
+    mileage: number;
   }) => {
     const response = await api.post("/vehicles", vehicleData);
     return response.data;
@@ -168,23 +163,53 @@ export const apiService = {
     licensePlate: string;
     color?: string;
     insuranceNumber?: string;
-    vehicleImage?: string;
-    documentImage?: string;
+    vehicleImage: string;
+    documentImage: string;
+    mileage: number;
   }) => {
     const response = await api.put(`/vehicles/${vehicleId}`, vehicleData);
     return response.data;
   },
 
-  // Add to apiService object in api.ts
-deleteVehicle: async (vehicleId: string) => {
-  try {
-    const response = await api.delete(`/vehicles/${vehicleId}`);
+  deleteVehicle: async (vehicleId: string) => {
+    try {
+      const response = await api.delete(`/vehicles/${vehicleId}`);
+      return response.data;
+    } catch (error) {
+      console.error("Failed to delete vehicle:", error);
+      throw error;
+    }
+  },
+
+  startRide: async (data: {
+    date: string;
+    time: string;
+    startPoint: string;
+    endPoint: string;
+    passengerCount: number;
+    fuelPrice: number;
+    vehicleId: string;
+    fuelCost: number;
+    distance: number;
+    routeGeometry: string;
+    costPerPerson: number;
+  }) => {
+    const response = await api.post("/rides/start", data);
     return response.data;
-  } catch (error) {
-    console.error("Failed to delete vehicle:", error);
-    throw error;
-  }
-},
+  },
+
+  getRides: async () => {
+    try {
+      const response = await api.get("/rides/rides", {
+        withCredentials: true, 
+      });
+      console.log(response)
+
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
 };
 
 export default api;

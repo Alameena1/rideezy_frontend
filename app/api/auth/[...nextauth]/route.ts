@@ -31,7 +31,7 @@ const authOptions: NextAuthOptions = {
           image: user.image || "",
         };
 
-        const response = await fetch("http://localhost:5000/api/auth/google-auth", {
+        const response = await fetch("http://localhost:3001/api/auth/google-auth", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

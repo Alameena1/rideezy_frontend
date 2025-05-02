@@ -3,13 +3,13 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { apiService } from "@/services/api";
-import { 
-  Form, 
-  FormControl, 
-  FormField, 
-  FormItem, 
-  FormLabel, 
-  FormMessage 
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,7 @@ const vehicleSchema = z.object({
   licensePlate: z.string().min(2, { message: "License plate is required" }),
   color: z.string().min(1, { message: "Color is required" }),
   insuranceNumber: z.string().min(1, { message: "Insurance number is required" }),
+  mileage: z.coerce.number().int().min(0, { message: "Mileage must be a positive integer" }),
   vehicleImage: z
     .any()
     .refine((file) => !file || (file instanceof File && file.size > 0), { message: "Invalid vehicle image" })
@@ -74,6 +75,7 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
             licensePlate: vehicle.licensePlate,
             color: vehicle.color || "",
             insuranceNumber: vehicle.insuranceNumber || "",
+            mileage: vehicle.mileage,
             vehicleImage: null,
             documentImage: null,
           });
@@ -141,6 +143,7 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
         licensePlate: values.licensePlate,
         color: values.color,
         insuranceNumber: values.insuranceNumber,
+        mileage: values.mileage,
       };
 
       // Only upload new images if provided
@@ -254,6 +257,19 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
                   <FormLabel>License Plate</FormLabel>
                   <FormControl>
                     <Input placeholder="e.g. ABC123" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="mileage"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Mileage</FormLabel>
+                  <FormControl>
+                    <Input type="number" step="1" placeholder="e.g. 20" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
