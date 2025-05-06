@@ -76,7 +76,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   const navigationItems = [
     { name: "Dashboard", href: "/admin/dashboard", icon: <Home size={18} /> },
     { name: "User Management", href: "/admin/usermanagement", icon: <Users size={18} /> },
-    { name: "User Verification", href: "/admin/dashboard/user-verification", icon: <CheckSquare size={18} /> },
+    { name: "User Verification", href: "/admin/userIdVerification", icon: <CheckSquare size={18} /> },
     { name: "Vehicle Verification", href: "/admin/vehicleverification", icon: <CheckSquare size={18} /> },
     { name: "Vehicle Management", href: "/admin/dashboard/vehicles", icon: <Truck size={18} /> },
   ];

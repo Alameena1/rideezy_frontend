@@ -1,10 +1,26 @@
 import axios from "axios";
+import Cookies from "js-cookie";
 
 const API_URL = "http://localhost:3001/admin";
 const axiosInstance = axios.create({
   baseURL: API_URL,
   withCredentials: true,
 });
+
+// Add a request interceptor to include the Authorization header
+axiosInstance.interceptors.request.use(
+  (config) => {
+    const token = Cookies.get('adminAuthToken');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+      console.log('Added Authorization header:', config.headers.Authorization);
+    } else {
+      console.log('No adminAuthToken found in cookies');
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
 
 axiosInstance.interceptors.response.use(
   (response) => response,
@@ -18,6 +34,8 @@ axiosInstance.interceptors.response.use(
         return axiosInstance(error.config);
       } catch (refreshError) {
         console.error("Refresh failed:", refreshError.response?.data);
+        Cookies.remove("adminAuthToken");
+        Cookies.remove("refreshToken");
         window.location.href = "/admin/login";
         return Promise.reject(refreshError);
       }
@@ -44,6 +62,8 @@ export const adminApi = {
     try {
       const response = await axiosInstance.post("/logout");
       console.log("Logout response:", response.data);
+      Cookies.remove("adminAuthToken");
+      Cookies.remove("refreshToken");
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -108,6 +128,18 @@ export const adminApi = {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.message || "Failed to update vehicle status");
+      }
+      throw new Error("An unknown error occurred");
+    }
+  },
+
+  verifyGovId: async (userId: string, status: "Verified" | "Rejected", rejectionNote?: string) => {
+    try {
+      const response = await axiosInstance.post("/verify-gov-id", { userId, status, rejectionNote });
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.message || "Failed to verify government ID");
       }
       throw new Error("An unknown error occurred");
     }

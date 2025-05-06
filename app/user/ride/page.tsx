@@ -4,16 +4,15 @@ import React, { useRef, useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { toast } from 'react-toastify';
 import { apiService } from '../../../services/api';
 
 interface FormData {
   date: string;
   time: string;
   startPoint: string;
-  startPlaceName: string; // New field to store place name
+  startPlaceName: string;
   endPoint: string;
-  endPlaceName: string; // New field to store place name
+  endPlaceName: string;
   passengerCount: number;
   fuelPrice: number;
   vehicleId: string;
@@ -33,7 +32,7 @@ const RideForm = () => {
   const [routeData, setRouteData] = useState<any>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [costPerPerson, setCostPerPerson] = useState<number | null>(null);
-  const [distanceInKm, setDistanceInKm] = useState<number | null>(null); // New state for distance
+  const [distanceInKm, setDistanceInKm] = useState<number | null>(null);
   const { register, handleSubmit, formState: { errors }, setValue, getValues, watch } = useForm<FormData>({
     defaultValues: {
       date: new Date().toISOString().split('T')[0],
@@ -42,9 +41,9 @@ const RideForm = () => {
       fuelPrice: 0,
       vehicleId: '',
       startPoint: '',
-      startPlaceName: '', // Initialize place name
+      startPlaceName: '',
       endPoint: '',
-      endPlaceName: '', // Initialize place name
+      endPlaceName: '',
     },
   });
 
@@ -53,6 +52,11 @@ const RideForm = () => {
   const vehicleId = watch('vehicleId');
   const passengerCount = watch('passengerCount');
   const fuelPrice = watch('fuelPrice');
+
+  // State for debouncing search
+  const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
+  // State for debouncing cost calculation
+  const [costCalcTimeout, setCostCalcTimeout] = useState<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const fetchVehicles = async () => {
@@ -63,8 +67,7 @@ const RideForm = () => {
           setValue('vehicleId', vehiclesData[0]._id);
         }
       } catch (error) {
-        toast.error('Failed to fetch vehicles');
-        console.error('Fetch vehicles error:', error);
+        console.error('Failed to fetch vehicles:', error);
       }
     };
     fetchVehicles();
@@ -79,65 +82,81 @@ const RideForm = () => {
     }
   }, []);
 
+  // Effect for route calculation (depends on startPoint and endPoint only)
   useEffect(() => {
-    if (startPoint && endPoint && vehicleId && passengerCount !== undefined && fuelPrice !== undefined) {
-      updateMap();
+    if (startPoint && endPoint) {
+      calculateRoute();
     }
-  }, [startPoint, endPoint, vehicleId, passengerCount, fuelPrice]);
+  }, [startPoint, endPoint]);
 
-  const searchAddress = async (query: string, setSuggestions: (suggestions: any[]) => void) => {
-    if (!query || query.length < 3 || typeof window === 'undefined') {
-      setSuggestions([]);
-      return;
+  // Effect for cost calculation (debounced, depends on routeData, vehicleId, passengerCount, fuelPrice)
+  useEffect(() => {
+    if (routeData && vehicleId && passengerCount !== undefined && fuelPrice !== undefined) {
+      // Clear existing timeout
+      if (costCalcTimeout) {
+        clearTimeout(costCalcTimeout);
+      }
+
+      // Set a new timeout for debouncing
+      const timeout = setTimeout(() => {
+        calculateCost();
+      }, 500); // 500ms debounce delay
+
+      setCostCalcTimeout(timeout);
     }
-    try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      const response = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1`,
-        { headers: { 'User-Agent': 'Rideezy/1.0 (alameen.alameen8086@gmail.com)' } }
-      );
-      if (!response.ok) throw new Error(`Nominatim request failed with status ${response.status}`);
-      const data = await response.json();
-      const keralaResults = data.filter((result: any) => result.address && result.address.state === 'Kerala');
-      setSuggestions(keralaResults);
-    } catch (error) {
-      toast.error('Error searching address');
-      console.error('Nominatim error:', error);
+  }, [routeData, vehicleId, passengerCount, fuelPrice]);
+
+  const searchAddress = (query: string, setSuggestions: (suggestions: any[]) => void) => {
+    if (searchTimeout) {
+      clearTimeout(searchTimeout);
     }
+
+    const timeout = setTimeout(async () => {
+      if (!query || query.length < 3 || typeof window === 'undefined') {
+        setSuggestions([]);
+        return;
+      }
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1`,
+          { headers: { 'User-Agent': 'Rideezy/1.0 (alameen.alameen8086@gmail.com)' } }
+        );
+        if (!response.ok) throw new Error(`Nominatim request failed with status ${response.status}`);
+        const data = await response.json();
+        const keralaResults = data.filter((result: any) => result.address && result.address.state === 'Kerala');
+        setSuggestions(keralaResults);
+      } catch (error) {
+        console.error('Error searching address:', error);
+      }
+    }, 500);
+
+    setSearchTimeout(timeout);
   };
 
-  const updateMap = async () => {
+  const calculateRoute = async () => {
     if (!mapRef.current || typeof window === 'undefined') return;
     const startPoint = getValues('startPoint');
     const endPoint = getValues('endPoint');
-    const fuelPrice = Number( getValues('fuelPrice'));
-    const passengerCount = Number(getValues('passengerCount'));
-    const vehicleId = getValues('vehicleId');
-  
-    if (!startPoint || !endPoint || !vehicleId || passengerCount === undefined || fuelPrice === undefined) {
-      console.log('Missing required fields for updateMap:', { startPoint, endPoint, vehicleId, passengerCount, fuelPrice });
+
+    if (!startPoint || !endPoint) {
+      console.log('Missing required fields for calculateRoute:', { startPoint, endPoint });
       return;
     }
-  
-    const selectedVehicle = vehicles.find(v => v._id === vehicleId);
-    if (!selectedVehicle) {
-      toast.error('Please select a valid vehicle');
-      return;
-    }
-  
+
     const [startLat, startLng] = startPoint.split(',').map(Number);
     const [endLat, endLng] = endPoint.split(',').map(Number);
-  
+
     if (isNaN(startLat) || isNaN(startLng) || isNaN(endLat) || isNaN(endLng)) {
       console.log('Invalid coordinates:', { startLat, startLng, endLat, endLng });
       return;
     }
-  
+
     if (startMarkerRef.current) mapRef.current.removeLayer(startMarkerRef.current);
     if (endMarkerRef.current) mapRef.current.removeLayer(endMarkerRef.current);
     startMarkerRef.current = L.marker([startLat, startLng], { draggable: true }).addTo(mapRef.current);
     endMarkerRef.current = L.marker([endLat, endLng], { draggable: true }).addTo(mapRef.current);
-  
+
     try {
       const response = await fetch('http://localhost:3001/api/route', {
         method: 'POST',
@@ -151,33 +170,43 @@ const RideForm = () => {
         routeLayer.current = L.polyline(route, { color: '#3b9ddd', weight: 5 }).addTo(mapRef.current);
         setRouteData(data);
         mapRef.current.fitBounds(L.latLngBounds([[startLat, startLng], [endLat, endLng]]), { padding: [50, 50] });
-  
-        const distanceInKm = data.distance / 1000;
-        setDistanceInKm(distanceInKm);
-        const fuelNeeded = distanceInKm / selectedVehicle.mileage;
-        const totalFuelCost = fuelNeeded * fuelPrice;
-        const totalPeople = passengerCount + 1;
-        const perPersonCost = totalFuelCost / totalPeople;
-        console.log('Debug:', { distanceInKm, fuelNeeded, totalFuelCost, passengerCount, totalPeople, perPersonCost });
-        setCostPerPerson(perPersonCost);
-  
-        toast.success(
-          `Route calculated successfully. Estimated total fuel cost: ${totalFuelCost.toFixed(2)} INR, Cost per person: ${perPersonCost.toFixed(2)} INR`
-        );
       } else {
-        toast.error('Unable to calculate route');
-        console.error('Route API response:', data);
+        console.error('Unable to calculate route:', data);
       }
     } catch (error) {
-      toast.error('Error calculating route');
-      console.error('Route fetch error:', error);
+      console.error('Error calculating route:', error);
     }
+  };
+
+  const calculateCost = () => {
+    const fuelPrice = Number(getValues('fuelPrice'));
+    const passengerCount = Number(getValues('passengerCount'));
+    const vehicleId = getValues('vehicleId');
+
+    if (!routeData || !vehicleId || passengerCount === undefined || fuelPrice === undefined) {
+      console.log('Missing required fields for calculateCost:', { routeData, vehicleId, passengerCount, fuelPrice });
+      return;
+    }
+
+    const selectedVehicle = vehicles.find(v => v._id === vehicleId);
+    if (!selectedVehicle) {
+      console.log('Please select a valid vehicle');
+      return;
+    }
+
+    const distanceInKm = routeData.distance / 1000;
+    setDistanceInKm(distanceInKm);
+    const fuelNeeded = distanceInKm / selectedVehicle.mileage;
+    const totalFuelCost = fuelNeeded * fuelPrice;
+    const totalPeople = passengerCount + 1;
+    const perPersonCost = totalFuelCost / totalPeople;
+    console.log('Debug:', { distanceInKm, fuelNeeded, totalFuelCost, passengerCount, totalPeople, perPersonCost });
+    setCostPerPerson(perPersonCost);
   };
 
   const handleSuggestionSelect = (field: 'startPoint' | 'endPoint', suggestion: any) => {
     if (suggestion) {
       setValue(field, `${suggestion.lat},${suggestion.lon}`);
-      // Store the place name in a separate field
       setValue(field === 'startPoint' ? 'startPlaceName' : 'endPlaceName', suggestion.display_name);
     }
     setStartSuggestions([]);
@@ -186,12 +215,12 @@ const RideForm = () => {
 
   const onSubmit = async (data: FormData) => {
     if (!routeData) {
-      toast.error('Please calculate the route first');
+      console.log('Please calculate the route first');
       return;
     }
     const selectedVehicle = vehicles.find(v => v._id === data.vehicleId);
     if (!selectedVehicle) {
-      toast.error('Invalid vehicle selected');
+      console.log('Invalid vehicle selected');
       return;
     }
 
@@ -215,11 +244,10 @@ const RideForm = () => {
     try {
       console.log('Submitting ride data:', rideData);
       const response = await apiService.startRide(rideData);
-      toast.success('Ride started successfully!');
+      console.log('Ride started successfully:', response);
       window.location.href = '/';
     } catch (error: any) {
       console.error('Ride submit error:', error.response?.data || error.message);
-      toast.error(error.response?.data?.errors?.[0]?.message || 'Error submitting ride');
     }
   };
 
@@ -297,7 +325,6 @@ const RideForm = () => {
                 </ul>
               )}
               {errors.startPoint && <p className="text-red-600 text-sm">{errors.startPoint.message}</p>}
-              {/* Hidden input for coordinates */}
               <input type="hidden" {...register('startPoint', { validate: validateCoordinates })} />
             </div>
             <div>
@@ -322,7 +349,6 @@ const RideForm = () => {
                 </ul>
               )}
               {errors.endPoint && <p className="text-red-600 text-sm">{errors.endPoint.message}</p>}
-              {/* Hidden input for coordinates */}
               <input type="hidden" {...register('endPoint', { validate: validateCoordinates })} />
             </div>
             <div>

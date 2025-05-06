@@ -64,6 +64,18 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    // Handle user blocked scenario
+    if (
+      error.response?.status === 403 &&
+      error.response?.data?.message === "User is blocked"
+    ) {
+      Cookies.remove("accessToken");
+      Cookies.remove("refreshToken");
+      window.location.href = "/user/login"; // Redirect to login page
+      return Promise.reject(error);
+    }
+
+    // Existing logic for handling 401 (token expiration)
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
@@ -82,9 +94,17 @@ api.interceptors.response.use(
           { withCredentials: true }
         );
 
-        Cookies.set("accessToken", data.accessToken, { expires: 1, secure: true, sameSite: "strict" });
+        Cookies.set("accessToken", data.accessToken, {
+          expires: 1,
+          secure: true,
+          sameSite: "strict",
+        });
         if (data.refreshToken) {
-          Cookies.set("refreshToken", data.refreshToken, { expires: 7, secure: true, sameSite: "strict" });
+          Cookies.set("refreshToken", data.refreshToken, {
+            expires: 7,
+            secure: true,
+            sameSite: "strict",
+          });
         }
 
         originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
@@ -104,8 +124,16 @@ api.interceptors.response.use(
 export const apiService = {
   login: async (credentials: { email: string; password: string }) => {
     const response = await api.post("/auth/login", credentials);
-    Cookies.set("accessToken", response.data.accessToken, { expires: 1, secure: true, sameSite: "strict" });
-    Cookies.set("refreshToken", response.data.refreshToken, { expires: 7, secure: true, sameSite: "strict" });
+    Cookies.set("accessToken", response.data.accessToken, {
+      expires: 1,
+      secure: true,
+      sameSite: "strict",
+    });
+    Cookies.set("refreshToken", response.data.refreshToken, {
+      expires: 7,
+      secure: true,
+      sameSite: "strict",
+    });
     return response.data;
   },
 
@@ -157,16 +185,19 @@ export const apiService = {
     return response.data;
   },
 
-  updateVehicle: async (vehicleId: string, vehicleData: {
-    vehicleName: string;
-    vehicleType: string;
-    licensePlate: string;
-    color?: string;
-    insuranceNumber?: string;
-    vehicleImage: string;
-    documentImage: string;
-    mileage: number;
-  }) => {
+  updateVehicle: async (
+    vehicleId: string,
+    vehicleData: {
+      vehicleName: string;
+      vehicleType: string;
+      licensePlate: string;
+      color?: string;
+      insuranceNumber?: string;
+      vehicleImage: string;
+      documentImage: string;
+      mileage: number;
+    }
+  ) => {
     const response = await api.put(`/vehicles/${vehicleId}`, vehicleData);
     return response.data;
   },
@@ -201,14 +232,24 @@ export const apiService = {
   getRides: async () => {
     try {
       const response = await api.get("/rides/rides", {
-        withCredentials: true, 
+        withCredentials: true,
       });
-      console.log(response)
-
+      console.log(response);
       return response.data;
     } catch (error) {
       throw error;
     }
+  },
+
+  submitGovId: async (data: {
+    govId: {
+      idNumber: string;
+      documentUrl: string;
+      verificationStatus: "Pending" | "Verified" | "Rejected";
+    };
+  }) => {
+    const response = await api.put("/user/profile", data);
+    return response.data;
   },
 };
 
