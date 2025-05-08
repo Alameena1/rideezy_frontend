@@ -13,7 +13,7 @@ axiosInstance.interceptors.request.use(
     const token = Cookies.get('adminAuthToken');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-      console.log('Added Authorization header:', config.headers.Authorization);
+      console.log('Added Authorization header:', token);
     } else {
       console.log('No adminAuthToken found in cookies');
     }

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -8,17 +7,18 @@ import Image from "next/image";
 import axios from "axios";
 import { signIn } from "next-auth/react";
 import { apiService } from "@/services/api";
+
 export default function LoginPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
     email: "",
     password: "",
-    rememberMe: false
+    rememberMe: false,
   });
   const [errors, setErrors] = useState({
     email: "",
     password: "",
-    general: ""
+    general: "",
   });
   const [loading, setLoading] = useState(false);
 
@@ -29,13 +29,12 @@ export default function LoginPage() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value, type, checked } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
-      [name]: type === "checkbox" ? checked : value
+      [name]: type === "checkbox" ? checked : value,
     }));
 
-    
-    setErrors(prev => ({ ...prev, [name]: "", general: "" }));
+    setErrors((prev) => ({ ...prev, [name]: "", general: "" }));
   };
 
   const validateForm = () => {
@@ -58,54 +57,52 @@ export default function LoginPage() {
     setErrors(newErrors);
     return isValid;
   };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-  
-    if (!validateForm()) return; 
-  
+
+    if (!validateForm()) return;
+
     setLoading(true);
     try {
       const data = await apiService.login({
         email: formData.email,
         password: formData.password,
       });
-  
-      localStorage.setItem("token", data?.accessToken); 
+
+      localStorage.setItem("token", data?.accessToken);
       router.push("/");
     } catch (error) {
       console.error("Login Failed:", error);
-  
-    
+
       let errorMessage = "An unexpected error occurred";
-  
+
       if (axios.isAxiosError(error)) {
         if (error.response?.status === 401) {
           errorMessage = "Invalid email or password";
         } else if (error.response?.status === 429) {
           errorMessage = "Too many login attempts. Please try again later.";
+        } else if (error.response?.status === 403 && error.response?.data?.message === "Your account has been blocked. Contact support.") {
+          errorMessage = error.response.data.message;
         } else if (error.response?.status === 500) {
           errorMessage = "Server error. Please try again later.";
         } else if (error.response?.data?.message) {
           errorMessage = error.response.data.message;
         }
       }
-  
-    
-      setErrors(prev => ({
+
+      setErrors((prev) => ({
         ...prev,
         general: errorMessage,
       }));
     } finally {
-      setLoading(false); 
+      setLoading(false);
     }
   };
-  
- 
+
   const handleSignIn = () => {
-    
     signIn("google");
   };
-
 
   const handleForgotPassword = () => {
     router.push("/user/forgot-password");
@@ -114,7 +111,6 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="w-full max-w-4xl bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col md:flex-row">
-       
         <div className="w-full md:w-1/2 p-8 md:p-10 order-2 md:order-1">
           <div className="flex items-center justify-center md:justify-start mb-8">
             <div className="bg-blue-600 text-white p-2 rounded-lg mr-3">
@@ -145,8 +141,7 @@ export default function LoginPage() {
                 type="email"
                 value={formData.email}
                 onChange={handleChange}
-                className={`w-full px-4 py-3 rounded-lg border ${errors.email ? "border-red-300 bg-red-50" : "border-gray-300"
-                  } text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all`}
+                className={`w-full px-4 py-3 rounded-lg border ${errors.email ? "border-red-300 bg-red-50" : "border-gray-300"} text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all`}
                 placeholder="your.email@example.com"
               />
               {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
@@ -171,8 +166,7 @@ export default function LoginPage() {
                 type="password"
                 value={formData.password}
                 onChange={handleChange}
-                className={`w-full px-4 py-3 rounded-lg border ${errors.password ? "border-red-300 bg-red-50" : "border-gray-300"
-                  } text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all`}
+                className={`w-full px-4 py-3 rounded-lg border ${errors.password ? "border-red-300 bg-red-50" : "border-gray-300"} text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all`}
                 placeholder="Enter your password"
               />
               {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password}</p>}
@@ -193,7 +187,6 @@ export default function LoginPage() {
             </div>
 
             <div className="space-y-6">
-           
               <button
                 type="submit"
                 className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-all disabled:opacity-50"
@@ -202,7 +195,6 @@ export default function LoginPage() {
                 {loading ? "Logging in..." : "Log In"}
               </button>
 
-        
               <div className="flex items-center">
                 <div className="flex-grow border-t border-gray-300"></div>
                 <span className="px-3 text-gray-500 text-sm">OR</span>
@@ -224,7 +216,6 @@ export default function LoginPage() {
                 <span className="text-gray-700 font-medium">Continue with Google</span>
               </button>
 
-          
               <p className="text-center text-gray-600">
                 Dont have an account?{" "}
                 <Link href="/user/signup" className="text-blue-600 hover:underline">
@@ -235,7 +226,6 @@ export default function LoginPage() {
           </form>
         </div>
 
-        
         <div className="hidden md:block w-1/2 bg-gradient-to-br from-blue-600 to-indigo-700 p-12 relative order-1 md:order-2">
           <div className="absolute inset-0 bg-black opacity-20 z-0"></div>
           <div className="relative z-10 h-full flex flex-col justify-between">
@@ -248,7 +238,7 @@ export default function LoginPage() {
                   "View your upcoming and past rides",
                   "Manage your profile and preferences",
                   "Connect with your regular travel buddies",
-                  "Access exclusive member benefits"
+                  "Access exclusive member benefits",
                 ].map((feature, index) => (
                   <div key={index} className="flex items-center">
                     <div className="w-6 h-6 rounded-full bg-blue-400 bg-opacity-30 flex items-center justify-center mr-3">

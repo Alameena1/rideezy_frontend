@@ -64,23 +64,23 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // Handle user blocked scenario
+    // Handle user blocked scenario during login
     if (
       error.response?.status === 403 &&
-      error.response?.data?.message === "User is blocked"
+      error.response?.data?.message === "Your account has been blocked. Contact support."
     ) {
       Cookies.remove("accessToken");
       Cookies.remove("refreshToken");
-      window.location.href = "/user/login"; // Redirect to login page
-      return Promise.reject(error);
+      return Promise.reject(error); // Propagate the error to the calling component
     }
 
-    // Existing logic for handling 401 (token expiration)
+    // Handle token expiration, but skip redirect for /auth/login
     if (
       error.response?.status === 401 &&
       !originalRequest._retry &&
       !originalRequest.url?.includes("/auth/verify-otp") &&
-      !originalRequest.url?.includes("/auth/resend-otp")
+      !originalRequest.url?.includes("/auth/resend-otp") &&
+      !originalRequest.url?.includes("/auth/login") // Skip redirect for login requests
     ) {
       originalRequest._retry = true;
 
@@ -135,6 +135,19 @@ export const apiService = {
       sameSite: "strict",
     });
     return response.data;
+  },
+
+  logout: async () => {
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) throw new Error("No refresh token found");
+    try {
+      await api.post("/auth/logout", { refreshToken });
+      Cookies.remove("accessToken");
+      Cookies.remove("refreshToken");
+    } catch (error) {
+      console.error("Logout failed:", error);
+      throw error;
+    }
   },
 
   getProfile: async () => {
@@ -234,7 +247,6 @@ export const apiService = {
       const response = await api.get("/rides/rides", {
         withCredentials: true,
       });
-      console.log(response);
       return response.data;
     } catch (error) {
       throw error;
@@ -250,6 +262,41 @@ export const apiService = {
   }) => {
     const response = await api.put("/user/profile", data);
     return response.data;
+  },
+
+  searchAddress: async (query: string): Promise<any[]> => {
+    try {
+      const response = await axios.get(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1`,
+        {
+          headers: { 'User-Agent': 'Rideezy/1.0 (alameen.alameen8086@gmail.com)' }
+        }
+      );
+      if (response.status !== 200) throw new Error(`Nominatim request failed with status ${response.status}`);
+      const data = response.data;
+      return data.filter((result: any) => result.address && result.address.state === 'Kerala');
+    } catch (error) {
+      console.error(`Error searching address: ${error}`);
+      throw error;
+    }
+  },
+
+  calculateRoute: async (startPoint: string, endPoint: string): Promise<any> => {
+    try {
+      const [startLat, startLng] = startPoint.split(',').map(Number);
+      const [endLat, endLng] = endPoint.split(',').map(Number);
+      const response = await api.post("/route", {
+        startPoint: `${startLng},${startLat}`,
+        endPoint: `${endLng},${endLat}`
+      });
+      if (!response.data.geometry || !response.data.geometry.coordinates) {
+        throw new Error('Invalid route data');
+      }
+      return response.data;
+    } catch (error) {
+      console.error(`Error calculating route: ${error}`);
+      throw error;
+    }
   },
 };
 
