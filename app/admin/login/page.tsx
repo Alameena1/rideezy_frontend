@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { adminApi } from "@/services/adminApi";
+import { apiService } from "@/services/api";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -21,7 +21,7 @@ export default function AdminLoginPage() {
     setLoading(true);
   
     try {
-      const response = await adminApi.login(formData.email, formData.password);
+      const response = await apiService.admin.auth.login(formData.email, formData.password);
       console.log("Login successful:", response);
       router.push("/admin/dashboard");
       router.refresh(); 

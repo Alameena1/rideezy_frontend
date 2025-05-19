@@ -45,7 +45,7 @@ export default function VehicleDetails() {
   const fetchVehicles = async () => {
     setIsLoading(true);
     try {
-      const response = await apiService.getVehicles();
+      const response = await apiService.vehicle.getVehicles();
       const vehiclesData = response?.data?.data || response || [];
       const fetchedVehicles = Array.isArray(vehiclesData)
         ? vehiclesData.map((vehicle: any) => ({

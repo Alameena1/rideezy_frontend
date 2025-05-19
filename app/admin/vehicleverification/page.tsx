@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { adminApi } from "@/services/adminApi";
+import { apiService } from "@/services/api";
 
 interface Vehicle {
   _id: string;
@@ -31,16 +31,11 @@ export default function VehicleVerification() {
   const [showRejectionModal, setShowRejectionModal] = useState(false);
 
 
-
-console.log("asasasa",vehicles)
-
-
   useEffect(() => {
     const fetchVehicles = async () => {
       try {
         setLoading(true);
-        const fetchedVehicles = await adminApi.getVehicles();
-        console.log("Fetched vehicles data:", fetchedVehicles); // Log the raw response
+        const fetchedVehicles = await apiService.admin.vehicle.getVehicles();
         if (Array.isArray(fetchedVehicles)) {
           setVehicles(fetchedVehicles);
         } else {
@@ -62,7 +57,7 @@ console.log("asasasa",vehicles)
 
   const handleApproveVehicle = async (vehicleId: string) => {
     try {
-      await adminApi.updateVehicleStatus(vehicleId, "Approved");
+      await apiService.admin.vehicle.updateVehicleStatus(vehicleId, "Approved");
       setVehicles(vehicles.map((vehicle) =>
         vehicle._id === vehicleId ? { ...vehicle, status: "Approved" } : vehicle
       ));
@@ -86,7 +81,7 @@ console.log("asasasa",vehicles)
     }
 
     try {
-      await adminApi.updateVehicleStatus(selectedVehicle, "Rejected", rejectionNote);
+      await apiService.admin.vehicle.updateVehicleStatus(selectedVehicle, "Rejected", rejectionNote);
       setVehicles(vehicles.map((vehicle) =>
         vehicle._id === selectedVehicle ? { ...vehicle, status: "Rejected" } : vehicle
       ));

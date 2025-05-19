@@ -51,7 +51,7 @@ const RideFormContainer: React.FC = () => {
   useEffect(() => {
     const fetchVehicles = async () => {
       try {
-        const vehiclesData = await apiService.getVehicles();
+        const vehiclesData = await apiService.vehicle.getVehicles();
         setVehicles(vehiclesData);
         if (vehiclesData.length > 0) {
           setValue('vehicleId', vehiclesData[0]._id);
@@ -131,7 +131,7 @@ const RideFormContainer: React.FC = () => {
       costPerPerson: perPersonCost,
     };
     try {
-      const response = await apiService.startRide(rideData);
+      const response = await apiService.ride.startRide(rideData);
       Swal.fire({
         icon: 'success',
         title: 'Ride Initiated Successfully!',

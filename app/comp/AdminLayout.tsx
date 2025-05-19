@@ -1,10 +1,10 @@
 "use client";
 
 import { ReactNode, useState, useEffect } from "react";
-import { usePathname, useRouter } from "next/navigation"; // Add useRouter
+import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Menu, X, Home, Users, CheckSquare, Truck, LogOut } from "lucide-react";
-import { adminApi } from "@/services/adminApi"; // Import adminApi
+import apiService from "@/services/api"; 
 
 interface SidebarLinkProps {
   href: string;
@@ -35,7 +35,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const pathname = usePathname();
-  const router = useRouter(); // Add router for programmatic navigation
+  const router = useRouter();
 
   useEffect(() => {
     const handleResize = () => {
@@ -61,13 +61,12 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
 
   const handleLogout = async () => {
     try {
-      await adminApi.logout(); // Call the logout API
-      closeSidebar(); // Close sidebar on mobile
-      router.push("/admin/login"); // Redirect to login page
-      router.refresh(); // Force refresh to ensure middleware re-evaluates
+      await apiService.admin.auth.logout(); // Use apiService.admin.auth.logout()
+      closeSidebar();
+      router.push("/admin/login");
+      router.refresh();
     } catch (error) {
       console.error("Logout failed:", error);
-      // Still redirect to login page even if API call fails
       router.push("/admin/login");
       router.refresh();
     }
@@ -78,7 +77,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
     { name: "User Management", href: "/admin/usermanagement", icon: <Users size={18} /> },
     { name: "User Verification", href: "/admin/userIdVerification", icon: <CheckSquare size={18} /> },
     { name: "Vehicle Verification", href: "/admin/vehicleverification", icon: <CheckSquare size={18} /> },
-    { name: "Vehicle Management", href: "/admin/dashboard/vehicles", icon: <Truck size={18} /> },
+    { name: "Subscription", href: "/admin/subscriptionmanagement", icon: <Truck size={18} /> },
   ];
 
   if (pathname === "/admin/login") {

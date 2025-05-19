@@ -65,7 +65,7 @@ export default function LoginPage() {
 
     setLoading(true);
     try {
-      const data = await apiService.login({
+      const data = await apiService.auth.login({
         email: formData.email,
         password: formData.password,
       });

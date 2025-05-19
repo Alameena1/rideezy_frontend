@@ -68,7 +68,7 @@ export default function Profile() {
     const fetchUserData = async () => {
       try {
         console.log("Fetching user data...");
-        const profileData = await apiService.getProfile();
+        const profileData = await apiService.user.getProfile();
         console.log("Profile data:", profileData.data);
         if (profileData && profileData.data) {
           setUserData({
@@ -114,7 +114,7 @@ export default function Profile() {
         country: userData.country,
         state: userData.state,
       };
-      const response = await apiService.updateProfile(updatedProfile);
+      const response = await apiService.user.updateProfile(updatedProfile);
       console.log("Profile updated successfully:", response);
       setIsEditing(false);
     } catch (error) {
@@ -160,7 +160,7 @@ export default function Profile() {
         },
       };
 
-      const response = await apiService.submitGovId(payload);
+      const response = await apiService.user.submitGovId(payload);
       if (!response.success) {
         throw new Error(response.message || "Failed to submit government ID");
       }

@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation"; 
 import Head from "next/head";
-import { apiService } from "@/services/api"; // Import the API handler
+import { apiService } from "@/services/api"; 
 
 type OtpArray = [string, string, string, string, string, string];
 
@@ -88,7 +88,7 @@ export default function VerifyOTP(): JSX.Element {
 
   const verifyOtp = async (otpValue: string): Promise<VerificationResponse> => {
     try {
-      const response = await apiService.verifyOtp({ email, otp: otpValue });
+      const response = await apiService.auth.verifyOtp({ email, otp: otpValue });
       return { success: true, message: response.message, redirectUrl: "/user/login" };
     } catch (error: any) {
       return { success: false, message: error.response?.data?.message || "Verification failed. Please try again." };
@@ -123,7 +123,7 @@ export default function VerifyOTP(): JSX.Element {
 
   const requestNewOtp = async (): Promise<ResendOtpResponse> => {
     try {
-      const response = await apiService.resendOtp({ email });
+      const response = await apiService.auth.resendOtp({ email });
       return { success: true, message: response.message };
     } catch (error: any) {
       return { success: false, message: error.response?.data?.message || "Failed to resend OTP." };
@@ -141,7 +141,7 @@ export default function VerifyOTP(): JSX.Element {
       if (response.success) {
         setResendSuccess(response.message);
         setCountdown(30);
-        const timer = setInterval(() => {z
+        const timer = setInterval(() => {
           setCountdown((prev) => {
             if (prev <= 1) {
               clearInterval(timer);

@@ -39,7 +39,7 @@ export default function Sidebar({
         router.push("/user/RideDetails");
         break;
       case "Subscription":
-        router.push("/subscription");
+        router.push("/user/subscription");
         break;
       default:
         break;

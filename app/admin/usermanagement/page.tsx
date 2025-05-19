@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { adminApi } from "@/services/adminApi";
+import { apiService } from "@/services/api";
 import { BackendUser } from "@/app/types";
 
 interface User {
@@ -25,7 +25,7 @@ export default function UserManagement() {
     const fetchUsers = async () => {
       try {
         setLoading(true);
-        const fetchedUsers = await adminApi.getUsers();
+        const fetchedUsers = await apiService.admin.user.getUsers();
         console.log("Fetched users:", fetchedUsers);
 
         const mappedUsers: User[] = fetchedUsers.map((user: BackendUser) => ({
@@ -58,7 +58,7 @@ export default function UserManagement() {
   const handleToggleStatus = async (user: User) => {
     try {
       const newStatus = user.status === "Active" ? "Blocked" : "Active";
-      await adminApi.toggleUserStatus(user._id, newStatus);
+      await apiService.admin.user.toggleUserStatus(user._id, newStatus);
       setUsers(users.map((u) =>
         u.email === user.email ? { ...u, status: newStatus } : u
       ));

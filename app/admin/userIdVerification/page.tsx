@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { adminApi } from "@/services/adminApi";
+import { apiService } from "@/services/api";
 
 interface User {
   _id: string;
@@ -29,10 +29,10 @@ export default function UserIdVerification() {
     const fetchUsers = async () => {
       try {
         setLoading(true);
-        const fetchedUsers = await adminApi.getUsers();
+        const fetchedUsers = await apiService.admin.user;
         console.log("Fetched users data:", fetchedUsers);
         if (Array.isArray(fetchedUsers)) {
-          // Filter users who have submitted a government ID
+         
           const usersWithGovId = fetchedUsers.filter((user: User) => user.govId && user.govId.idNumber);
           setUsers(usersWithGovId);
         } else {
@@ -54,7 +54,7 @@ export default function UserIdVerification() {
 
   const handleApproveUser = async (userId: string) => {
     try {
-      await adminApi.verifyGovId(userId, "Verified");
+      await apiService.admin.vehicle.verifyGovId(userId, "Verified");
       setUsers(users.map((user) =>
         user._id === userId ? { ...user, govId: { ...user.govId, verificationStatus: "Verified" } } : user
       ));
@@ -78,7 +78,7 @@ export default function UserIdVerification() {
     }
 
     try {
-      await adminApi.verifyGovId(selectedUser, "Rejected", rejectionNote);
+      await apiService.admin.vehicle.verifyGovId(selectedUser, "Rejected", rejectionNote);
       setUsers(users.map((user) =>
         user._id === selectedUser ? { ...user, govId: { ...user.govId, verificationStatus: "Rejected", rejectionNote } } : user
       ));

@@ -14,7 +14,7 @@ interface SidebarItem {
 interface MainLayoutProps {
   children: ReactNode;
   activeItem: string;
-  hideSidebar?: boolean; // New prop to control sidebar visibility
+  hideSidebar?: boolean; 
 }
 
 export default function MainLayout({ children, activeItem, hideSidebar = false }: MainLayoutProps) {

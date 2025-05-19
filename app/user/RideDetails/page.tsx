@@ -82,7 +82,7 @@ export default function RideDetails() {
   const fetchRides = async () => {
     setIsLoading(true);
     try {
-      const ridesData = await apiService.getRides();
+      const ridesData = await apiService.ride.getRides();
       const fetchedRides = Array.isArray(ridesData.data) ? ridesData.data : [];
       setRides(fetchedRides);
 
@@ -140,7 +140,6 @@ export default function RideDetails() {
 
     try {
       const routeData = JSON.parse(ride.routeGeometry);
-      console.log("Route Geometry:", routeData); // Debug log
       if (routeData.type === "LineString" && routeData.coordinates) {
         const coordinates = routeData.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]);
         routeLayers.current[ride._id] = leafletLoaded.polyline(coordinates, { color: "#3b9ddd", weight: 5 }).addTo(map);

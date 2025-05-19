@@ -18,7 +18,7 @@ interface Vehicle {
 interface VehicleListProps {
   vehicles: Vehicle[]
   isLoading: boolean
-  onDelete?: (vehicleId: string) => void // Add onDelete prop
+  onDelete?: (vehicleId: string) => void 
 }
 
 export default function VehicleList({ vehicles, isLoading, onDelete }: VehicleListProps) {

@@ -35,7 +35,7 @@ const AddressSearch: React.FC<AddressSearchProps> = ({ label, field, placeNameFi
         return;
       }
       try {
-        const results = await apiService.searchAddress(query);
+        const results = await apiService.geo.searchAddress(query);
         setSuggestions(results);
       } catch (error) {
         console.error('Error searching address:', error);

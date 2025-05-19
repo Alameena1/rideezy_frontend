@@ -45,7 +45,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ startPoint, endPoint, route
 
     const fetchRoute = async () => {
       try {
-        const data = await apiService.calculateRoute(startPoint, endPoint);
+        const data = await apiService.geo.calculateRoute(startPoint, endPoint);
         if (data.geometry && data.geometry.coordinates) {
           const route = data.geometry.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]);
           if (routeLayer.current) mapRef.current.removeLayer(routeLayer.current);

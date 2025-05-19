@@ -56,7 +56,7 @@ export default function VehicleCard({ vehicle, onDelete }: VehicleCardProps) {
     if (result.isConfirmed) {
       setIsDeleting(true);
       try {
-        await apiService.deleteVehicle(vehicle._id);
+        await apiService.vehicle.deleteVehicle(vehicle._id);
         onDelete?.(vehicle._id);
         Swal.fire({
           title: "Deleted!",

@@ -64,7 +64,7 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
     if (isEditMode) {
       const fetchVehicle = async () => {
         try {
-          const response = await apiService.getVehicles();
+          const response = await apiService.vehicle.getVehicles();
           const vehicle = response.find((v: any) => v._id === vehicleId);
           if (!vehicle) {
             throw new Error("Vehicle not found");
@@ -156,9 +156,9 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
 
       let response;
       if (isEditMode) {
-        response = await apiService.updateVehicle(vehicleId, payload);
+        response = await apiService.vehicle.updateVehicle(vehicleId, payload);
       } else {
-        response = await apiService.addVehicle(payload);
+        response = await apiService.vehicle.addVehicle(payload);
       }
 
       if (!response.success) {
@@ -189,9 +189,9 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
 
   // Add updateVehicle to apiService if not present
   useEffect(() => {
-    if (!apiService.updateVehicle) {
-      apiService.updateVehicle = async (vehicleId: string, vehicleData: any) => {
-        const response = await apiService.updateVehicle(`/vehicles/${vehicleId}`, vehicleData);
+    if (!apiService.vehicle.updateVehicle) {
+      apiService.vehicle.updateVehicle = async (vehicleId: string, vehicleData: any) => {
+        const response = await apiService.vehicle.updateVehicle(`/vehicles/${vehicleId}`, vehicleData);
         return response.data;
       };
     }

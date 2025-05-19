@@ -11,6 +11,7 @@ const useAuth = () => {
   const { data: session, status: sessionStatus } = useSession();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [user, setUser] = useState(null); // Add state to store user data
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -28,6 +29,7 @@ const useAuth = () => {
         if (refreshToken) {
           Cookies.set("refreshToken", refreshToken, { expires: 7, secure: true, sameSite: "strict" });
         }
+        setUser(session.user); // Store user data
         setIsAuthenticated(true);
         setIsLoading(false);
         return;
@@ -40,9 +42,10 @@ const useAuth = () => {
         if (token) {
           try {
             console.log("Validating token with apiService.getProfile");
-            const profileData = await apiService.getProfile();
+            const profileData = await apiService.user.getProfile();
             console.log("Profile data received:", profileData);
             if (profileData?.success && profileData.data) {
+              setUser(profileData.data); // Store user data from profile
               setIsAuthenticated(true);
             } else {
               console.warn("Invalid profile data response:", profileData);
@@ -77,7 +80,7 @@ const useAuth = () => {
     checkAuth();
   }, [sessionStatus, session, router]);
 
-  return { session, isAuthenticated, isLoading };
+  return { user, isAuthenticated, isLoading }; // Return user instead of session
 };
 
 export default useAuth;
