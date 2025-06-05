@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Edit, Trash2 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Edit, Trash2, RefreshCcw } from "lucide-react";
 import VehicleForm from "../../user/vehicles/VehicleForm";
 import { apiService } from "@/services/api";
 import Swal from "sweetalert2";
@@ -16,17 +17,28 @@ interface Vehicle {
   color?: string;
   insuranceNumber?: string;
   status: "Pending" | "Approved" | "Rejected";
-  imageUrl: string;
+  vehicleImage: string; // Updated to match vehicleApi
+  documentImage: string; // Added
   mileage: number;
+  user: {
+    _id: string;
+    fullName: string;
+    email: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+  note?: string;
 }
 
 interface VehicleCardProps {
   vehicle: Vehicle;
   onDelete?: (vehicleId: string) => void;
+  onReapply?: (vehicleId: string) => void; // Added for reapply callback
 }
 
-export default function VehicleCard({ vehicle, onDelete }: VehicleCardProps) {
+export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCardProps) {
   const [isEditing, setIsEditing] = useState(false);
+  const [isReapplying, setIsReapplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -79,12 +91,29 @@ export default function VehicleCard({ vehicle, onDelete }: VehicleCardProps) {
     }
   };
 
+  const handleReapply = async () => {
+    const result = await Swal.fire({
+      title: "Reapply Vehicle?",
+      text: `Do you want to reapply ${vehicle.vehicleName} for approval?`,
+      icon: "question",
+      showCancelButton: true,
+      confirmButtonColor: "#3085d6",
+      cancelButtonColor: "#d33",
+      confirmButtonText: "Yes, reapply!",
+      cancelButtonText: "Cancel",
+    });
+
+    if (result.isConfirmed) {
+      setIsReapplying(true);
+    }
+  };
+
   return (
     <div className="overflow-hidden border rounded-lg">
       <div className="flex flex-col sm:flex-row">
         <div className="sm:w-1/4 h-48 sm:h-auto">
           <img
-            src={vehicle.imageUrl || "/placeholder.svg"}
+            src={vehicle.vehicleImage || "/placeholder.svg"} // Updated to vehicleImage
             alt={vehicle.vehicleName}
             className="w-full h-full object-cover"
           />
@@ -94,7 +123,18 @@ export default function VehicleCard({ vehicle, onDelete }: VehicleCardProps) {
             <div>
               <div className="flex items-center gap-2 mb-1">
                 <h3 className="text-lg font-semibold">{vehicle.vehicleName}</h3>
-                <Badge className={getStatusBadgeColor(vehicle.status)}>{vehicle.status}</Badge>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger>
+                      <Badge className={getStatusBadgeColor(vehicle.status)}>{vehicle.status}</Badge>
+                    </TooltipTrigger>
+                    {vehicle.status === "Rejected" && vehicle.note && (
+                      <TooltipContent>
+                        <p>Reason: {vehicle.note}</p>
+                      </TooltipContent>
+                    )}
+                  </Tooltip>
+                </TooltipProvider>
               </div>
               <p className="text-sm text-gray-500">{vehicle.vehicleType}</p>
             </div>
@@ -133,17 +173,73 @@ export default function VehicleCard({ vehicle, onDelete }: VehicleCardProps) {
               <Trash2 className="h-3.5 w-3.5" />
               <span>{isDeleting ? "Deleting..." : "Delete"}</span>
             </Button>
+            {vehicle.status === "Rejected" && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-1"
+                onClick={handleReapply}
+                disabled={isReapplying}
+              >
+                <RefreshCcw className="h-3.5 w-3.5" />
+                <span>{isReapplying ? "Reapplying..." : "Reapply"}</span>
+              </Button>
+            )}
           </div>
         </div>
       </div>
-      {isEditing && (
+      {(isEditing || isReapplying) && (
         <div className="p-4">
           <VehicleForm
             vehicleId={vehicle._id}
-            onSubmit={(updatedVehicle) => {
-              setIsEditing(false);
+            initialData={{
+              vehicleName: vehicle.vehicleName,
+              vehicleType: vehicle.vehicleType,
+              licensePlate: vehicle.licensePlate,
+              color: vehicle.color,
+              insuranceNumber: vehicle.insuranceNumber,
+              vehicleImage: vehicle.vehicleImage,
+              documentImage: vehicle.documentImage,
+              mileage: vehicle.mileage,
             }}
-            onCancel={() => setIsEditing(false)}
+            onSubmit={async (updatedVehicle) => {
+              try {
+                if (isReapplying) {
+                  await apiService.vehicle.reapplyVehicle(vehicle._id, updatedVehicle);
+                  onReapply?.(vehicle._id);
+                  Swal.fire({
+                    title: "Reapplied!",
+                    text: `${vehicle.vehicleName} has been reapplied.`,
+                    icon: "success",
+                    timer: 1500,
+                    showConfirmButton: false,
+                  });
+                } else {
+                  await apiService.vehicle.updateVehicle(vehicle._id, updatedVehicle);
+                  Swal.fire({
+                    title: "Updated!",
+                    text: `${vehicle.vehicleName} has been updated.`,
+                    icon: "success",
+                    timer: 1500,
+                    showConfirmButton: false,
+                  });
+                }
+                setIsEditing(false);
+                setIsReapplying(false);
+              } catch (error) {
+                setError("Failed to save vehicle. Please try again.");
+                Swal.fire({
+                  title: "Error!",
+                  text: "Failed to save the vehicle. Please try again.",
+                  icon: "error",
+                  confirmButtonColor: "#3085d6",
+                });
+              }
+            }}
+            onCancel={() => {
+              setIsEditing(false);
+              setIsReapplying(false);
+            }}
             setError={setError}
           />
         </div>

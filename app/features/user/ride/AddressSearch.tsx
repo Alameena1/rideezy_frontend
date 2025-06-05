@@ -13,8 +13,8 @@ interface FormData {
 
 interface AddressSearchProps {
   label: string;
-  field: 'startPoint' | 'endPoint';
-  placeNameField: 'startPlaceName' | 'endPlaceName';
+  field: 'startPoint' | 'endPoint' | 'userLocation' | 'destination';
+  placeNameField: 'startPlaceName' | 'endPlaceName' | 'userLocationName' | 'destinationName';
   register: UseFormRegister<FormData>;
   setValue: UseFormSetValue<FormData>;
   error?: string;
@@ -61,6 +61,9 @@ const AddressSearch: React.FC<AddressSearchProps> = ({ label, field, placeNameFi
         {...register(placeNameField, { required: `${label} is required` })}
         onChange={(e) => handleSearch(e.target.value)}
         className="mt-1 block w-full rounded-md border-gray-300 shadow-sm"
+        suppressHydrationWarning // Suppress hydration warning
+        data-1p-ignore // Prevent 1Password from modifying
+        data-lpignore="true" // Prevent LastPass from modifying
       />
       {suggestions.length > 0 && (
         <ul className="border mt-1 rounded-md">
@@ -76,14 +79,17 @@ const AddressSearch: React.FC<AddressSearchProps> = ({ label, field, placeNameFi
         </ul>
       )}
       {error && <p className="text-red-600 text-sm">{error}</p>}
-      <input type="hidden" {...register(field, {
-        validate: (value: string) => {
-          const [lat, lng] = value.split(',').map(Number);
-          if (!lat || !lng) return 'Invalid coordinate format';
-          if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return 'Coordinates out of range';
-          return true;
-        }
-      })} />
+      <input
+        type="hidden"
+        {...register(field, {
+          validate: (value: string) => {
+            const [lat, lng] = value.split(',').map(Number);
+            if (!lat || !lng) return 'Invalid coordinate format';
+            if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return 'Coordinates out of range';
+            return true;
+          },
+        })}
+      />
     </div>
   );
 };

@@ -18,6 +18,7 @@ interface Vehicle {
   };
   createdAt: string;
   updatedAt: string;
+  note?: string; // Added note for rejection reason
 }
 
 export const vehicleApi = {
@@ -72,6 +73,28 @@ export const vehicleApi = {
       return response.data;
     } catch (error) {
       console.error("Failed to delete vehicle:", error);
+      throw error;
+    }
+  },
+
+  reapplyVehicle: async (
+    vehicleId: string,
+    vehicleData: {
+      vehicleName: string;
+      vehicleType: string;
+      licensePlate: string;
+      color?: string;
+      insuranceNumber?: string;
+      vehicleImage: string;
+      documentImage: string;
+      mileage: number;
+    }
+  ) => {
+    try {
+      const response = await api.post(`/vehicles/${vehicleId}/reapply`, vehicleData);
+      return response.data;
+    } catch (error) {
+      console.error("Failed to reapply vehicle:", error);
       throw error;
     }
   },

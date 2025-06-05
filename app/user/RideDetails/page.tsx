@@ -188,7 +188,7 @@ export default function RideDetails() {
     }
   }, [openCollapsible, rides, initializeMap]);
 
-  return (
+   return (
     <MainLayout activeItem="Rides">
       <div className="mx-auto max-w-5xl p-4">
         <Card className="border-none shadow-md">
@@ -209,7 +209,7 @@ export default function RideDetails() {
             ) : (
               <div className="grid gap-6">
                 {rides.map((ride) => {
-                  const seatsLeft = (ride.totalPeople - 1) - (ride.passengers?.length || 0);
+                  const seatsLeft = (ride.totalPeople - 1) - ride.passengerCount; // Use passengerCount instead of passengers.length
                   const place = placeNames[ride._id] || { startPlace: ride.startPoint, endPlace: ride.endPoint };
 
                   return (
@@ -283,7 +283,7 @@ export default function RideDetails() {
                                 </h4>
                                 <p className="text-sm text-gray-600">
                                   <span className="font-medium">Passenger Count:</span>{" "}
-                                  {ride.passengers?.length || 0}
+                                  {ride.passengerCount} {/* Use passengerCount */}
                                 </p>
                                 <p className="text-sm text-gray-600">
                                   <span className="font-medium">Total People:</span> {ride.totalPeople}

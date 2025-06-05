@@ -78,6 +78,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
     { name: "User Verification", href: "/admin/userIdVerification", icon: <CheckSquare size={18} /> },
     { name: "Vehicle Verification", href: "/admin/vehicleverification", icon: <CheckSquare size={18} /> },
     { name: "Subscription", href: "/admin/subscriptionmanagement", icon: <Truck size={18} /> },
+    { name: "Ride", href: "/admin/ridemanagement", icon: <Truck size={18} /> },
   ];
 
   if (pathname === "/admin/login") {

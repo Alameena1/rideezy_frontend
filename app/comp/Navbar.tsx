@@ -53,7 +53,7 @@ const Navbar = () => {
         </Link>
         <div className="hidden md:flex space-x-20">
           <Link href="/user/ride" className="hover:text-blue-600">Start Ride</Link>
-          <Link href="/business" className="hover:text-blue-600">Business</Link>
+          <Link href="/user/JoinRide" className="hover:text-blue-600">Join Ride</Link>
           <Link href="/safety" className="hover:text-blue-600">Safety</Link>
         </div>
         <div className="flex items-center space-x-4">

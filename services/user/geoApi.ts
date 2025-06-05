@@ -19,23 +19,24 @@ const geoApi = {
     }
   },
 
-  calculateRoute: async (startPoint: string, endPoint: string): Promise<any> => {
-    try {
-      const [startLat, startLng] = startPoint.split(',').map(Number);
-      const [endLat, endLng] = endPoint.split(',').map(Number);
-      const response = await api.post("/route", {
-        startPoint: `${startLng},${startLat}`,
-        endPoint: `${endLng},${endLat}`
-      });
-      if (!response.data.geometry || !response.data.geometry.coordinates) {
-        throw new Error('Invalid route data');
-      }
-      return response.data;
-    } catch (error) {
-      console.error(`Error calculating route: ${error}`);
-      throw error;
+ calculateRoute: async (startPoint: string, endPoint: string): Promise<any> => {
+  try {
+    const [startLat, startLng] = startPoint.split(',').map(Number);
+    const [endLat, endLng] = endPoint.split(',').map(Number);
+    const response = await api.post("/route", {
+      startPoint: `${startLng},${startLat}`,
+      endPoint: `${endLng},${endLat}`
+    });
+    console.log('Route API response:', response.data); // Debug log
+    if (!response.data.geometry || !response.data.geometry.coordinates) {
+      throw new Error('Invalid route data');
     }
-  },
+    return response.data;
+  } catch (error) {
+    console.error(`Error calculating route: ${error}`);
+    throw error;
+  }
+},
 };
 
 export { geoApi }; 
