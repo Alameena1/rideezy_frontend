@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import * as L from "leaflet";
 import ErrorAlert from "../../features/user/vehicles/ErrorAlert";
-import MainLayout from "@/app/comp/MainLayout";
+import MainLayout from "../../comp/MainLayout"; 
 
 import "leaflet/dist/leaflet.css";
 
@@ -30,7 +30,9 @@ interface Ride {
   totalFuelCost: number;
   costPerPerson: number;
   totalPeople: number;
-  passengers: string[];
+  passengers: { passengerId: string; passengerName: string }[];
+  pickupPoints: { passengerId: string; location: string; placeName: string }[];
+  dropoffPoints: { passengerId: string; location: string; placeName: string }[];
   status: "Pending" | "Started" | "Completed";
   routeGeometry: string;
 }
@@ -53,6 +55,8 @@ export default function RideDetails() {
   const routeLayers = useRef<{ [key: string]: L.Polyline | null }>({});
   const startMarkerRefs = useRef<{ [key: string]: L.Marker | null }>({});
   const endMarkerRefs = useRef<{ [key: string]: L.Marker | null }>({});
+  const pickupMarkerRefs = useRef<{ [key: string]: L.Marker[] }>({});
+  const dropoffMarkerRefs = useRef<{ [key: string]: L.Marker[] }>({});
   const mapContainerRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
   const currentDate = new Date().toLocaleDateString("en-GB", {
@@ -62,7 +66,6 @@ export default function RideDetails() {
     year: "numeric",
   });
 
-  // Load Leaflet dynamically on the client side
   useEffect(() => {
     if (typeof window !== "undefined") {
       import("leaflet").then((module) => {
@@ -74,7 +77,6 @@ export default function RideDetails() {
     }
   }, []);
 
-  // Fetch rides on mount
   useEffect(() => {
     fetchRides();
   }, []);
@@ -84,10 +86,31 @@ export default function RideDetails() {
     try {
       const ridesData = await apiService.ride.getRides();
       const fetchedRides = Array.isArray(ridesData.data) ? ridesData.data : [];
-      setRides(fetchedRides);
+      const mappedRides: Ride[] = fetchedRides.map((ride: any) => ({
+        _id: ride._id.toString(),
+        rideId: ride.rideId || "N/A",
+        driverId: ride.driverId || "N/A",
+        vehicleId: ride.vehicleId || "N/A",
+        date: ride.date || "N/A",
+        time: ride.time || "N/A",
+        startPoint: ride.startPoint || "N/A",
+        endPoint: ride.endPoint || "N/A",
+        distanceKm: ride.distanceKm || 0,
+        mileage: ride.mileage || 0,
+        fuelPrice: ride.fuelPrice || 0,
+        passengerCount: ride.passengerCount || 0,
+        totalFuelCost: ride.totalFuelCost || 0,
+        costPerPerson: ride.costPerPerson || 0,
+        totalPeople: ride.totalPeople || 0,
+        passengers: ride.passengers || [],
+        pickupPoints: ride.pickupPoints || [],
+        dropoffPoints: ride.dropoffPoints || [],
+        status: ride.status || "Pending",
+        routeGeometry: ride.routeGeometry || "",
+      }));
+      setRides(mappedRides);
 
-      // Fetch place names for each ride
-      const placePromises = fetchedRides.map(async (ride: Ride) => {
+      const placePromises = mappedRides.map(async (ride: Ride) => {
         const [startLat, startLon] = ride.startPoint.split(",").map(Number);
         const [endLat, endLon] = ride.endPoint.split(",").map(Number);
 
@@ -112,7 +135,6 @@ export default function RideDetails() {
     }
   };
 
-  // Reverse geocode coordinates to place names using Nominatim
   const reverseGeocode = async (lat: number, lon: number): Promise<string> => {
     try {
       const response = await fetch(
@@ -122,12 +144,11 @@ export default function RideDetails() {
       return data.display_name || `${lat},${lon}`;
     } catch (error) {
       console.error("Error reverse geocoding:", error);
-      return `${lat},${lon}`; // Fallback to coordinates if geocoding fails
+      return `${lat},${lon}`;
     }
   };
 
   const initializeMap = useCallback((ride: Ride, mapContainer: HTMLDivElement) => {
-    // Only initialize if the map doesn't already exist and Leaflet is loaded
     if (mapRefs.current[ride._id] || !leafletLoaded || !leafletLoaded.map) {
       return;
     }
@@ -146,8 +167,59 @@ export default function RideDetails() {
 
         const [startLat, startLng] = coordinates[0];
         const [endLat, endLng] = coordinates[coordinates.length - 1];
-        startMarkerRefs.current[ride._id] = leafletLoaded.marker([startLat, startLng]).addTo(map);
-        endMarkerRefs.current[ride._id] = leafletLoaded.marker([endLat, endLng]).addTo(map);
+        startMarkerRefs.current[ride._id] = leafletLoaded.marker([startLat, startLng], {
+          icon: leafletLoaded.icon({
+            iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png",
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+          }),
+        }).addTo(map).bindPopup(`Start: ${placeNames[ride._id]?.startPlace || ride.startPoint}`);
+
+        endMarkerRefs.current[ride._id] = leafletLoaded.marker([endLat, endLng], {
+          icon: leafletLoaded.icon({
+            iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+          }),
+        }).addTo(map).bindPopup(`End: ${placeNames[ride._id]?.endPlace || ride.endPoint}`);
+
+        pickupMarkerRefs.current[ride._id] = ride.passengers.map((passenger, index) => {
+          const pickup = ride.pickupPoints.find(p => p.passengerId === passenger.passengerId);
+          if (!pickup) return null;
+
+          const [lat, lng] = pickup.location.split(",").map(Number);
+          if (isNaN(lat) || isNaN(lng)) {
+            console.error(`Invalid pickup location for passenger ${passenger.passengerId}: ${pickup.location}`);
+            return null;
+          }
+
+          return leafletLoaded.marker([lat, lng], {
+            icon: leafletLoaded.icon({
+              iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png",
+              iconSize: [25, 41],
+              iconAnchor: [12, 41],
+            }),
+          }).addTo(map).bindPopup(`Passenger ${index + 1} (${passenger.passengerName}) - Pickup: ${pickup.placeName}`);
+        }).filter((marker): marker is L.Marker => marker !== null);
+
+        dropoffMarkerRefs.current[ride._id] = ride.passengers.map((passenger, index) => {
+          const dropoff = ride.dropoffPoints.find(p => p.passengerId === passenger.passengerId);
+          if (!dropoff) return null;
+
+          const [lat, lng] = dropoff.location.split(",").map(Number);
+          if (isNaN(lat) || isNaN(lng)) {
+            console.error(`Invalid drop-off location for passenger ${passenger.passengerId}: ${dropoff.location}`);
+            return null;
+          }
+
+          return leafletLoaded.marker([lat, lng], {
+            icon: leafletLoaded.icon({
+              iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-orange.png",
+              iconSize: [25, 41],
+              iconAnchor: [12, 41],
+            }),
+          }).addTo(map).bindPopup(`Passenger ${index + 1} (${passenger.passengerName}) - Drop-off: ${dropoff.placeName}`);
+        }).filter((marker): marker is L.Marker => marker !== null);
 
         map.fitBounds(leafletLoaded.latLngBounds(coordinates), { padding: [50, 50] });
       } else {
@@ -155,8 +227,9 @@ export default function RideDetails() {
       }
     } catch (error) {
       console.error("Error parsing route geometry:", error);
+      setError("Failed to render route map. Invalid route data.");
     }
-  }, [leafletLoaded]);
+  }, [leafletLoaded, placeNames]);
 
   const cleanupMap = useCallback((rideId: string) => {
     if (mapRefs.current[rideId]) {
@@ -166,6 +239,10 @@ export default function RideDetails() {
     routeLayers.current[rideId] = null;
     startMarkerRefs.current[rideId] = null;
     endMarkerRefs.current[rideId] = null;
+    pickupMarkerRefs.current[rideId]?.forEach(marker => marker.remove());
+    pickupMarkerRefs.current[rideId] = [];
+    dropoffMarkerRefs.current[rideId]?.forEach(marker => marker.remove());
+    dropoffMarkerRefs.current[rideId] = [];
     mapContainerRefs.current[rideId] = null;
   }, []);
 
@@ -178,7 +255,6 @@ export default function RideDetails() {
     }
   };
 
-  // Initialize maps when collapsible is opened and Leaflet is loaded
   useEffect(() => {
     if (!openCollapsible || !leafletLoaded || !leafletLoaded.map) return;
 
@@ -186,9 +262,9 @@ export default function RideDetails() {
     if (ride && mapContainerRefs.current[ride._id]) {
       initializeMap(ride, mapContainerRefs.current[ride._id]!);
     }
-  }, [openCollapsible, rides, initializeMap]);
+  }, [openCollapsible, rides, initializeMap, leafletLoaded]);
 
-   return (
+  return (
     <MainLayout activeItem="Rides">
       <div className="mx-auto max-w-5xl p-4">
         <Card className="border-none shadow-md">
@@ -209,7 +285,7 @@ export default function RideDetails() {
             ) : (
               <div className="grid gap-6">
                 {rides.map((ride) => {
-                  const seatsLeft = (ride.totalPeople - 1) - ride.passengerCount; // Use passengerCount instead of passengers.length
+                  const seatsLeft = (ride.totalPeople - 1) - ride.passengerCount;
                   const place = placeNames[ride._id] || { startPlace: ride.startPoint, endPlace: ride.endPoint };
 
                   return (
@@ -283,7 +359,7 @@ export default function RideDetails() {
                                 </h4>
                                 <p className="text-sm text-gray-600">
                                   <span className="font-medium">Passenger Count:</span>{" "}
-                                  {ride.passengerCount} {/* Use passengerCount */}
+                                  {ride.passengerCount}
                                 </p>
                                 <p className="text-sm text-gray-600">
                                   <span className="font-medium">Total People:</span> {ride.totalPeople}
@@ -306,6 +382,26 @@ export default function RideDetails() {
                                   }}
                                 />
                               </div>
+                            </div>
+                            <div>
+                              <h4 className="text-md font-semibold text-gray-700 mb-2 mt-4">Passenger Details</h4>
+                              {ride.passengers.length > 0 ? (
+                                <ul className="list-disc pl-5 space-y-2 text-sm text-gray-600">
+                                  {ride.passengers.map((passenger, index) => {
+                                    const pickup = ride.pickupPoints.find(p => p.passengerId === passenger.passengerId);
+                                    const dropoff = ride.dropoffPoints.find(p => p.passengerId === passenger.passengerId);
+                                    return (
+                                      <li key={index}>
+                                        <span className="font-medium">Passenger {index + 1}:</span> {passenger.passengerName} (ID: {passenger.passengerId}) <br />
+                                        <span className="font-medium">Pickup Location:</span> {pickup ? pickup.placeName : "N/A"} ({pickup ? pickup.location : "N/A"}) <br />
+                                        <span className="font-medium">Drop-off Location:</span> {dropoff ? dropoff.placeName : "N/A"} ({dropoff ? dropoff.location : "N/A"})
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              ) : (
+                                <p className="text-sm text-gray-600">No passengers assigned.</p>
+                              )}
                             </div>
                           </CollapsibleContent>
                         </Collapsible>

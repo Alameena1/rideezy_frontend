@@ -25,6 +25,7 @@ export default function MainLayout({ children, activeItem, hideSidebar = false }
     { icon: "🚗", label: "Vehicles", active: activeItem === "Vehicles" },
     { icon: "🛞", label: "Rides", active: activeItem === "Rides" },
     { icon: "👑", label: "Subscription", active: activeItem === "Subscription" },
+    { icon: "🚗", label: "Joined Ride", active: activeItem === "Joined Ride" },
   ];
 
   const toggleSidebar = () => {

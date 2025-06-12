@@ -41,6 +41,9 @@ export default function Sidebar({
       case "Subscription":
         router.push("/user/subscription");
         break;
+      case "Joined Ride":
+        router.push("/user/joinedRideDetails");
+        break;
       default:
         break;
     }

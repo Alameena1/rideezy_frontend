@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -102,93 +103,96 @@ const RideFormContainer: React.FC = () => {
     setCostPerPerson(perPersonCost);
   };
 
-const onSubmit = async (data: FormData) => {
-  if (!routeData) {
-    console.log('Please calculate the route first');
-    Swal.fire({
-      icon: 'error',
-      title: 'Oops...',
-      text: 'Route data is missing. Please ensure a valid route is calculated.',
-    });
-    return;
-  }
-  const selectedVehicle = vehicles.find(v => v._id === data.vehicleId);
-  if (!selectedVehicle) {
-    console.log('Invalid vehicle selected');
-    Swal.fire({
-      icon: 'error',
-      title: 'Oops...',
-      text: 'Invalid vehicle selected. Please select a valid vehicle.',
-    });
-    return;
-  }
+  const onSubmit = async (data: FormData) => {
+    if (!routeData) {
+      console.log('Please calculate the route first');
+      Swal.fire({
+        icon: 'error',
+        title: 'Oops...',
+        text: 'Route data is missing. Please ensure a valid route is calculated.',
+      });
+      return;
+    }
+    const selectedVehicle = vehicles.find(v => v._id === data.vehicleId);
+    if (!selectedVehicle) {
+      console.log('Invalid vehicle selected');
+      Swal.fire({
+        icon: 'error',
+        title: 'Oops...',
+        text: 'Invalid vehicle selected. Please select a valid vehicle.',
+      });
+      return;
+    }
 
-  const formattedDate = new Date(data.date).toISOString().split('T')[0];
-  const distanceInKm = Number(routeData.distance) / 1000;
-  const fuelNeeded = distanceInKm / selectedVehicle.mileage;
-  const totalFuelCost = fuelNeeded * Number(data.fuelPrice);
-  const totalPeople = Number(data.passengerCount) + 1;
-  const perPersonCost = totalFuelCost / totalPeople;
+    const formattedDate = new Date(data.date).toISOString().split('T')[0];
+    const distanceInKm = Number(routeData.distance) / 1000;
+    const fuelNeeded = distanceInKm / selectedVehicle.mileage;
+    const totalFuelCost = fuelNeeded * Number(data.fuelPrice);
+    const totalPeople = Number(data.passengerCount) + 1;
+    const perPersonCost = totalFuelCost / totalPeople;
 
-  // Ensure routeGeometry is a valid string
-  let routeGeometry = '';
-  if (routeData.geometry && Array.isArray(routeData.geometry) && routeData.geometry[0]) {
-    routeGeometry = JSON.stringify(routeData.geometry[0]);
-  } else if (routeData.geometry && routeData.geometry.coordinates) {
-    routeGeometry = JSON.stringify(routeData.geometry);
-  } else {
-    console.error('Invalid route geometry:', routeData.geometry);
-    Swal.fire({
-      icon: 'error',
-      title: 'Oops...',
-      text: 'Failed to calculate a valid route. Please try again.',
-    });
-    return;
-  }
+    // Ensure routeGeometry is a valid string
+    let routeGeometry = '';
+    if (routeData.geometry && Array.isArray(routeData.geometry) && routeData.geometry[0]) {
+      routeGeometry = JSON.stringify(routeData.geometry[0]);
+    } else if (routeData.geometry && routeData.geometry.coordinates) {
+      routeGeometry = JSON.stringify(routeData.geometry);
+    } else {
+      console.error('Invalid route geometry:', routeData.geometry);
+      Swal.fire({
+        icon: 'error',
+        title: 'Oops...',
+        text: 'Failed to calculate a valid route. Please try again.',
+      });
+      return;
+    }
 
-  const rideData = {
-    vehicleId: data.vehicleId,
-    date: formattedDate,
-    time: data.time,
-    startPoint: data.startPoint,
-    endPoint: data.endPoint,
-    passengerCount: Number(data.passengerCount),
-    fuelPrice: Number(data.fuelPrice),
-    distanceKm: distanceInKm,
-    totalFuelCost: totalFuelCost,
-    costPerPerson: perPersonCost,
-    routeGeometry: routeGeometry,
+    const rideData = {
+      vehicleId: data.vehicleId,
+      date: formattedDate,
+      time: data.time,
+      startPoint: data.startPoint,
+      endPoint: data.endPoint,
+      passengerCount: Number(data.passengerCount),
+      fuelPrice: Number(data.fuelPrice),
+      distanceKm: distanceInKm,
+      totalFuelCost: totalFuelCost,
+      costPerPerson: perPersonCost,
+      routeGeometry: routeGeometry,
+    };
+
+    console.log('Submitting rideData:', rideData);
+
+    try {
+      const response = await apiService.ride.startRide(rideData);
+      Swal.fire({
+        icon: 'success',
+        title: 'Ride Initiated Successfully!',
+        text: 'Would you like to view the ride details or go to the homepage?',
+        showCancelButton: true,
+        confirmButtonText: 'View Ride',
+        cancelButtonText: 'Go Home',
+        confirmButtonColor: '#3085d6',
+        cancelButtonColor: '#d33',
+      }).then((result) => {
+        if (result.isConfirmed) {
+          window.location.href = `/user/RideDetails`;
+        } else {
+          window.location.href = '/';
+        }
+      });
+    } catch (error: any) {
+      console.error('Ride submit error:', error.response?.data || error.message);
+      // Extract the specific error message from the backend response
+      const errorMessage = error.response?.data?.message || error.message || 'Failed to initiate the ride. Please try again.';
+      Swal.fire({
+        icon: 'error',
+        title: 'Oops...',
+        text: errorMessage,
+      });
+    }
   };
 
-  console.log('Submitting rideData:', rideData);
-
-  try {
-    const response = await apiService.ride.startRide(rideData);
-    Swal.fire({
-      icon: 'success',
-      title: 'Ride Initiated Successfully!',
-      text: 'Would you like to view the ride details or go to the homepage?',
-      showCancelButton: true,
-      confirmButtonText: 'View Ride',
-      cancelButtonText: 'Go Home',
-      confirmButtonColor: '#3085d6',
-      cancelButtonColor: '#d33',
-    }).then((result) => {
-      if (result.isConfirmed) {
-        window.location.href = `/user/RideDetails`; 
-      } else {
-        window.location.href = '/';
-      }
-    });
-  } catch (error: any) {
-    console.error('Ride submit error:', error.response?.data || error.message);
-    Swal.fire({
-      icon: 'error',
-      title: 'Oops...',
-      text: 'Failed to initiate the ride. Please try again.',
-    });
-  }
-};
   return (
     <div className="container mx-auto p-4">
       <h2 className="text-2xl font-bold mb-4">Start a New Ride</h2>

@@ -56,6 +56,19 @@ export const rideApi = {
       throw new Error(error.response?.data?.message || "Failed to fetch rides");
     }
   },
+getJoinedRides: async () => {
+  try {
+    const response = await api.get("/rides/joined");
+    console.log("Raw API Response Data:", response.data);
+    // Extract the inner data array and ensure it's a true array
+    const data = Array.isArray(response.data?.data)
+      ? response.data.data
+      : Array.from(response.data?.data || []);
+    return { data, error: null };
+  } catch (error: any) {
+    throw new Error(error.response?.data?.message || "Failed to fetch rides");
+  }
+},
 
   findNearestRides: async (data: { userLocation: string; destination: string }) => {
     try {

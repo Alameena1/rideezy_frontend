@@ -1,3 +1,4 @@
+
 "use client";
 
 import type React from "react";
@@ -8,7 +9,7 @@ import Swal from "sweetalert2";
 import { useForm } from "react-hook-form";
 import AddressSearch from "../../features/user/ride/AddressSearch";
 import dynamic from "next/dynamic";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
@@ -202,6 +203,22 @@ const JoinRidePage: React.FC = () => {
       return;
     }
 
+    if (!user) {
+      setError("User data is not available.");
+      return;
+    }
+
+    // Check user verification status before initiating payment
+    if (user.govId?.verificationStatus !== "Verified") {
+      setError("You must be a verified user to join a ride.");
+      Swal.fire({
+        icon: "error",
+        title: "Verification Required",
+        text: "You must be a verified user to join a ride. Please complete your verification process.",
+      });
+      return;
+    }
+
     if (!userLocation || userLocation.trim() === "") {
       setError("Please select your pickup location before joining a ride.");
       console.warn("userLocation is invalid:", userLocation);
@@ -226,7 +243,7 @@ const JoinRidePage: React.FC = () => {
       return;
     }
 
-    handleRidePayment(ride, user || {});
+    handleRidePayment(ride, user);
   };
 
   const handleSetLocation = useCallback(
@@ -415,14 +432,14 @@ const JoinRidePage: React.FC = () => {
 
                                 <div className="space-y-2">
                                   <div className="flex items-start gap-2">
-                                    <MapPin className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
+                                    <MapPin className="h-4 w-4 text-green-600" />
                                     <div>
                                       <p className="text-sm font-medium">From</p>
                                       <p className="text-xs text-gray-600 line-clamp-2">{startPlaceName}</p>
                                     </div>
                                   </div>
                                   <div className="flex items-start gap-2">
-                                    <MapPin className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+                                    <MapPin className="h-4 w-4 text-red-600" />
                                     <div>
                                       <p className="text-sm font-medium">To</p>
                                       <p className="text-xs text-gray-600 line-clamp-2">{endPlaceName}</p>
