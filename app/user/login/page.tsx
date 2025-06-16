@@ -63,6 +63,7 @@ export default function LoginPage() {
 
     if (!validateForm()) return;
 
+    console.log("Setting loading to true");
     setLoading(true);
     try {
       const data = await apiService.auth.login({
@@ -96,6 +97,7 @@ export default function LoginPage() {
         general: errorMessage,
       }));
     } finally {
+      console.log("Setting loading to false");
       setLoading(false);
     }
   };
@@ -104,9 +106,14 @@ export default function LoginPage() {
     signIn("google");
   };
 
-  const handleForgotPassword = () => {
+  const handleForgotPassword = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    console.log("Attempting to redirect to /user/forgot-password");
     router.push("/user/forgot-password");
   };
+
+  console.log("LoginPage rendered");
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
@@ -141,7 +148,8 @@ export default function LoginPage() {
                 type="email"
                 value={formData.email}
                 onChange={handleChange}
-                className={`w-full px-4 py-3 rounded-lg border ${errors.email ? "border-red-300 bg-red-50" : "border-gray-300"} text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all`}
+                disabled={loading}
+                className={`w-full px-4 py-3 rounded-lg border ${errors.email ? "border-red-300 bg-red-50" : "border-gray-300"} text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50`}
                 placeholder="your.email@example.com"
               />
               {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
@@ -155,7 +163,8 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={handleForgotPassword}
-                  className="text-sm text-blue-600 hover:text-blue-800"
+                  disabled={loading}
+                  className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Forgot password?
                 </button>
@@ -166,7 +175,8 @@ export default function LoginPage() {
                 type="password"
                 value={formData.password}
                 onChange={handleChange}
-                className={`w-full px-4 py-3 rounded-lg border ${errors.password ? "border-red-300 bg-red-50" : "border-gray-300"} text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all`}
+                disabled={loading}
+                className={`w-full px-4 py-3 rounded-lg border ${errors.password ? "border-red-300 bg-red-50" : "border-gray-300"} text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50`}
                 placeholder="Enter your password"
               />
               {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password}</p>}
@@ -179,7 +189,8 @@ export default function LoginPage() {
                 type="checkbox"
                 checked={formData.rememberMe}
                 onChange={handleChange}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                disabled={loading}
+                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
               />
               <label htmlFor="rememberMe" className="ml-2 block text-sm text-gray-700">
                 Remember me
@@ -217,7 +228,7 @@ export default function LoginPage() {
               </button>
 
               <p className="text-center text-gray-600">
-                Dont have an account?{" "}
+                Don't have an account?{" "}
                 <Link href="/user/signup" className="text-blue-600 hover:underline">
                   Sign up
                 </Link>
@@ -254,7 +265,7 @@ export default function LoginPage() {
 
             <div className="mt-auto">
               <div className="bg-white/10 rounded-lg p-4 backdrop-blur-sm">
-                <p className="text-white italic text-sm">I find the most reliable carpool buddies through this app. Its changed how I commute forever!</p>
+                <p className="text-white italic text-sm">I find the most reliable carpool buddies through this app. It's changed how I commute forever!</p>
                 <p className="text-blue-200 text-sm mt-2">— Michael T., Active Member</p>
               </div>
             </div>

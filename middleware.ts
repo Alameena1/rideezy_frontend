@@ -8,16 +8,18 @@ export function middleware(request: NextRequest) {
 
   console.log("Middleware:", { pathname, isAdminRoute, isUserRoute });
 
-  // Handle login, signup, and OTP routes
+  // Handle login, signup, OTP, forgot-password, and reset-password routes
   if (
     pathname === "/admin/login" ||
     pathname === "/user/login" ||
     pathname === "/user/signup" ||
-    pathname === "/user/otp"
+    pathname === "/user/otp" ||
+    pathname === "/user/forgot-password" ||
+    pathname === "/user/reset-password"
   ) {
     const userToken = request.cookies.get("accessToken")?.value;
     const adminToken = request.cookies.get("adminAuthToken")?.value;
-    console.log("Login page:", { userToken, adminToken });
+    console.log("Public page:", { pathname, userToken, adminToken });
 
     // Redirect authenticated admins to admin dashboard
     if (pathname === "/admin/login" && adminToken) {
@@ -25,10 +27,12 @@ export function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL("/admin/dashboard", request.url));
     }
 
-    // Redirect authenticated users to subscriptions page (instead of dashboard)
+    // Redirect authenticated users to subscriptions page, unless on /user/login with a success message
+    const successMessage = request.nextUrl.searchParams.get("success");
     if (
       (pathname === "/user/login" || pathname === "/user/signup" || pathname === "/user/otp") &&
-      userToken
+      userToken &&
+      !(pathname === "/user/login" && successMessage) // Allow /user/login with success message
     ) {
       console.log("User already logged in, redirecting to subscriptions page");
       return NextResponse.redirect(new URL("/user/subscription", request.url));
