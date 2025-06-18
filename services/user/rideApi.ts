@@ -56,19 +56,19 @@ export const rideApi = {
       throw new Error(error.response?.data?.message || "Failed to fetch rides");
     }
   },
-getJoinedRides: async () => {
-  try {
-    const response = await api.get("/rides/joined");
-    console.log("Raw API Response Data:", response.data);
-    // Extract the inner data array and ensure it's a true array
-    const data = Array.isArray(response.data?.data)
-      ? response.data.data
-      : Array.from(response.data?.data || []);
-    return { data, error: null };
-  } catch (error: any) {
-    throw new Error(error.response?.data?.message || "Failed to fetch rides");
-  }
-},
+
+  getJoinedRides: async () => {
+    try {
+      const response = await api.get("/rides/joined");
+      console.log("Raw API Response Data:", response.data);
+      const data = Array.isArray(response.data?.data)
+        ? response.data.data
+        : Array.from(response.data?.data || []);
+      return { data, error: null };
+    } catch (error: any) {
+      throw new Error(error.response?.data?.message || "Failed to fetch rides");
+    }
+  },
 
   findNearestRides: async (data: { userLocation: string; destination: string }) => {
     try {
@@ -120,4 +120,38 @@ getJoinedRides: async () => {
       throw new Error(error.response?.data?.message || "Failed to verify payment and join ride");
     }
   },
+
+  editRide: async (rideId: string, data: { date: string; time: string }) => {
+    try {
+      const response = await api.put(`/rides/${rideId}`, data, {
+        withCredentials: true,
+      });
+      return response.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data?.message || "Failed to edit ride");
+    }
+  },
+
+  cancelRide: async (rideId: string) => {
+    try {
+      const response = await api.delete(`/rides/${rideId}`, {
+        withCredentials: true,
+      });
+      return response.data;
+    } catch (error: any) {
+      throw new Error(error.response?.data?.message || "Failed to cancel ride");
+    }
+  },
+
+  cancelJoinedRide: async (rideId: string) => {
+  try {
+    const response = await api.delete(`/rides/joined/${rideId}`, {
+      withCredentials: true,
+    });
+    return response.data;
+  } catch (error: any) {
+    console.error(`[rideApi] Error cancelling ride ${rideId}:`, error.message || error);
+    throw new Error(error.response?.data?.message || error.message || "Failed to cancel joined ride");
+  }
+},
 };

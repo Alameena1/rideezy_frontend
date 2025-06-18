@@ -8,6 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
 import { ChevronDown, ChevronUp } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import * as L from "leaflet";
 import ErrorAlert from "../../features/user/vehicles/ErrorAlert";
 import MainLayout from "../../comp/MainLayout"; 
@@ -33,7 +36,7 @@ interface Ride {
   passengers: { passengerId: string; passengerName: string }[];
   pickupPoints: { passengerId: string; location: string; placeName: string }[];
   dropoffPoints: { passengerId: string; location: string; placeName: string }[];
-  status: "Pending" | "Started" | "Completed";
+  status: "Pending" | "Started" | "Completed" | "Cancelled";
   routeGeometry: string;
 }
 
@@ -50,6 +53,10 @@ export default function RideDetails() {
   const [openCollapsible, setOpenCollapsible] = useState<string | null>(null);
   const [placeNames, setPlaceNames] = useState<{ [key: string]: PlaceName }>({});
   const [leafletLoaded, setLeafletLoaded] = useState<typeof L | null>(null);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [selectedRide, setSelectedRide] = useState<Ride | null>(null);
+  const [editDate, setEditDate] = useState("");
+  const [editTime, setEditTime] = useState("");
 
   const mapRefs = useRef<{ [key: string]: L.Map | null }>({});
   const routeLayers = useRef<{ [key: string]: L.Polyline | null }>({});
@@ -255,6 +262,40 @@ export default function RideDetails() {
     }
   };
 
+  const openEditModal = (ride: Ride) => {
+    setSelectedRide(ride);
+    setEditDate(new Date(ride.date).toISOString().split("T")[0]);
+    setEditTime(ride.time || "");
+    setEditModalOpen(true);
+  };
+
+  const handleEditRide = async () => {
+    if (!selectedRide) return;
+
+    try {
+      await apiService.ride.editRide(selectedRide.rideId!, {
+        date: editDate,
+        time: editTime,
+      });
+      setEditModalOpen(false);
+      setSelectedRide(null);
+      await fetchRides(); // Refresh the rides list
+    } catch (error: any) {
+      setError(error.message || "Failed to edit ride");
+    }
+  };
+
+  const handleCancelRide = async (rideId: string) => {
+    if (confirm("Are you sure you want to cancel this ride?")) {
+      try {
+        await apiService.ride.cancelRide(rideId);
+        await fetchRides(); // Refresh the rides list
+      } catch (error: any) {
+        setError(error.message || "Failed to cancel ride");
+      }
+    }
+  };
+
   useEffect(() => {
     if (!openCollapsible || !leafletLoaded || !leafletLoaded.map) return;
 
@@ -315,7 +356,9 @@ export default function RideDetails() {
                                       ? "text-yellow-600"
                                       : ride.status === "Started"
                                       ? "text-blue-600"
-                                      : "text-green-600"
+                                      : ride.status === "Completed"
+                                      ? "text-green-600"
+                                      : "text-red-600"
                                   } font-medium`}
                                 >
                                   {ride.status}
@@ -332,9 +375,29 @@ export default function RideDetails() {
                               </p>
                             </div>
                           </div>
-                          <Button variant="outline" size="sm">
-                            View Details
-                          </Button>
+                          <div className="flex space-x-2">
+                            {ride.status === "Pending" && (
+                              <>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => openEditModal(ride)}
+                                >
+                                  Edit
+                                </Button>
+                                <Button
+                                  variant="destructive"
+                                  size="sm"
+                                  onClick={() => handleCancelRide(ride.rideId!)}
+                                >
+                                  Cancel
+                                </Button>
+                              </>
+                            )}
+                            <Button variant="outline" size="sm">
+                              View Details
+                            </Button>
+                          </div>
                         </div>
                         <Collapsible
                           open={openCollapsible === ride._id}
@@ -414,6 +477,47 @@ export default function RideDetails() {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Ride</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="date" className="text-right">
+                Date
+              </Label>
+              <Input
+                id="date"
+                type="date"
+                value={editDate}
+                onChange={(e) => setEditDate(e.target.value)}
+                className="col-span-3"
+                min={new Date().toISOString().split("T")[0]}
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="time" className="text-right">
+                Time
+              </Label>
+              <Input
+                id="time"
+                type="time"
+                value={editTime}
+                onChange={(e) => setEditTime(e.target.value)}
+                className="col-span-3"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleEditRide}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </MainLayout>
   );
 }

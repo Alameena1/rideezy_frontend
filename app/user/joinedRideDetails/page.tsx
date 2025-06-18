@@ -11,7 +11,7 @@ import { ChevronDown, ChevronUp, Phone, X } from "lucide-react";
 import * as L from "leaflet";
 import ErrorAlert from "../../features/user/vehicles/ErrorAlert";
 import MainLayout from "../../comp/MainLayout"; 
-
+import Swal from "sweetalert2";
 import "leaflet/dist/leaflet.css";
 
 interface Ride {
@@ -91,110 +91,110 @@ export default function JoinedRideDetails() {
     }
   };
 
-const fetchJoinedRides = async () => {
-  setIsLoading(true);
-  try {
-    console.log(`[${new Date().toISOString()}] Fetching joined rides with userId: ${userId}`);
-    const joinedRidesData = await apiService.ride.getJoinedRides();
-    const fetchedRides = Array.isArray(joinedRidesData.data) ? joinedRidesData.data : [];
-    console.log(`[${new Date().toISOString()}] Raw fetched rides:`, fetchedRides);
+  const fetchJoinedRides = async () => {
+    setIsLoading(true);
+    try {
+      console.log(`[${new Date().toISOString()}] Fetching joined rides with userId: ${userId}`);
+      const joinedRidesData = await apiService.ride.getJoinedRides();
+      const fetchedRides = Array.isArray(joinedRidesData.data) ? joinedRidesData.data : [];
+      console.log(`[${new Date().toISOString()}] Raw fetched rides:`, fetchedRides);
 
-    const mappedRides: Ride[] = await Promise.all(
-      fetchedRides.map(async (ride: any) => {
-        let updatedPickupPoints = ride.pickupPoints || [];
-        let updatedDropoffPoints = ride.dropoffPoints || [];
+      const mappedRides: Ride[] = await Promise.all(
+        fetchedRides.map(async (ride: any) => {
+          let updatedPickupPoints = ride.pickupPoints || [];
+          let updatedDropoffPoints = ride.dropoffPoints || [];
 
-        console.log(`[${new Date().toISOString()}] Ride ${ride.rideId} - Raw Pickup Points:`, updatedPickupPoints);
-        console.log(`[${new Date().toISOString()}] Ride ${ride.rideId} - Raw Dropoff Points:`, updatedDropoffPoints);
+          console.log(`[${new Date().toISOString()}] Ride ${ride.rideId} - Raw Pickup Points:`, updatedPickupPoints);
+          console.log(`[${new Date().toISOString()}] Ride ${ride.rideId} - Raw Dropoff Points:`, updatedDropoffPoints);
 
-        updatedPickupPoints = await Promise.all(
-          updatedPickupPoints.map(async (point: any) => {
-            if (!point.placeName || point.placeName === point.location) {
-              const [lat, lon] = point.location.split(",").map(Number);
-              if (isNaN(lat) || isNaN(lon)) {
-                console.error(`[${new Date().toISOString()}] Invalid pickup location for ride ${ride.rideId}: ${point.location}`);
-                return { ...point, placeName: "Unknown Location" };
+          updatedPickupPoints = await Promise.all(
+            updatedPickupPoints.map(async (point: any) => {
+              if (!point.placeName || point.placeName === point.location) {
+                const [lat, lon] = point.location.split(",").map(Number);
+                if (isNaN(lat) || isNaN(lon)) {
+                  console.error(`[${new Date().toISOString()}] Invalid pickup location for ride ${ride.rideId}: ${point.location}`);
+                  return { ...point, placeName: "Unknown Location" };
+                }
+                const placeName = await reverseGeocode(lat, lon);
+                return { ...point, placeName };
               }
-              const placeName = await reverseGeocode(lat, lon);
-              return { ...point, placeName };
-            }
-            return point;
-          })
-        );
+              return point;
+            })
+          );
 
-        updatedDropoffPoints = await Promise.all(
-          updatedDropoffPoints.map(async (point: any) => {
-            if (!point.placeName || point.placeName === point.location) {
-              const [lat, lon] = point.location.split(",").map(Number);
-              if (isNaN(lat) || isNaN(lon)) {
-                console.error(`[${new Date().toISOString()}] Invalid dropoff location for ride ${ride.rideId}: ${point.location}`);
-                return { ...point, placeName: "Unknown Location" };
+          updatedDropoffPoints = await Promise.all(
+            updatedDropoffPoints.map(async (point: any) => {
+              if (!point.placeName || point.placeName === point.location) {
+                const [lat, lon] = point.location.split(",").map(Number);
+                if (isNaN(lat) || isNaN(lon)) {
+                  console.error(`[${new Date().toISOString()}] Invalid dropoff location for ride ${ride.rideId}: ${point.location}`);
+                  return { ...point, placeName: "Unknown Location" };
+                }
+                const placeName = await reverseGeocode(lat, lon);
+                return { ...point, placeName };
               }
-              const placeName = await reverseGeocode(lat, lon);
-              return { ...point, placeName };
-            }
-            return point;
-          })
-        );
+              return point;
+            })
+          );
 
-        // Log the passengerIds in pickupPoints and dropoffPoints to compare with userId
-        console.log(
-          `[${new Date().toISOString()}] Ride ${ride.rideId} - Passenger IDs in Pickup Points:`,
-          updatedPickupPoints.map((p: any) => p.passengerId)
-        );
-        console.log(
-          `[${new Date().toISOString()}] Ride ${ride.rideId} - Passenger IDs in Dropoff Points:`,
-          updatedDropoffPoints.map((p: any) => p.passengerId)
-        );
-        console.log(`[${new Date().toISOString()}] Current userId: ${userId}`);
+          // Log the passengerIds in pickupPoints and dropoffPoints to compare with userId
+          console.log(
+            `[${new Date().toISOString()}] Ride ${ride.rideId} - Passenger IDs in Pickup Points:`,
+            updatedPickupPoints.map((p: any) => p.passengerId)
+          );
+          console.log(
+            `[${new Date().toISOString()}] Ride ${ride.rideId} - Passenger IDs in Dropoff Points:`,
+            updatedDropoffPoints.map((p: any) => p.passengerId)
+          );
+          console.log(`[${new Date().toISOString()}] Current userId: ${userId}`);
 
-        return {
-          _id: ride._id.toString(),
-          rideId: ride.rideId || "N/A",
-          driverId: ride.driverId || "N/A",
-          driverName: ride.driverName || "Unknown Driver",
-          vehicleId: ride.vehicleId || "N/A",
-          date: ride.date || "N/A",
-          time: ride.time || "N/A",
-          startPoint: ride.startPoint || "N/A",
-          startPlaceName: ride.startPlaceName || "Unknown Start Location",
-          endPoint: ride.endPoint || "N/A",
-          endPlaceName: ride.endPlaceName || "Unknown End Location",
-          distanceKm: ride.distanceKm || 0,
-          passengerCount: ride.passengerCount || 0,
-          costPerPerson: ride.costPerPerson || 0,
-          totalPeople: ride.totalPeople || 0,
-          passengers: ride.passengers || [],
-          pickupPoints: updatedPickupPoints,
-          dropoffPoints: updatedDropoffPoints,
-          status: ride.status || "Pending",
-          routeGeometry: ride.routeGeometry || "",
-          paymentStatus: ride.paymentStatus || "Pending",
-        };
-      })
-    );
+          return {
+            _id: ride._id.toString(),
+            rideId: ride.rideId || "N/A",
+            driverId: ride.driverId || "N/A",
+            driverName: ride.driverName || "Unknown Driver",
+            vehicleId: ride.vehicleId || "N/A",
+            date: ride.date || "N/A",
+            time: ride.time || "N/A",
+            startPoint: ride.startPoint || "N/A",
+            startPlaceName: ride.startPlaceName || "Unknown Start Location",
+            endPoint: ride.endPoint || "N/A",
+            endPlaceName: ride.endPlaceName || "Unknown End Location",
+            distanceKm: ride.distanceKm || 0,
+            passengerCount: ride.passengerCount || 0,
+            costPerPerson: ride.costPerPerson || 0,
+            totalPeople: ride.totalPeople || 0,
+            passengers: ride.passengers || [],
+            pickupPoints: updatedPickupPoints,
+            dropoffPoints: updatedDropoffPoints,
+            status: ride.status || "Pending",
+            routeGeometry: ride.routeGeometry || "",
+            paymentStatus: ride.paymentStatus || "Pending",
+          };
+        })
+      );
 
-    setRides(mappedRides);
+      setRides(mappedRides);
 
-    console.log(`[${new Date().toISOString()}] Processed Rides:`, mappedRides);
-    mappedRides.forEach(ride => {
-      console.log(`[${new Date().toISOString()}] Ride ${ride._id} - User ID: ${userId}`);
-      console.log("Pickup Points:", ride.pickupPoints);
-      console.log("Dropoff Points:", ride.dropoffPoints);
+      console.log(`[${new Date().toISOString()}] Processed Rides:`, mappedRides);
+      mappedRides.forEach(ride => {
+        console.log(`[${new Date().toISOString()}] Ride ${ride._id} - User ID: ${userId}`);
+        console.log("Pickup Points:", ride.pickupPoints);
+        console.log("Dropoff Points:", ride.dropoffPoints);
 
-      const userPickup = ride.pickupPoints.find(p => p.passengerId === userId);
-      const userDropoff = ride.dropoffPoints.find(p => p.passengerId === userId);
-      if (!userPickup || !userDropoff) {
-        console.warn(`[${new Date().toISOString()}] Missing user pickup/dropoff for ride ${ride._id} - User ID: ${userId}`);
-      }
-    });
-  } catch (error) {
-    console.error(`[${new Date().toISOString()}] Error fetching joined rides:`, error);
-    setError("Failed to fetch joined rides. Please try again.");
-  } finally {
-    setIsLoading(false);
-  }
-};
+        const userPickup = ride.pickupPoints.find(p => p.passengerId === userId);
+        const userDropoff = ride.dropoffPoints.find(p => p.passengerId === userId);
+        if (!userPickup || !userDropoff) {
+          console.warn(`[${new Date().toISOString()}] Missing user pickup/dropoff for ride ${ride._id} - User ID: ${userId}`);
+        }
+      });
+    } catch (error) {
+      console.error(`[${new Date().toISOString()}] Error fetching joined rides:`, error);
+      setError("Failed to fetch joined rides. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const formatTime = (time: string) => {
     if (time === "N/A") return time;
@@ -327,17 +327,31 @@ const fetchJoinedRides = async () => {
     }
   };
 
-  const handleCancelRide = async (rideId: string) => {
-    if (confirm("Are you sure you want to cancel this ride?")) {
-      try {
-        await apiService.ride.cancelJoinedRide(rideId);
-        setRides(rides.filter(ride => ride._id !== rideId));
-      } catch (error) {
-        console.error("Error cancelling ride:", error);
-        setError("Failed to cancel ride. Please try again.");
-      }
+const handleCancelRide = async (rideId: string) => {
+  const result = await Swal.fire({
+    title: "Are you sure?",
+    text: "Do you really want to cancel this ride? This action cannot be undone!",
+    icon: "warning",
+    showCancelButton: true,
+    confirmButtonColor: "#d33",
+    cancelButtonColor: "#3085d6",
+    confirmButtonText: "Yes, cancel it!",
+    cancelButtonText: "No, keep it",
+  });
+
+  if (result.isConfirmed) {
+    try {
+      console.log(`[Frontend] Attempting to cancel ride with rideId: ${rideId}`); // Debug log
+      await apiService.ride.cancelJoinedRide(rideId);
+      setRides(rides.filter(ride => ride.rideId !== rideId)); // Filter by rideId
+      Swal.fire("Cancelled!", "Your ride has been cancelled successfully.", "success");
+    } catch (error: any) {
+      console.error(`[Frontend] Error cancelling ride with rideId ${rideId}:`, error.message || error);
+      setError(`Failed to cancel ride: ${error.message || 'Unknown error'}. Please try again or contact support.`);
+      Swal.fire("Error!", `Failed to cancel ride: ${error.message || 'Unknown error'}. Please try again or contact support.`, "error");
     }
-  };
+  }
+};
 
   useEffect(() => {
     if (!openCollapsible || !leafletLoaded || !leafletLoaded.map) return;
@@ -373,157 +387,159 @@ const fetchJoinedRides = async () => {
                   const userPickup = ride.pickupPoints.find(p => p.passengerId === userId);
                   const userDropoff = ride.dropoffPoints.find(p => p.passengerId === userId);
 
-                 return (
-    <Card key={ride._id} className="bg-white border border-gray-100 shadow-sm rounded-lg p-5 hover:shadow-md transition-shadow">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
-          <div>
-            <h3 className="text-lg font-medium text-gray-800">
-              {ride.startPlaceName} to {ride.endPlaceName}
-            </h3>
-            <div className="mt-2 space-y-1.5 text-sm text-gray-600">
-              <p>
-                <span className="font-medium">Date:</span>{" "}
-                {formatDateInIST(ride.date)}
-                {ride.time && ride.time !== "N/A" && (
-                  <>
-                    {" | "}
-                    <span className="font-medium">Time:</span> {formatTime(ride.time)}
-                  </>
-                )}
-              </p>
-              <p>
-                <span className="font-medium">Status:</span>{" "}
-                <span
-                  className={`${
-                    ride.status === "Pending"
-                      ? "text-amber-600"
-                      : ride.status === "Started"
-                      ? "text-blue-600"
-                      : "text-green-600"
-                  } font-medium`}
-                >
-                  {ride.status}
-                </span>
-              </p>
-              <p>
-                <span className="font-medium">Your Cost:</span>{" "}
-                {(ride.costPerPerson ?? 0).toFixed(2)} INR
-              </p>
-              <p>
-                <span className="font-medium">Payment:</span>{" "}
-                <span
-                  className={`${
-                    ride.paymentStatus === "Paid" ? "text-green-600" : "text-red-600"
-                  } font-medium`}
-                >
-                  {ride.paymentStatus}
-                </span>
-              </p>
-              <p>
-                <span className="font-medium">Driver:</span> {ride.driverName}
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-full border-gray-300 text-gray-700 hover:bg-gray-100"
-              onClick={() => alert("Contacting driver...")}
-            >
-              <Phone className="h-4 w-4 mr-1" /> Contact
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="rounded-full border-red-300 text-red-600 hover:bg-red-50"
-              onClick={() => handleCancelRide(ride._id)}
-            >
-              <X className="h-4 w-4 mr-1" /> Cancel
-            </Button>
-          </div>
-        </div>
-        <Collapsible
-          open={openCollapsible === ride._id}
-          onOpenChange={() => toggleCollapsible(ride._id)}
-        >
-          <CollapsibleTrigger asChild>
-            <Button
-              variant="ghost"
-              className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
-            >
-              {openCollapsible === ride._id ? "Hide Details" : "Show Details"}
-              {openCollapsible === ride._id ? (
-                <ChevronUp className="h-4 w-4" />
-              ) : (
-                <ChevronDown className="h-4 w-4" />
-              )}
-            </Button>
-          </CollapsibleTrigger>
-          <CollapsibleContent className="pt-4">
-            <Separator className="mb-4" />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <h4 className="text-md font-medium text-gray-700 mb-2">
-                  Your Ride Details
-                </h4>
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">Your Pickup:</span>{" "}
-                  {userPickup
-                    ? `${userPickup.placeName} (${userPickup.location})`
-                    : "Not assigned (Contact support)"}
-                </p>
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">Your Drop-off:</span>{" "}
-                  {userDropoff
-                    ? `${userDropoff.placeName} (${userDropoff.location})`
-                    : "Not assigned (Contact support)"}
-                </p>
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">Distance:</span>{" "}
-                  {(ride.distanceKm ?? 0).toFixed(2)} km
-                </p>
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">Seats Available:</span> {seatsLeft}
-                </p>
-              </div>
-              <div>
-                <h4 className="text-md font-medium text-gray-700 mb-2">Route Map</h4>
-                <div
-                  id={`map-${ride._id}`}
-                  className="h-64 w-full rounded-lg border border-gray-200"
-                  ref={(el) => {
-                    mapContainerRefs.current[ride._id] = el;
-                  }}
-                />
-              </div>
-            </div>
-            <div className="mt-4">
-              <h4 className="text-md font-medium text-gray-700 mb-2">Other Passengers</h4>
-              {ride.passengers.length > 1 ? (
-                <ul className="list-disc pl-5 space-y-2 text-sm text-gray-600">
-                  {ride.passengers
-                    .filter(p => p.passengerId !== userId)
-                    .map((passenger, index) => {
-                      const pickup = ride.pickupPoints.find(p => p.passengerId === passenger.passengerId);
-                      const dropoff = ride.dropoffPoints.find(p => p.passengerId === passenger.passengerId);
-                      return (
-                        <li key={index}>
-                          <span className="font-medium">Passenger {index + 1}:</span> {passenger.passengerName} <br />
-                          <span className="font-medium">Pickup:</span>{" "}
-                          {pickup ? pickup.placeName : "Not assigned"} <br />
-                          <span className="font-medium">Drop-off:</span>{" "}
-                          {dropoff ? dropoff.placeName : "Not assigned"}
-                        </li>
-                      );
-                    })}
-                </ul>
-              ) : (
-                <p className="text-sm text-gray-600">No other passengers.</p>
-              )}
-            </div>
-          </CollapsibleContent>
+                  return (
+                    <Card key={ride._id} className="bg-white border border-gray-100 shadow-sm rounded-lg p-5 hover:shadow-md transition-shadow">
+                      <div className="flex flex-col gap-4">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4">
+                          <div>
+                            <h3 className="text-lg font-medium text-gray-800">
+                              {ride.startPlaceName} to {ride.endPlaceName}
+                            </h3>
+                            <div className="mt-2 space-y-1.5 text-sm text-gray-600">
+                              <p>
+                                <span className="font-medium">Date:</span>{" "}
+                                {formatDateInIST(ride.date)}
+                                {ride.time && ride.time !== "N/A" && (
+                                  <>
+                                    {" | "}
+                                    <span className="font-medium">Time:</span> {formatTime(ride.time)}
+                                  </>
+                                )}
+                              </p>
+                              <p>
+                                <span className="font-medium">Status:</span>{" "}
+                                <span
+                                  className={`${
+                                    ride.status === "Pending"
+                                      ? "text-amber-600"
+                                      : ride.status === "Started"
+                                      ? "text-blue-600"
+                                      : "text-green-600"
+                                  } font-medium`}
+                                >
+                                  {ride.status}
+                                </span>
+                              </p>
+                              <p>
+                                <span className="font-medium">Your Cost:</span>{" "}
+                                {(ride.costPerPerson ?? 0).toFixed(2)} INR
+                              </p>
+                              <p>
+                                <span className="font-medium">Payment:</span>{" "}
+                                <span
+                                  className={`${
+                                    ride.paymentStatus === "Paid" ? "text-green-600" : "text-red-600"
+                                  } font-medium`}
+                                >
+                                  {ride.paymentStatus}
+                                </span>
+                              </p>
+                              <p>
+                                <span className="font-medium">Driver:</span> {ride.driverName}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="rounded-full border-gray-300 text-gray-700 hover:bg-gray-100"
+                              onClick={() => alert("Contacting driver...")}
+                            >
+                              <Phone className="h-4 w-4 mr-1" /> Contact
+                            </Button>
+                            {ride.status === "Pending" && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="rounded-full border-red-300 text-red-600 hover:bg-red-50"
+                               onClick={() => handleCancelRide(ride.rideId)}
+                              >
+                                <X className="h-4 w-4 mr-1" /> Cancel
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        <Collapsible
+                          open={openCollapsible === ride._id}
+                          onOpenChange={() => toggleCollapsible(ride._id)}
+                        >
+                          <CollapsibleTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              className="flex items-center gap-2 text-gray-600 hover:text-gray-800"
+                            >
+                              {openCollapsible === ride._id ? "Hide Details" : "Show Details"}
+                              {openCollapsible === ride._id ? (
+                                <ChevronUp className="h-4 w-4" />
+                              ) : (
+                                <ChevronDown className="h-4 w-4" />
+                              )}
+                            </Button>
+                          </CollapsibleTrigger>
+                          <CollapsibleContent className="pt-4">
+                            <Separator className="mb-4" />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                              <div>
+                                <h4 className="text-md font-medium text-gray-700 mb-2">
+                                  Your Ride Details
+                                </h4>
+                                <p className="text-sm text-gray-600">
+                                  <span className="font-medium">Your Pickup:</span>{" "}
+                                  {userPickup
+                                    ? `${userPickup.placeName} (${userPickup.location})`
+                                    : "Not assigned (Contact support)"}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  <span className="font-medium">Your Drop-off:</span>{" "}
+                                  {userDropoff
+                                    ? `${userDropoff.placeName} (${userDropoff.location})`
+                                    : "Not assigned (Contact support)"}
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  <span className="font-medium">Distance:</span>{" "}
+                                  {(ride.distanceKm ?? 0).toFixed(2)} km
+                                </p>
+                                <p className="text-sm text-gray-600">
+                                  <span className="font-medium">Seats Available:</span> {seatsLeft}
+                                </p>
+                              </div>
+                              <div>
+                                <h4 className="text-md font-medium text-gray-700 mb-2">Route Map</h4>
+                                <div
+                                  id={`map-${ride._id}`}
+                                  className="h-64 w-full rounded-lg border border-gray-200"
+                                  ref={(el) => {
+                                    mapContainerRefs.current[ride._id] = el;
+                                  }}
+                                />
+                              </div>
+                            </div>
+                            <div className="mt-4">
+                              <h4 className="text-md font-medium text-gray-700 mb-2">Other Passengers</h4>
+                              {ride.passengers.length > 1 ? (
+                                <ul className="list-disc pl-5 space-y-2 text-sm text-gray-600">
+                                  {ride.passengers
+                                    .filter(p => p.passengerId !== userId)
+                                    .map((passenger, index) => {
+                                      const pickup = ride.pickupPoints.find(p => p.passengerId === passenger.passengerId);
+                                      const dropoff = ride.dropoffPoints.find(p => p.passengerId === passenger.passengerId);
+                                      return (
+                                        <li key={index}>
+                                          <span className="font-medium">Passenger {index + 1}:</span> {passenger.passengerName} <br />
+                                          <span className="font-medium">Pickup:</span>{" "}
+                                          {pickup ? pickup.placeName : "Not assigned"} <br />
+                                          <span className="font-medium">Drop-off:</span>{" "}
+                                          {dropoff ? dropoff.placeName : "Not assigned"}
+                                        </li>
+                                      );
+                                    })}
+                                </ul>
+                              ) : (
+                                <p className="text-sm text-gray-600">No other passengers.</p>
+                              )}
+                            </div>
+                          </CollapsibleContent>
                         </Collapsible>
                       </div>
                     </Card>
