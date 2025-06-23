@@ -44,6 +44,9 @@ export default function Sidebar({
       case "Joined Ride":
         router.push("/user/joinedRideDetails");
         break;
+      case "Wallet":
+        router.push("/user/wallet");
+        break;
       default:
         break;
     }

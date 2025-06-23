@@ -1,7 +1,7 @@
 // features/user/ride/useRidePayment.ts
 import { useState } from "react";
 import { apiService } from "@/services/api";
-import { Ride } from "@/services/api/rideApi";
+import { Ride } from "@/services/user/rideApi";
 
 interface RazorpayResponse {
   razorpay_payment_id: string;

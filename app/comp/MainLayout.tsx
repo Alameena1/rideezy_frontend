@@ -21,12 +21,14 @@ export default function MainLayout({ children, activeItem, hideSidebar = false }
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const sidebarItems: SidebarItem[] = [
-    { icon: "👤", label: "Profile", active: activeItem === "Profile" },
-    { icon: "🚗", label: "Vehicles", active: activeItem === "Vehicles" },
-    { icon: "🛞", label: "Rides", active: activeItem === "Rides" },
-    { icon: "👑", label: "Subscription", active: activeItem === "Subscription" },
-    { icon: "🚗", label: "Joined Ride", active: activeItem === "Joined Ride" },
-  ];
+  { icon: "👤", label: "Profile", active: activeItem === "Profile" }, 
+  { icon: "🚗", label: "Vehicles", active: activeItem === "Vehicles" }, 
+  { icon: "🛣️", label: "Rides", active: activeItem === "Rides" },          
+  { icon: "👑", label: "Subscription", active: activeItem === "Subscription" }, 
+  { icon: "🤝", label: "Joined Ride", active: activeItem === "Joined Ride" },  
+  { icon: "💰", label: "Wallet", active: activeItem === "Wallet" },         
+];
+
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);

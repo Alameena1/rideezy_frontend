@@ -2,13 +2,12 @@
 
 import { useState, useEffect } from "react";
 import useAuth from "@/app/hooks/useAuth";
-import { apiService } from "@/services/api";
+import { walletApi } from "@/services/user/walletApi";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AlertCircle } from "lucide-react";
 import MainLayout from "@/app/comp/MainLayout";
-import Swal from "sweetalert2";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,12 +19,32 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useRazorpay } from "@/app/features/user/subscription/useRazorpay";
+import { useWalletPayment } from "@/app/features/user/wallet/useWalletPayment";
+
+interface WalletResponse {
+  success: boolean;
+  user: {
+    wallet: {
+      balance: number;
+      transactions: {
+        transactionId: string;
+        amount: number;
+        type: "DEPOSIT" | "WITHDRAWAL" | "SUBSCRIPTION";
+        createdAt: string;
+      }[];
+    };
+  };
+}
 
 interface Wallet {
   balance: number;
   currency: string;
-  transactions: { id: string; amount: number; type: string; date: string }[];
+  transactions: {
+    transactionId: string;
+    amount: number;
+    type: "DEPOSIT" | "WITHDRAWAL" | "SUBSCRIPTION";
+    createdAt: string;
+  }[];
 }
 
 export default function Wallet() {
@@ -35,7 +54,7 @@ export default function Wallet() {
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [amount, setAmount] = useState<number>(0);
-  const userId = user?._id;
+  const userId = user?._id || "6855628079511b3768ed020a"; // Fallback for testing
 
   const currentDate = new Date().toLocaleDateString("en-GB", {
     weekday: "short",
@@ -44,49 +63,70 @@ export default function Wallet() {
     year: "numeric",
   });
 
-  const { handlePayment, paymentLoading } = useRazorpay({
-    userId: userId || "",
-    onSuccess: (paymentResponse) => {
-      setWallet((prev) => prev ? { ...prev, balance: prev.balance + amount } : null);
+  const { handlePayment, paymentLoading } = useWalletPayment({
+    userId: userId || undefined,
+    onSuccess: (walletResponse: WalletResponse) => {
+      setWallet((prevWallet) => ({
+        balance: walletResponse.user.wallet.balance,
+        currency: "INR", // Explicitly set currency to match Wallet interface
+        transactions: walletResponse.user.wallet.transactions,
+      }));
+      setError(null);
       setIsModalOpen(false);
-      Swal.fire("Success!", "Funds added to wallet successfully.", "success");
+      setAmount(0);
     },
     onError: (errorMessage) => setError(errorMessage),
   });
 
-  useEffect(() => {
-    if (authLoading) return;
-    if (!isAuthenticated) {
-      setError("Please log in to view your wallet.");
-      return;
-    }
-    if (!userId) {
-      setError("User ID is missing. Please log in again.");
-      return;
-    }
+ useEffect(() => {
+  if (authLoading) return;
+  if (!isAuthenticated) {
+    setError("Please log in to view your wallet.");
+    return;
+  }
+  if (!userId) {
+    setError("User ID is missing. Please log in again.");
+    return;
+  }
 
-    const fetchWallet = async () => {
-      setIsLoading(true);
-      try {
-        const response = await apiService.wallet.getWallet(userId);
-        setWallet(response.data);
-      } catch (err: any) {
-        console.error("Error fetching wallet:", err);
-        setError(err.response?.data?.message || "Failed to load wallet data. Please try again.");
-      } finally {
-        setIsLoading(false);
+  console.log("Fetching wallet for userId:", userId);
+  const fetchWallet = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await walletApi.getWallet(userId);
+      console.log("Wallet API response:", response);
+      if (response.success) {
+        setWallet((prevWallet) => ({
+          balance: response.balance || prevWallet?.balance || 0,
+          currency: "INR",
+          transactions: response.transactions || prevWallet?.transactions || [],
+        }));
+      } else {
+        setError("Failed to load wallet data. Please try again.");
       }
-    };
+    } catch (err: any) {
+      console.error("Error fetching wallet:", err.response?.data || err);
+      setError(err.response?.data?.message || "Failed to load wallet data. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    fetchWallet();
-  }, [userId, authLoading, isAuthenticated]);
+  fetchWallet();
+}, [userId, authLoading, isAuthenticated]);
 
   const handleAddFunds = () => {
     if (amount <= 0) {
       setError("Please enter a valid amount greater than 0.");
       return;
     }
-    handlePayment({ amount, currency: "INR" }, user || {});
+    handlePayment({
+      userId,
+      amount,
+      currency: "INR",
+      user: user ? { name: user.name || "Guest User", email: user.email || "guest@example.com" } : undefined,
+    });
   };
 
   if (authLoading) {
@@ -144,18 +184,18 @@ export default function Wallet() {
                     <ul className="mt-4 space-y-4">
                       {wallet.transactions.map((transaction) => (
                         <li
-                          key={transaction.id}
+                          key={transaction.transactionId}
                           className="flex justify-between items-center p-3 bg-gray-50 rounded-md"
                         >
                           <span className="text-gray-600">
-                            {transaction.type} - {new Date(transaction.date).toLocaleDateString()}
+                            {transaction.type} - {new Date(transaction.createdAt).toLocaleDateString()}
                           </span>
                           <span
                             className={`font-medium ${
-                              transaction.type === "Credit" ? "text-green-600" : "text-red-600"
+                              transaction.type === "DEPOSIT" ? "text-green-600" : "text-red-600"
                             }`}
                           >
-                            {transaction.type === "Credit" ? "+" : "-"}{transaction.amount} {wallet.currency}
+                            {transaction.type === "DEPOSIT" ? "+" : "-"}{transaction.amount} {wallet.currency}
                           </span>
                         </li>
                       ))}
