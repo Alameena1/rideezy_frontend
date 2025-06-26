@@ -54,7 +54,7 @@ export default function Wallet() {
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [amount, setAmount] = useState<number>(0);
-  const userId = user?._id || "6855628079511b3768ed020a"; // Fallback for testing
+  const userId = user?._id; 
 
   const currentDate = new Date().toLocaleDateString("en-GB", {
     weekday: "short",
@@ -68,7 +68,7 @@ export default function Wallet() {
     onSuccess: (walletResponse: WalletResponse) => {
       setWallet((prevWallet) => ({
         balance: walletResponse.user.wallet.balance,
-        currency: "INR", // Explicitly set currency to match Wallet interface
+        currency: "INR",
         transactions: walletResponse.user.wallet.transactions,
       }));
       setError(null);
@@ -78,43 +78,43 @@ export default function Wallet() {
     onError: (errorMessage) => setError(errorMessage),
   });
 
- useEffect(() => {
-  if (authLoading) return;
-  if (!isAuthenticated) {
-    setError("Please log in to view your wallet.");
-    return;
-  }
-  if (!userId) {
-    setError("User ID is missing. Please log in again.");
-    return;
-  }
-
-  console.log("Fetching wallet for userId:", userId);
-  const fetchWallet = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await walletApi.getWallet(userId);
-      console.log("Wallet API response:", response);
-      if (response.success) {
-        setWallet((prevWallet) => ({
-          balance: response.balance || prevWallet?.balance || 0,
-          currency: "INR",
-          transactions: response.transactions || prevWallet?.transactions || [],
-        }));
-      } else {
-        setError("Failed to load wallet data. Please try again.");
-      }
-    } catch (err: any) {
-      console.error("Error fetching wallet:", err.response?.data || err);
-      setError(err.response?.data?.message || "Failed to load wallet data. Please try again.");
-    } finally {
-      setIsLoading(false);
+  useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated) {
+      setError("Please log in to view your wallet.");
+      return;
     }
-  };
+    if (!userId) {
+      setError("User ID is missing. Please log in again.");
+      return;
+    }
 
-  fetchWallet();
-}, [userId, authLoading, isAuthenticated]);
+    console.log("Fetching wallet for userId:", userId);
+    const fetchWallet = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const response = await walletApi.getWallet(userId);
+        console.log("Wallet API response:", response);
+        if (response.success) {
+          setWallet((prevWallet) => ({
+            balance: response.balance || prevWallet?.balance || 0,
+            currency: "INR",
+            transactions: response.transactions || prevWallet?.transactions || [],
+          }));
+        } else {
+          setError("Failed to load wallet data. Please try again.");
+        }
+      } catch (err: any) {
+        console.error("Error fetching wallet:", err.response?.data || err);
+        setError(err.response?.data?.message || "Failed to load wallet data. Please try again.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchWallet();
+  }, [userId, authLoading, isAuthenticated]);
 
   const handleAddFunds = () => {
     if (amount <= 0) {
@@ -182,26 +182,28 @@ export default function Wallet() {
                   <h3 className="text-xl font-semibold text-gray-700">Transaction History</h3>
                   {wallet.transactions.length > 0 ? (
                     <ul className="mt-4 space-y-4">
-                      {wallet.transactions.map((transaction) => (
-                        <li
-                          key={transaction.transactionId}
-                          className="flex justify-between items-center p-3 bg-gray-50 rounded-md"
-                        >
-                          <span className="text-gray-600">
-                            {transaction.type} - {new Date(transaction.createdAt).toLocaleDateString()}
-                          </span>
-                          <span
-                            className={`font-medium ${
-                              transaction.type === "DEPOSIT" ? "text-green-600" : "text-red-600"
-                            }`}
+                      {wallet.transactions
+                        .filter((transaction) => transaction.type !== "SUBSCRIPTION") // Filter out SUBSCRIPTION transactions
+                        .map((transaction) => (
+                          <li
+                            key={transaction.transactionId}
+                            className="flex justify-between items-center p-3 bg-gray-50 rounded-md"
                           >
-                            {transaction.type === "DEPOSIT" ? "+" : "-"}{transaction.amount} {wallet.currency}
-                          </span>
-                        </li>
-                      ))}
+                            <span className="text-gray-600">
+                              {transaction.type} - {new Date(transaction.createdAt).toLocaleDateString()}
+                            </span>
+                            <span
+                              className={`font-medium ${
+                                transaction.type === "DEPOSIT" ? "text-green-600" : "text-red-600"
+                              }`}
+                            >
+                              {transaction.type === "DEPOSIT" ? "+" : "-"}{transaction.amount} {wallet.currency}
+                            </span>
+                          </li>
+                        ))}
                     </ul>
                   ) : (
-                    <p className="text-gray-500 mt-4">No transactions yet.</p>
+                    <p className="text-gray-500 mt-4">No wallet transactions yet.</p>
                   )}
                 </div>
               </>

@@ -39,7 +39,8 @@ export const subscriptionApi = {
     signature: string;
   }) => {
     try {
-      const response = await api.post("/subscriptions/verify-and-subscribe", data);
+      const response = await api.post("/subscriptions/verify", data);
+      console.log("yyyyyyyyyyy")
       return response.data;
     } catch (error: any) {
       console.error("Failed to verify and subscribe:", error.response?.status, error.response?.data);
@@ -52,7 +53,7 @@ export const subscriptionApi = {
       const response = await api.get("/subscriptions/status", {
         withCredentials: true,
       });
-      return response.data; // Returns { success: true, isSubscribed: boolean }
+      return response.data;
     } catch (error: any) {
       throw new Error(error.response?.data?.message || "Failed to fetch subscription status");
     }

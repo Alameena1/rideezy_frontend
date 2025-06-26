@@ -1,3 +1,4 @@
+import axios from "axios";
 import { adminApi } from "./adminApi";
 
 export const adminVehicleApi = {

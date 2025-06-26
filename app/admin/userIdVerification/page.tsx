@@ -55,6 +55,7 @@ export default function UserIdVerification() {
   const handleApproveUser = async (userId: string) => {
     try {
       await apiService.admin.vehicle.verifyGovId(userId, "Verified");
+      
       setUsers(users.map((user) =>
         user._id === userId ? { ...user, govId: { ...user.govId, verificationStatus: "Verified" } } : user
       ));

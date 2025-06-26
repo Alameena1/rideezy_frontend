@@ -1,9 +1,11 @@
+import axios from "axios";
 import { adminApi } from "./adminApi";
 
 export const adminUserApi = {
   getUsers: async () => {
     try {
       const response = await adminApi.get("/users");
+      console.log("sdbsdyufg",response)
       return response.data.users;
     } catch (error) {
       if (axios.isAxiosError(error)) {
