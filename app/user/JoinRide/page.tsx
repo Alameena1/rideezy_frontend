@@ -96,7 +96,7 @@ const JoinRidePage: React.FC = () => {
         cancelButtonColor: "#d33",
       }).then((result) => {
         if (result.isConfirmed) {
-          window.location.href = `/user/RideDetails?rideId=${ride.rideId}`;
+          window.location.href = `/user/joinedRideDetails?rideId=${ride.rideId}`;
         } else {
           handleSearch();
         }

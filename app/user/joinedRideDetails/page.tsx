@@ -31,8 +31,10 @@ interface Ride {
   costPerPerson: number;
   totalPeople: number;
   passengers: { passengerId: string; passengerName: string }[];
-  pickupPoints: { passengerId: string; location: string; placeName: string }[];
-  dropoffPoints: { passengerId: string; location: string; placeName: string }[];
+  pickupPoints: { passengerId: string; location: string; placename: string }[];
+  dropoffPoints: { passengerId: string; location: string; placename: string }[];
+  pickupPlacenames: string[];
+  dropoffPlacenames: string[];
   status: "Pending" | "Started" | "Completed";
   routeGeometry: string;
   paymentStatus: "Paid" | "Pending";
@@ -46,6 +48,7 @@ export default function JoinedRideDetails() {
   const [openCollapsible, setOpenCollapsible] = useState<string | null>(null);
   const [leafletLoaded, setLeafletLoaded] = useState<typeof L | null>(null);
   const auth = useAuth();
+  // Use the authenticated userId from the profile data
   const userId = auth?.user?.id || "default_user_id";
 
   const mapRefs = useRef<{ [key: string]: L.Map | null }>({});
@@ -76,7 +79,7 @@ export default function JoinedRideDetails() {
 
   useEffect(() => {
     fetchJoinedRides();
-  }, []);
+  }, [userId]); // Refetch rides if userId changes
 
   const reverseGeocode = async (lat: number, lon: number): Promise<string> => {
     try {
@@ -109,14 +112,14 @@ export default function JoinedRideDetails() {
 
           updatedPickupPoints = await Promise.all(
             updatedPickupPoints.map(async (point: any) => {
-              if (!point.placeName || point.placeName === point.location) {
+              if (!point.placename || point.placename === point.location) {
                 const [lat, lon] = point.location.split(",").map(Number);
                 if (isNaN(lat) || isNaN(lon)) {
                   console.error(`[${new Date().toISOString()}] Invalid pickup location for ride ${ride.rideId}: ${point.location}`);
-                  return { ...point, placeName: "Unknown Location" };
+                  return { ...point, placename: "Unknown Location" };
                 }
-                const placeName = await reverseGeocode(lat, lon);
-                return { ...point, placeName };
+                const placename = await reverseGeocode(lat, lon);
+                return { ...point, placename };
               }
               return point;
             })
@@ -124,20 +127,31 @@ export default function JoinedRideDetails() {
 
           updatedDropoffPoints = await Promise.all(
             updatedDropoffPoints.map(async (point: any) => {
-              if (!point.placeName || point.placeName === point.location) {
+              if (!point.placename || point.placename === point.location) {
                 const [lat, lon] = point.location.split(",").map(Number);
                 if (isNaN(lat) || isNaN(lon)) {
                   console.error(`[${new Date().toISOString()}] Invalid dropoff location for ride ${ride.rideId}: ${point.location}`);
-                  return { ...point, placeName: "Unknown Location" };
+                  return { ...point, placename: "Unknown Location" };
                 }
-                const placeName = await reverseGeocode(lat, lon);
-                return { ...point, placeName };
+                const placename = await reverseGeocode(lat, lon);
+                return { ...point, placename };
               }
               return point;
             })
           );
 
-          // Log the passengerIds in pickupPoints and dropoffPoints to compare with userId
+          const pickupPlacenames = updatedPickupPoints.map((point: any) => point.placename);
+          const dropoffPlacenames = updatedDropoffPoints.map((point: any) => point.placename);
+
+          console.log(
+            `[${new Date().toISOString()}] Ride ${ride.rideId} - Extracted Pickup Placenames:`,
+            pickupPlacenames
+          );
+          console.log(
+            `[${new Date().toISOString()}] Ride ${ride.rideId} - Extracted Dropoff Placenames:`,
+            dropoffPlacenames
+          );
+
           console.log(
             `[${new Date().toISOString()}] Ride ${ride.rideId} - Passenger IDs in Pickup Points:`,
             updatedPickupPoints.map((p: any) => p.passengerId)
@@ -167,6 +181,8 @@ export default function JoinedRideDetails() {
             passengers: ride.passengers || [],
             pickupPoints: updatedPickupPoints,
             dropoffPoints: updatedDropoffPoints,
+            pickupPlacenames,
+            dropoffPlacenames,
             status: ride.status || "Pending",
             routeGeometry: ride.routeGeometry || "",
             paymentStatus: ride.paymentStatus || "Pending",
@@ -176,12 +192,7 @@ export default function JoinedRideDetails() {
 
       setRides(mappedRides);
 
-      console.log(`[${new Date().toISOString()}] Processed Rides:`, mappedRides);
       mappedRides.forEach(ride => {
-        console.log(`[${new Date().toISOString()}] Ride ${ride._id} - User ID: ${userId}`);
-        console.log("Pickup Points:", ride.pickupPoints);
-        console.log("Dropoff Points:", ride.dropoffPoints);
-
         const userPickup = ride.pickupPoints.find(p => p.passengerId === userId);
         const userDropoff = ride.dropoffPoints.find(p => p.passengerId === userId);
         if (!userPickup || !userDropoff) {
@@ -269,7 +280,7 @@ export default function JoinedRideDetails() {
               iconSize: [25, 41],
               iconAnchor: [12, 41],
             }),
-          }).addTo(map).bindPopup(`Passenger ${index + 1} (${passenger.passengerName}) - Pickup: ${pickup.placeName}`);
+          }).addTo(map).bindPopup(`Passenger ${index + 1} (${passenger.passengerName}) - Pickup: ${pickup.placename}`);
         }).filter((marker): marker is L.Marker => marker !== null);
 
         dropoffMarkerRefs.current[ride._id] = ride.passengers.map((passenger, index) => {
@@ -290,7 +301,7 @@ export default function JoinedRideDetails() {
               iconSize: [25, 41],
               iconAnchor: [12, 41],
             }),
-          }).addTo(map).bindPopup(`Passenger ${index + 1} (${passenger.passengerName}) - Drop-off: ${dropoff.placeName}`);
+          }).addTo(map).bindPopup(`Passenger ${index + 1} (${passenger.passengerName}) - Drop-off: ${dropoff.placename}`);
         }).filter((marker): marker is L.Marker => marker !== null);
 
         map.fitBounds(leafletLoaded.latLngBounds(coordinates), { padding: [50, 50] });
@@ -327,31 +338,31 @@ export default function JoinedRideDetails() {
     }
   };
 
-const handleCancelRide = async (rideId: string) => {
-  const result = await Swal.fire({
-    title: "Are you sure?",
-    text: "Do you really want to cancel this ride? This action cannot be undone!",
-    icon: "warning",
-    showCancelButton: true,
-    confirmButtonColor: "#d33",
-    cancelButtonColor: "#3085d6",
-    confirmButtonText: "Yes, cancel it!",
-    cancelButtonText: "No, keep it",
-  });
+  const handleCancelRide = async (rideId: string) => {
+    const result = await Swal.fire({
+      title: "Are you sure?",
+      text: "Do you really want to cancel this ride? This action cannot be undone!",
+      icon: "warning",
+      showCancelButton: true,
+      confirmButtonColor: "#d33",
+      cancelButtonColor: "#3085d6",
+      confirmButtonText: "Yes, cancel it!",
+      cancelButtonText: "No, keep it",
+    });
 
-  if (result.isConfirmed) {
-    try {
-      console.log(`[Frontend] Attempting to cancel ride with rideId: ${rideId}`); // Debug log
-      await apiService.ride.cancelJoinedRide(rideId);
-      setRides(rides.filter(ride => ride.rideId !== rideId)); // Filter by rideId
-      Swal.fire("Cancelled!", "Your ride has been cancelled successfully.", "success");
-    } catch (error: any) {
-      console.error(`[Frontend] Error cancelling ride with rideId ${rideId}:`, error.message || error);
-      setError(`Failed to cancel ride: ${error.message || 'Unknown error'}. Please try again or contact support.`);
-      Swal.fire("Error!", `Failed to cancel ride: ${error.message || 'Unknown error'}. Please try again or contact support.`, "error");
+    if (result.isConfirmed) {
+      try {
+        console.log(`[Frontend] Attempting to cancel ride with rideId: ${rideId}`);
+        await apiService.ride.cancelJoinedRide(rideId);
+        setRides(rides.filter(ride => ride.rideId !== rideId));
+        Swal.fire("Cancelled!", "Your ride has been cancelled successfully.", "success");
+      } catch (error: any) {
+        console.error(`[Frontend] Error cancelling ride with rideId ${rideId}:`, error.message || error);
+        setError(`Failed to cancel ride: ${error.message || 'Unknown error'}. Please try again or contact support.`);
+        Swal.fire("Error!", `Failed to cancel ride: ${error.message || 'Unknown error'}. Please try again or contact support.`, "error");
+      }
     }
-  }
-};
+  };
 
   useEffect(() => {
     if (!openCollapsible || !leafletLoaded || !leafletLoaded.map) return;
@@ -386,6 +397,7 @@ const handleCancelRide = async (rideId: string) => {
                   const seatsLeft = (ride.totalPeople - 1) - ride.passengerCount;
                   const userPickup = ride.pickupPoints.find(p => p.passengerId === userId);
                   const userDropoff = ride.dropoffPoints.find(p => p.passengerId === userId);
+                  console.log("User Pickup:", userPickup, "User Dropoff:", userDropoff);
 
                   return (
                     <Card key={ride._id} className="bg-white border border-gray-100 shadow-sm rounded-lg p-5 hover:shadow-md transition-shadow">
@@ -453,7 +465,7 @@ const handleCancelRide = async (rideId: string) => {
                                 variant="outline"
                                 size="sm"
                                 className="rounded-full border-red-300 text-red-600 hover:bg-red-50"
-                               onClick={() => handleCancelRide(ride.rideId)}
+                                onClick={() => handleCancelRide(ride.rideId)}
                               >
                                 <X className="h-4 w-4 mr-1" /> Cancel
                               </Button>
@@ -487,13 +499,13 @@ const handleCancelRide = async (rideId: string) => {
                                 <p className="text-sm text-gray-600">
                                   <span className="font-medium">Your Pickup:</span>{" "}
                                   {userPickup
-                                    ? `${userPickup.placeName} (${userPickup.location})`
+                                    ? `${userPickup.placename} (${userPickup.location})`
                                     : "Not assigned (Contact support)"}
                                 </p>
                                 <p className="text-sm text-gray-600">
                                   <span className="font-medium">Your Drop-off:</span>{" "}
                                   {userDropoff
-                                    ? `${userDropoff.placeName} (${userDropoff.location})`
+                                    ? `${userDropoff.placename} (${userDropoff.location})`
                                     : "Not assigned (Contact support)"}
                                 </p>
                                 <p className="text-sm text-gray-600">
@@ -528,9 +540,9 @@ const handleCancelRide = async (rideId: string) => {
                                         <li key={index}>
                                           <span className="font-medium">Passenger {index + 1}:</span> {passenger.passengerName} <br />
                                           <span className="font-medium">Pickup:</span>{" "}
-                                          {pickup ? pickup.placeName : "Not assigned"} <br />
+                                          {pickup ? pickup.placename : "Not assigned"} <br />
                                           <span className="font-medium">Drop-off:</span>{" "}
-                                          {dropoff ? dropoff.placeName : "Not assigned"}
+                                          {dropoff ? dropoff.placename : "Not assigned"}
                                         </li>
                                       );
                                     })}

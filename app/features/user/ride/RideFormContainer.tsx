@@ -1,16 +1,15 @@
-
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-import Swal from 'sweetalert2';
-import MapComponent from './MapComponent';
-import AddressSearch from './AddressSearch';
-import RideFormFields from './RideFormFields';
-import { apiService } from '../../../../services/api';
-import { Vehicle } from '../../../types/vehicle';
+import React, { useState, useEffect } from "react";
+import { useForm } from "react-hook-form";
+import Swal from "sweetalert2";
+import api, { apiService } from "@/services/api";
+import MapComponent from "./MapComponent";
+import AddressSearch from "./AddressSearch";
+import RideFormFields from "./RideFormFields";
 
 interface FormData {
+  driverId: string;
   date: string;
   time: string;
   startPoint: string;
@@ -22,174 +21,155 @@ interface FormData {
   vehicleId: string;
 }
 
-const RideFormContainer: React.FC = () => {
-  const [routeData, setRouteData] = useState<any>(null);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [costPerPerson, setCostPerPerson] = useState<number | null>(null);
-  const [distanceInKm, setDistanceInKm] = useState<number | null>(null);
-  const [costCalcTimeout, setCostCalcTimeout] = useState<NodeJS.Timeout | null>(null);
+interface RouteData {
+  distance: number;
+  geometry: any;
+}
 
-  const { register, handleSubmit, formState: { errors }, setValue, getValues, watch } = useForm<FormData>({
+const RideFormContainer: React.FC = () => {
+  const [routeData, setRouteData] = useState<RouteData | null>(null);
+  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [costPerPerson, setCostPerPerson] = useState<number | null>(null);
+  const [platformFee, setPlatformFee] = useState<number | null>(null);
+  const [distanceInKm, setDistanceInKm] = useState<number | null>(null);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isSubscribed, setIsSubscribed] = useState<boolean>(false);
+
+  const {
+    register,
+    handleSubmit,
+    formState: { errors },
+    setValue,
+    watch,
+  } = useForm<FormData>({
     defaultValues: {
-      date: new Date().toISOString().split('T')[0],
-      time: '12:00',
+      driverId: "",
+      date: new Date().toISOString().split("T")[0],
+      time: "12:00",
       passengerCount: 1,
       fuelPrice: 0,
-      vehicleId: '',
-      startPoint: '',
-      startPlaceName: '',
-      endPoint: '',
-      endPlaceName: '',
+      vehicleId: "",
+      startPoint: "",
+      startPlaceName: "",
+      endPoint: "",
+      endPlaceName: "",
     },
   });
 
-  const startPoint = watch('startPoint');
-  const endPoint = watch('endPoint');
-  const vehicleId = watch('vehicleId');
-  const passengerCount = watch('passengerCount');
-  const fuelPrice = watch('fuelPrice');
+  const startPoint = watch("startPoint");
+  const endPoint = watch("endPoint");
+  const vehicleId = watch("vehicleId");
+  const passengerCount = watch("passengerCount");
+  const fuelPrice = watch("fuelPrice");
 
   useEffect(() => {
-    const fetchVehicles = async () => {
+    const fetchData = async () => {
       try {
-        const vehiclesData = await apiService.vehicle.getVehicles();
-        setVehicles(vehiclesData);
-        if (vehiclesData.length > 0) {
-          setValue('vehicleId', vehiclesData[0]._id);
+        const userData = await (api as any).user.getProfile();
+        console.log("[RideFormContainer] Fetched user data:", userData);
+        const driverId = userData._id || userData.data?._id;
+        if (!driverId) {
+          throw new Error("Failed to fetch driver ID. Please log in again.");
         }
-      } catch (error) {
-        console.error('Failed to fetch vehicles:', error);
+        setValue("driverId", driverId);
+
+        const vehiclesData = await (api as any).vehicle.getVehicles();
+        console.log("[RideFormContainer] Fetched vehicles:", vehiclesData);
+        setVehicles(vehiclesData);
+        if (vehiclesData.length > 0) setValue("vehicleId", vehiclesData[0]._id);
+
+        const subscriptionData = await apiService.subscription.getSubscriptionStatus();
+        console.log("[RideFormContainer] Subscription status:", subscriptionData);
+        setIsSubscribed(subscriptionData.isSubscribed || false);
+      } catch (error: any) {
+        console.error("[RideFormContainer] Fetch error:", error);
+        Swal.fire({
+          icon: "error",
+          title: "Error",
+          text: error.message || "Failed to load user data. Please try logging in again.",
+        });
       }
     };
-    fetchVehicles();
+    fetchData();
   }, [setValue]);
 
   useEffect(() => {
     if (routeData && vehicleId && passengerCount !== undefined && fuelPrice !== undefined) {
-      if (costCalcTimeout) {
-        clearTimeout(costCalcTimeout);
-      }
-
-      const timeout = setTimeout(() => {
-        calculateCost();
-      }, 500);
-
-      setCostCalcTimeout(timeout);
+      const distanceInKm = routeData.distance / 1000;
+      setDistanceInKm(distanceInKm);
+      const selectedVehicle = vehicles.find((v) => v._id === vehicleId);
+      const fuelNeeded = distanceInKm / (selectedVehicle?.mileage || 1);
+      const totalFuelCost = fuelNeeded * fuelPrice;
+      const totalPeople = passengerCount + 1;
+      const platformFee = isSubscribed ? 0 : Math.ceil(totalFuelCost * 0.1);
+      setPlatformFee(platformFee);
+      const totalRideCost = totalFuelCost + platformFee;
+      setCostPerPerson(totalRideCost / totalPeople);
     }
-  }, [routeData, vehicleId, passengerCount, fuelPrice]);
-
-  const calculateCost = () => {
-    const fuelPrice = Number(getValues('fuelPrice'));
-    const passengerCount = Number(getValues('passengerCount'));
-    const vehicleId = getValues('vehicleId');
-
-    if (!routeData || !vehicleId || passengerCount === undefined || fuelPrice === undefined) {
-      console.log('Missing required fields for calculateCost:', { routeData, vehicleId, passengerCount, fuelPrice });
-      return;
-    }
-
-    const selectedVehicle = vehicles.find(v => v._id === vehicleId);
-    if (!selectedVehicle) {
-      console.log('Please select a valid vehicle');
-      return;
-    }
-
-    const distanceInKm = routeData.distance / 1000;
-    setDistanceInKm(distanceInKm);
-    const fuelNeeded = distanceInKm / selectedVehicle.mileage;
-    const totalFuelCost = fuelNeeded * fuelPrice;
-    const totalPeople = passengerCount + 1;
-    const perPersonCost = totalFuelCost / totalPeople;
-    setCostPerPerson(perPersonCost);
-  };
+  }, [routeData, vehicleId, passengerCount, fuelPrice, isSubscribed]);
 
   const onSubmit = async (data: FormData) => {
-    if (!routeData) {
-      console.log('Please calculate the route first');
+    if (!routeData || !routeData.distance || !routeData.geometry) {
       Swal.fire({
-        icon: 'error',
-        title: 'Oops...',
-        text: 'Route data is missing. Please ensure a valid route is calculated.',
-      });
-      return;
-    }
-    const selectedVehicle = vehicles.find(v => v._id === data.vehicleId);
-    if (!selectedVehicle) {
-      console.log('Invalid vehicle selected');
-      Swal.fire({
-        icon: 'error',
-        title: 'Oops...',
-        text: 'Invalid vehicle selected. Please select a valid vehicle.',
-      });
-      return;
-    }
-
-    const formattedDate = new Date(data.date).toISOString().split('T')[0];
-    const distanceInKm = Number(routeData.distance) / 1000;
-    const fuelNeeded = distanceInKm / selectedVehicle.mileage;
-    const totalFuelCost = fuelNeeded * Number(data.fuelPrice);
-    const totalPeople = Number(data.passengerCount) + 1;
-    const perPersonCost = totalFuelCost / totalPeople;
-
-    // Ensure routeGeometry is a valid string
-    let routeGeometry = '';
-    if (routeData.geometry && Array.isArray(routeData.geometry) && routeData.geometry[0]) {
-      routeGeometry = JSON.stringify(routeData.geometry[0]);
-    } else if (routeData.geometry && routeData.geometry.coordinates) {
-      routeGeometry = JSON.stringify(routeData.geometry);
-    } else {
-      console.error('Invalid route geometry:', routeData.geometry);
-      Swal.fire({
-        icon: 'error',
-        title: 'Oops...',
-        text: 'Failed to calculate a valid route. Please try again.',
+        icon: "error",
+        title: "Oops...",
+        text: "Please calculate a valid route before submitting.",
       });
       return;
     }
 
     const rideData = {
-      vehicleId: data.vehicleId,
-      date: formattedDate,
+      date: data.date,
       time: data.time,
       startPoint: data.startPoint,
       endPoint: data.endPoint,
       passengerCount: Number(data.passengerCount),
       fuelPrice: Number(data.fuelPrice),
-      distanceKm: distanceInKm,
-      totalFuelCost: totalFuelCost,
-      costPerPerson: perPersonCost,
-      routeGeometry: routeGeometry,
+      vehicleId: data.vehicleId,
+      fuelCost: (routeData.distance / 1000) * (Number(data.fuelPrice) / (vehicles.find(v => v._id === data.vehicleId)?.mileage || 1)),
+      distance: Number(routeData.distance) / 1000,
+      routeGeometry: JSON.stringify(routeData.geometry),
+      costPerPerson: costPerPerson || 0,
+      driverId: data.driverId,
     };
 
-    console.log('Submitting rideData:', rideData);
+    console.log("[RideFormContainer] Submitting rideData:", rideData);
 
+    setIsLoading(true);
     try {
       const response = await apiService.ride.startRide(rideData);
+      console.log("[RideFormContainer] Start ride response:", response);
       Swal.fire({
-        icon: 'success',
-        title: 'Ride Initiated Successfully!',
-        text: 'Would you like to view the ride details or go to the homepage?',
+        icon: "success",
+        title: "Ride Initiated Successfully!",
+        text: platformFee > 0 ? `A platform fee of ₹${platformFee} has been applied and deducted from your wallet.` : "No platform fee applied.",
         showCancelButton: true,
-        confirmButtonText: 'View Ride',
-        cancelButtonText: 'Go Home',
-        confirmButtonColor: '#3085d6',
-        cancelButtonColor: '#d33',
+        confirmButtonText: "View Ride",
+        cancelButtonText: "Go Home",
+        confirmButtonColor: "#3085d6",
+        cancelButtonColor: "#d33",
       }).then((result) => {
         if (result.isConfirmed) {
           window.location.href = `/user/RideDetails`;
         } else {
-          window.location.href = '/';
+          window.location.href = "/";
         }
       });
     } catch (error: any) {
-      console.error('Ride submit error:', error.response?.data || error.message);
-      // Extract the specific error message from the backend response
-      const errorMessage = error.response?.data?.message || error.message || 'Failed to initiate the ride. Please try again.';
+      console.error("[RideFormContainer] Ride submit error:", error);
+      const errorMessage = error.response?.data?.message || error.message || "Failed to start ride. Please try again.";
       Swal.fire({
-        icon: 'error',
-        title: 'Oops...',
+        icon: "error",
+        title: "Error",
         text: errorMessage,
       });
+      if (error.response?.status === 401) {
+        console.log("[RideFormContainer] Unauthorized, redirecting to login");
+        // Avoid automatic redirect; let user decide
+        // window.location.href = "/login";
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -224,12 +204,14 @@ const RideFormContainer: React.FC = () => {
               errors={errors}
               distanceInKm={distanceInKm}
               costPerPerson={costPerPerson}
+              platformFee={platformFee}
             />
             <button
               type="submit"
               className="w-full bg-black text-white py-2 rounded-md hover:bg-gray-800"
+              disabled={isLoading}
             >
-              Start Ride
+              {isLoading ? "Submitting..." : "Start Ride"}
             </button>
           </form>
         </div>

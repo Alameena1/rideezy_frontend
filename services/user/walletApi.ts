@@ -4,7 +4,6 @@ export const walletApi = {
   getWallet: async (userId: string) => {
   try {
     const response = await api.get(`/wallet/balance/${userId}`);
-    console.log("Wallet response:", response.data);
     return {
       success: response.data.success,
       balance: response.data.balance,
@@ -18,9 +17,7 @@ export const walletApi = {
 
   createOrder: async (data: { userId: string; amount: number; currency: string }) => {
     try {
-      console.log("data",data)
       const response = await api.post("/wallet/create-deposit-order", data);
-      console.log("Create order response:", response);
       return response.data;
     } catch (error) {
       console.error("Failed to create Razorpay order:", error);

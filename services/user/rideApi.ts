@@ -26,17 +26,17 @@ export interface Ride {
 
 export const rideApi = {
   startRide: async (data: {
-    date: string;
+    date: string; // Ensure ISO format, e.g., "2025-06-24T14:54:00Z"
     time: string;
     startPoint: string;
     endPoint: string;
     passengerCount: number;
     fuelPrice: number;
     vehicleId: string;
-    fuelCost: number;
+    fuelCost: number; // Maps to totalFuelCost
     distance: number;
     routeGeometry: string;
-    costPerPerson: number;
+    platformFee?: number;
   }) => {
     try {
       const response = await api.post("/rides/start", data);
@@ -51,6 +51,8 @@ export const rideApi = {
       const response = await api.get("/rides/rides", {
         withCredentials: true,
       });
+              console.log("sdsuhcbsd",response)
+
       return response.data;
     } catch (error: any) {
       throw new Error(error.response?.data?.message || "Failed to fetch rides");
@@ -60,7 +62,7 @@ export const rideApi = {
   getJoinedRides: async () => {
     try {
       const response = await api.get("/rides/joined");
-      console.log("Raw API Response Data:", response.data);
+      console.log("resssssssssssponce",response)
       const data = Array.isArray(response.data?.data)
         ? response.data.data
         : Array.from(response.data?.data || []);
@@ -144,14 +146,14 @@ export const rideApi = {
   },
 
   cancelJoinedRide: async (rideId: string) => {
-  try {
-    const response = await api.delete(`/rides/joined/${rideId}`, {
-      withCredentials: true,
-    });
-    return response.data;
-  } catch (error: any) {
-    console.error(`[rideApi] Error cancelling ride ${rideId}:`, error.message || error);
-    throw new Error(error.response?.data?.message || error.message || "Failed to cancel joined ride");
-  }
-},
+    try {
+      const response = await api.delete(`/rides/joined/${rideId}`, {
+        withCredentials: true,
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error(`[rideApi] Error cancelling ride ${rideId}:`, error.message || error);
+      throw new Error(error.response?.data?.message || error.message || "Failed to cancel joined ride");
+    }
+  },
 };

@@ -34,7 +34,6 @@ export const userApi = {
   getUser: async (userId: string) => {
     try {
       const response = await api.get(`/user/${userId}`);
-      console.log("response", response);
       return response.data;
     } catch (error) {
       console.error(`Failed to fetch user ${userId}:`, error);

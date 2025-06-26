@@ -23,11 +23,11 @@ export const createUserApiInstance = (baseURL: string) => {
       }
 
       const token = getToken();
+      console.log("Token being sent:", token);
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
-        console.log("Added Authorization header for user:", token);
       } else {
-        console.log("No accessToken found in cookies");
+        console.warn("No accessToken found in cookies");
       }
       return config;
     },
