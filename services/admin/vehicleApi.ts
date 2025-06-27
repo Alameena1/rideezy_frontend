@@ -29,6 +29,7 @@ export const adminVehicleApi = {
   verifyGovId: async (userId: string, status: "Verified" | "Rejected", rejectionNote?: string) => {
     try {
       const response = await adminApi.post("/verify-gov-id", { userId, status, rejectionNote });
+      console.log("hfbudsgyud",response)
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
