@@ -1,4 +1,5 @@
 import { api } from "../api";
+import { EditRideDto } from "../../types/ride.types";
 
 export interface Ride {
   _id: string;
@@ -12,28 +13,29 @@ export interface Ride {
   distanceKm: number;
   costPerPerson: number;
   routeGeometry: string;
-  passengers: string[];
+  passengers: { passengerId: string; passengerName: string; pickedUp?: boolean; droppedOff?: boolean }[];
   status: string;
   vehicleId: string;
   driverId: string;
   totalFuelCost: number;
   fuelPrice: number;
   mileage: number;
-  pickupPoints: { passengerId: string; location: string }[];
+  pickupPoints: { passengerId: string; location: string; placeName: string }[];
+  dropoffPoints: { passengerId: string; location: string; placeName: string }[];
   createdAt: string;
   updatedAt: string;
 }
 
 export const rideApi = {
   startRide: async (data: {
-    date: string; // Ensure ISO format, e.g., "2025-06-24T14:54:00Z"
+    date: string;
     time: string;
     startPoint: string;
     endPoint: string;
     passengerCount: number;
     fuelPrice: number;
     vehicleId: string;
-    fuelCost: number; // Maps to totalFuelCost
+    fuelCost: number;
     distance: number;
     routeGeometry: string;
     platformFee?: number;
@@ -42,6 +44,7 @@ export const rideApi = {
       const response = await api.post("/rides/start", data);
       return response.data;
     } catch (error: any) {
+      console.error("[rideApi] Error starting ride:", error.response?.data || error.message);
       throw new Error(error.response?.data?.message || "Failed to start ride");
     }
   },
@@ -51,24 +54,26 @@ export const rideApi = {
       const response = await api.get("/rides/rides", {
         withCredentials: true,
       });
-              console.log("sdsuhcbsd",response)
-
       return response.data;
     } catch (error: any) {
+      console.error("[rideApi] Error fetching rides:", error.response?.data || error.message);
       throw new Error(error.response?.data?.message || "Failed to fetch rides");
     }
   },
 
   getJoinedRides: async () => {
     try {
-      const response = await api.get("/rides/joined");
-      console.log("resssssssssssponce",response)
+      const response = await api.get("/rides/joined", {
+        withCredentials: true,
+      });
+      console.log("[rideApi] Get joined rides response:", response);
       const data = Array.isArray(response.data?.data)
         ? response.data.data
         : Array.from(response.data?.data || []);
       return { data, error: null };
     } catch (error: any) {
-      throw new Error(error.response?.data?.message || "Failed to fetch rides");
+      console.error("[rideApi] Error fetching joined rides:", error.response?.data || error.message);
+      throw new Error(error.response?.data?.message || "Failed to fetch joined rides");
     }
   },
 
@@ -79,6 +84,7 @@ export const rideApi = {
       });
       return response.data.data as Ride[];
     } catch (error: any) {
+      console.error("[rideApi] Error finding nearest rides:", error.response?.data || error.message);
       throw new Error(error.response?.data?.message || "Failed to find nearest rides");
     }
   },
@@ -90,6 +96,7 @@ export const rideApi = {
       });
       return response.data.data as Ride;
     } catch (error: any) {
+      console.error("[rideApi] Error joining ride:", error.response?.data || error.message);
       throw new Error(error.response?.data?.message || "Failed to join ride");
     }
   },
@@ -101,36 +108,55 @@ export const rideApi = {
       });
       return response.data;
     } catch (error: any) {
+      console.error("[rideApi] Error creating ride payment order:", error.response?.data || error.message);
       throw new Error(error.response?.data?.message || "Failed to create payment order for ride");
     }
   },
 
-  verifyAndJoinRide: async (data: {
-    rideId: string;
-    pickupLocation: string;
-    dropoffLocation: string;
-    paymentId: string;
-    orderId: string;
-    signature: string;
-  }) => {
+  verifyAndJoinRide: async (data:
+    {
+      rideId: string;
+      pickupLocation: string;
+      dropoffLocation: string;
+      paymentId: string;
+      orderId: string;
+      signature: string;
+    }) => {
     try {
       const response = await api.post("/rides/verify-and-join", data, {
         withCredentials: true,
       });
       return response.data.data as Ride;
     } catch (error: any) {
+      console.error("[rideApi] Error verifying and joining ride:", error.response?.data || error.message);
       throw new Error(error.response?.data?.message || "Failed to verify payment and join ride");
     }
   },
 
-  editRide: async (rideId: string, data: { date: string; time: string }) => {
+  editRide: async (rideId: string, driverId: string, dto: EditRideDto) => {
     try {
-      const response = await api.put(`/rides/${rideId}`, data, {
+      const response = await api.put(`/rides/${rideId}`, dto, {
         withCredentials: true,
+        headers: { "Driver-Id": driverId },
       });
       return response.data;
     } catch (error: any) {
+      console.error("[rideApi] Error editing ride:", error.response?.data || error.message);
       throw new Error(error.response?.data?.message || "Failed to edit ride");
+    }
+  },
+
+  startTracking: async (rideId: string, driverId: string) => {
+    try {
+      const response = await api.put(`/rides/${rideId}/start-tracking`, {}, {
+        withCredentials: true,
+        headers: { "Driver-Id": driverId },
+      });
+      console.log("[rideApi] Start tracking response:", response);
+      return response.data;
+    } catch (error: any) {
+      console.error("[rideApi] Error starting tracking:", error.response?.data || error.message);
+      throw new Error(error.response?.data?.message || "Failed to start tracking");
     }
   },
 
@@ -141,6 +167,7 @@ export const rideApi = {
       });
       return response.data;
     } catch (error: any) {
+      console.error("[rideApi] Error cancelling ride:", error.response?.data || error.message);
       throw new Error(error.response?.data?.message || "Failed to cancel ride");
     }
   },
@@ -152,8 +179,31 @@ export const rideApi = {
       });
       return response.data;
     } catch (error: any) {
-      console.error(`[rideApi] Error cancelling ride ${rideId}:`, error.message || error);
-      throw new Error(error.response?.data?.message || error.message || "Failed to cancel joined ride");
+      console.error("[rideApi] Error cancelling joined ride:", error.response?.data || error.message);
+      throw new Error(error.response?.data?.message || "Failed to cancel joined ride");
     }
   },
+
+  updateRide: async (id: string, updates: { currentPosition?: [number, number], passengerId: string; action: "picked" | "dropped" }, driverId: string) => {
+  try {
+    console.log("[rideApi] Sending updateRide request:", {
+      url: `/rides/${id}/update`,
+      updates,
+      driverId,
+    });
+    const response = await api.put(`/rides/${id}/update`, updates, {
+      withCredentials: true,
+      headers: { "Driver-Id": driverId }, 
+    });
+    console.log("[rideApi] Update ride response:", response.data);
+    return response.data.data as Ride;
+  } catch (error: any) {
+    console.error("[rideApi] Error updating ride:", {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+    });
+    throw new Error(error.response?.data?.message || "Failed to update ride");
+  }
+},
 };

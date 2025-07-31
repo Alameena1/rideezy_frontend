@@ -175,7 +175,7 @@ export default function Wallet() {
                 <div className="bg-white p-6 rounded-lg shadow-md mb-6">
                   <h3 className="text-xl font-semibold text-gray-700">Current Balance</h3>
                   <p className="text-3xl font-bold text-indigo-600 mt-2">
-                    {wallet.balance} {wallet.currency}
+                    {wallet.balance.toFixed(2)} {wallet.currency}
                   </p>
                 </div>
                 <div className="bg-white p-6 rounded-lg shadow-md">
@@ -197,7 +197,7 @@ export default function Wallet() {
                                 transaction.type === "DEPOSIT" ? "text-green-600" : "text-red-600"
                               }`}
                             >
-                              {transaction.type === "DEPOSIT" ? "+" : "-"}{transaction.amount} {wallet.currency}
+                              {transaction.type === "DEPOSIT" ? "+" : "-"}{transaction.amount.toFixed(2)} {wallet.currency}
                             </span>
                           </li>
                         ))}

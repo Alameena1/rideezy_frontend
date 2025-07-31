@@ -17,8 +17,8 @@ interface Vehicle {
   color?: string;
   insuranceNumber?: string;
   status: "Pending" | "Approved" | "Rejected";
-  vehicleImage: string; // Updated to match vehicleApi
-  documentImage: string; // Added
+  vehicleImage: string; 
+  documentImage: string;
   mileage: number;
   user: {
     _id: string;
@@ -33,7 +33,7 @@ interface Vehicle {
 interface VehicleCardProps {
   vehicle: Vehicle;
   onDelete?: (vehicleId: string) => void;
-  onReapply?: (vehicleId: string) => void; // Added for reapply callback
+  onReapply?: (vehicleId: string) => void; 
 }
 
 export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCardProps) {
@@ -113,7 +113,7 @@ export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCar
       <div className="flex flex-col sm:flex-row">
         <div className="sm:w-1/4 h-48 sm:h-auto">
           <img
-            src={vehicle.vehicleImage || "/placeholder.svg"} // Updated to vehicleImage
+            src={vehicle.vehicleImage || "/placeholder.svg"} 
             alt={vehicle.vehicleName}
             className="w-full h-full object-cover"
           />

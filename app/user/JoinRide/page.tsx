@@ -52,6 +52,7 @@ interface PlaceNames {
 
 const JoinRidePage: React.FC = () => {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  console.log("user data gygt",user)
   const {
     register,
     setValue,
@@ -208,16 +209,17 @@ const JoinRidePage: React.FC = () => {
       return;
     }
 
-    // Check user verification status before initiating payment
-    if (user.govId?.verificationStatus !== "Verified") {
-      setError("You must be a verified user to join a ride.");
-      Swal.fire({
-        icon: "error",
-        title: "Verification Required",
-        text: "You must be a verified user to join a ride. Please complete your verification process.",
-      });
-      return;
-    }
+    // // Check user verification status before initiating payment
+    // if (user.govId?.verificationStatus !== "Verified") {
+      
+    //   setError("You must be a verified user to join a ride.");
+    //   Swal.fire({
+    //     icon: "error",
+    //     title: "Verification Required",
+    //     text: "You must be a verified user to join a ride. Please complete your verification process.",
+    //   });
+    //   return;
+    // }
 
     if (!userLocation || userLocation.trim() === "") {
       setError("Please select your pickup location before joining a ride.");

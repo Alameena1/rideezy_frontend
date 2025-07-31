@@ -17,7 +17,8 @@ export interface DashboardMetrics {
 export const adminDashboardApi = {
   getDashboardMetrics: async (params?: { startDate?: string; endDate?: string }): Promise<DashboardMetrics> => {
     try {
-      const response = await adminApi.get("/dashboard-metrics", { params }); // Updated endpoint
+      const response = await adminApi.get("/dashboard-metrics", { params }); 
+      console.log(response)
       return {
         metrics: response.data.metrics,
         userGrowth: response.data.userGrowth,

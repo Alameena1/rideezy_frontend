@@ -90,7 +90,7 @@ export default function Dashboard() {
         </div>
         <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
           <h2 className="text-xl font-semibold text-white mb-2">Platform Revenue</h2>
-          <p className="text-3xl font-bold text-yellow-400">${metrics.totalRevenue}</p>
+          <p className="text-3xl font-bold text-yellow-400">${metrics.totalRevenue.toFixed(2)}</p>
         </div>
       </div>
 

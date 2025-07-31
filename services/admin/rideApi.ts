@@ -2,6 +2,7 @@ import { adminApi } from "./adminApi";
 import axios from "axios";
 
 export interface Ride {
+  dropoffPoints: any;
   _id: string;
   rideID: string;
   driverID: string;
