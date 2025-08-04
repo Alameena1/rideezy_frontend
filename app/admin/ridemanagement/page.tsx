@@ -25,7 +25,7 @@ interface Ride {
   totalPeople: number;
   status: string;
   createdAt: string;
-  passengers: { passengerId: string; passengerName: string }[];
+  passengers: { passengerId: string; passengerName: string; pickedUp?: boolean; droppedOff?: boolean }[];
   pickupPoints: { passengerId: string; location: string; placeName: string }[];
   dropoffPoints: { passengerId: string; location: string; placeName: string }[];
   routeGeometry: string;
@@ -38,15 +38,29 @@ interface PassengerDetails {
   pickupPlaceName: string;
   dropoffLocation: string;
   dropoffPlaceName: string;
+  pickedUp?: boolean;
+  droppedOff?: boolean;
+}
+
+interface TrackingData {
+  success: boolean;
+  data: {
+    currentPosition: [number, number] | null;
+    status: "Started" | "Paused" | "Completed";
+    pickupActions: { passengerId: string; location: string; status: "Pending" | "Completed" }[];
+    dropoffActions: { passengerId: string; location: string; status: "Pending" | "Completed" }[];
+  } | [number, number];
 }
 
 export default function RideManagement() {
   const [rides, setRides] = useState<Ride[]>([]);
   const [passengerDetails, setPassengerDetails] = useState<{ [rideId: string]: PassengerDetails[] }>({});
+  const [trackingData, setTrackingData] = useState<{ [rideId: string]: TrackingData }>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedRide, setExpandedRide] = useState<string | null>(null);
   const [leafletLoaded, setLeafletLoaded] = useState<typeof L | null>(null);
+  const [mapErrors, setMapErrors] = useState<{ [rideId: string]: string }>({});
 
   const mapRefs = useRef<{ [key: string]: L.Map | null }>({});
   const routeLayers = useRef<{ [key: string]: L.Polyline | null }>({});
@@ -54,25 +68,33 @@ export default function RideManagement() {
   const endMarkerRefs = useRef<{ [key: string]: L.Marker | null }>({});
   const pickupMarkerRefs = useRef<{ [key: string]: L.Marker[] }>({});
   const dropoffMarkerRefs = useRef<{ [key: string]: L.Marker[] }>({});
+  const driverMarkerRefs = useRef<{ [key: string]: L.Marker | null }>({});
   const mapContainerRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const trackingIntervals = useRef<{ [key: string]: NodeJS.Timeout | null }>({});
+  const animationIntervals = useRef<{ [key: string]: NodeJS.Timeout | null }>({});
+  const lastPositions = useRef<{ [key: string]: [number, number] | null }>({});
+  const lastIndex = useRef<{ [key: string]: number }>({});
+  const lastTrackingData = useRef<{ [key: string]: [number, number] | null }>({});
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       import("leaflet").then((module) => {
         setLeafletLoaded(module.default);
+        console.log("[RideManagement] Leaflet loaded successfully");
       }).catch((err) => {
-        console.error("Failed to load Leaflet:", err);
+        console.error("[RideManagement] Failed to load Leaflet:", err);
         setError("Failed to load map library. Please try again.");
       });
     }
   }, []);
 
+  // Fetch rides
   useEffect(() => {
     const fetchRides = async () => {
       try {
         setLoading(true);
         const fetchedRides = await apiService.admin.ride.getRides();
-        console.log("Fetched rides:", fetchedRides);
+        console.log("[RideManagement] Fetched rides:", fetchedRides);
 
         const mappedRides: Ride[] = fetchedRides.map((ride: any) => ({
           _id: ride._id.toString(),
@@ -115,6 +137,8 @@ export default function RideManagement() {
               pickupPlaceName: pickup ? pickup.placeName : "N/A",
               dropoffLocation: dropoff ? dropoff.location : "N/A",
               dropoffPlaceName: dropoff ? dropoff.placeName : "N/A",
+              pickedUp: passenger.pickedUp || false,
+              droppedOff: passenger.droppedOff || false,
             };
           });
           return acc;
@@ -123,7 +147,7 @@ export default function RideManagement() {
         setPassengerDetails(newPassengerDetails);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : "Failed to fetch rides";
-        console.error("Fetch rides failed:", err);
+        console.error("[RideManagement] Fetch rides failed:", err);
         setError(errorMessage);
       } finally {
         setLoading(false);
@@ -133,15 +157,348 @@ export default function RideManagement() {
     fetchRides();
   }, []);
 
+  // Fetch tracking data and start simulation
+  const fetchTrackingAndStartSimulation = async (rideId: string, retries = 0, maxRetries = 3) => {
+    try {
+      const ride = rides.find((r) => r._id === rideId);
+      if (!ride || !["Started", "Paused"].includes(ride.status)) {
+        console.log(`[RideManagement] Skipping tracking for ride ${rideId}: Invalid ride or status`);
+        return;
+      }
+
+      const trackingData = await apiService.tracking.getTrackingPosition(ride._id);
+      console.log(`[RideManagement] Tracking data fetched for ride ${rideId}:`, trackingData);
+
+      let currentPosition: [number, number] | null = null;
+      let trackingStatus: "Started" | "Paused" | "Completed" = "Started";
+      let pickupActions: { passengerId: string; location: string; status: "Pending" | "Completed" }[] = [];
+      let dropoffActions: { passengerId: string; location: string; status: "Pending" | "Completed" }[] = [];
+
+      if (trackingData.success && trackingData.data) {
+        if (Array.isArray(trackingData.data)) {
+          currentPosition = trackingData.data.length === 2 && trackingData.data.every((n: number) => !isNaN(n))
+            ? [trackingData.data[0], trackingData.data[1]] as [number, number]
+            : null;
+          if (
+            lastTrackingData.current[rideId] &&
+            lastTrackingData.current[rideId]?.[0] === currentPosition?.[0] &&
+            lastTrackingData.current[rideId]?.[1] === currentPosition?.[1]
+          ) {
+            trackingStatus = "Paused";
+          }
+          lastTrackingData.current[rideId] = currentPosition;
+        } else {
+          currentPosition = Array.isArray(trackingData.data.currentPosition) && trackingData.data.currentPosition.length === 2
+            ? [trackingData.data.currentPosition[0], trackingData.data.currentPosition[1]] as [number, number]
+            : null;
+          trackingStatus = trackingData.data.status || "Started";
+          pickupActions = trackingData.data.pickupActions || [];
+          dropoffActions = trackingData.data.dropoffActions || [];
+          lastTrackingData.current[rideId] = currentPosition;
+        }
+      }
+
+      setTrackingData((prev) => ({
+        ...prev,
+        [rideId]: { success: trackingData.success, data: { currentPosition, status: trackingStatus, pickupActions, dropoffActions } },
+      }));
+
+      setRides((prev) => prev.map((r) => {
+        if (r._id !== rideId) return r;
+        return {
+          ...r,
+          status: trackingStatus,
+          passengers: r.passengers.map((p) => ({
+            ...p,
+            pickedUp: pickupActions.find((a) => a.passengerId === p.passengerId)?.status === "Completed",
+            droppedOff: dropoffActions.find((a) => a.passengerId === p.passengerId)?.status === "Completed",
+          })),
+        };
+      }));
+
+      setPassengerDetails((prev) => ({
+        ...prev,
+        [rideId]: prev[rideId]?.map((p) => ({
+          ...p,
+          pickedUp: pickupActions.find((a) => a.passengerId === p.id)?.status === "Completed",
+          droppedOff: dropoffActions.find((a) => a.passengerId === p.id)?.status === "Completed",
+        })) || [],
+      }));
+
+      // Skip map initialization if routeGeometry is missing or invalid
+      if (!ride.routeGeometry) {
+        setMapErrors((prev) => ({
+          ...prev,
+          [rideId]: "Route map unavailable due to missing route data",
+        }));
+        return;
+      }
+
+      const mapContainer = mapContainerRefs.current[rideId];
+      if (mapContainer && leafletLoaded && currentPosition) {
+        if (!mapRefs.current[rideId]) {
+          initializeMap(ride, mapContainer);
+        }
+        if (!driverMarkerRefs.current[rideId] && mapRefs.current[rideId]) {
+          driverMarkerRefs.current[rideId] = leafletLoaded!.marker(currentPosition, {
+            icon: leafletLoaded!.icon({
+              iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-violet.png",
+              iconSize: [25, 41],
+              iconAnchor: [12, 41],
+            }),
+          }).addTo(mapRefs.current[rideId]!).bindPopup(`Driver: ${ride.driverName} (${trackingStatus})`);
+          console.log(`[RideManagement] Driver marker created at: ${currentPosition} for ride ${rideId}`);
+        }
+        if (driverMarkerRefs.current[rideId]) {
+          driverMarkerRefs.current[rideId]!.setLatLng(currentPosition);
+          mapRefs.current[rideId]!.panTo(currentPosition);
+          mapRefs.current[rideId]!.invalidateSize();
+          console.log(`[RideManagement] Driver marker updated to: ${currentPosition} for ride ${rideId}`);
+        }
+      }
+
+      if (mapRefs.current[rideId] && driverMarkerRefs.current[rideId] && currentPosition) {
+        try {
+          const routeData = JSON.parse(ride.routeGeometry);
+          if (routeData.type === "LineString" && routeData.coordinates) {
+            const coordinates = routeData.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]);
+            startSimulation(rideId, coordinates, ride.distanceKm, currentPosition, trackingStatus, pickupActions, dropoffActions);
+          } else {
+            setMapErrors((prev) => ({
+              ...prev,
+              [rideId]: "Route map unavailable due to invalid route data",
+            }));
+          }
+        } catch (error) {
+          console.error(`[RideManagement] Error parsing route geometry for ride ${rideId}:`, error);
+          setMapErrors((prev) => ({
+            ...prev,
+            [rideId]: "Route map unavailable due to invalid route data",
+          }));
+        }
+      }
+    } catch (error: any) {
+      console.error(`[RideManagement] Error fetching tracking for ride ${rideId}:`, error);
+      if (retries < maxRetries) {
+        console.log(`[RideManagement] Retry ${retries + 1}/${maxRetries} for ride ${rideId}`);
+        setTimeout(() => fetchTrackingAndStartSimulation(rideId, retries + 1, maxRetries), 5000);
+      } else {
+        setError(`Failed to fetch tracking data for ride ${rideId} after ${maxRetries} attempts: ${error.message}`);
+      }
+    }
+  };
+
+  // Start simulation
+  const startSimulation = (
+    rideId: string,
+    coordinates: [number, number][],
+    distanceKm: number,
+    startPosition: [number, number],
+    trackingStatus: "Started" | "Paused" | "Completed",
+    pickupActions: { passengerId: string; location: string; status: "Pending" | "Completed" }[],
+    dropoffActions: { passengerId: string; location: string; status: "Pending" | "Completed" }[]
+  ) => {
+    if (animationIntervals.current[rideId] || !mapRefs.current[rideId] || !driverMarkerRefs.current[rideId]) {
+      console.log(`[RideManagement] Simulation aborted: Interval exists, map unavailable, or marker missing for ${rideId}`);
+      return;
+    }
+
+    if (coordinates.length < 2) {
+      setMapErrors((prev) => ({
+        ...prev,
+        [rideId]: "Simulation failed: Insufficient route data",
+      }));
+      return;
+    }
+
+    const stepDuration = 1000; // 1 second per step
+    if (!lastIndex.current[rideId]) {
+      lastIndex.current[rideId] = findNearestIndex(coordinates, startPosition);
+      if (lastIndex.current[rideId] === -1) lastIndex.current[rideId] = 0;
+    }
+    let currentIndex = lastIndex.current[rideId];
+
+    animationIntervals.current[rideId] = setInterval(async () => {
+      try {
+        const ride = rides.find((r) => r._id === rideId);
+        if (!ride) {
+          console.warn(`[RideManagement] Ride not found, stopping simulation for ${rideId}`);
+          clearInterval(animationIntervals.current[rideId]!);
+          animationIntervals.current[rideId] = null;
+          return;
+        }
+
+        const trackingData = await apiService.tracking.getTrackingPosition(ride._id);
+        let currentPosition: [number, number] | null = null;
+        let status: "Started" | "Paused" | "Completed" = trackingStatus;
+        let updatedPickupActions = pickupActions;
+        let updatedDropoffActions = dropoffActions;
+
+        if (trackingData.success && trackingData.data) {
+          if (Array.isArray(trackingData.data)) {
+            currentPosition = trackingData.data.length === 2 && trackingData.data.every((n: number) => !isNaN(n))
+              ? [trackingData.data[0], trackingData.data[1]] as [number, number]
+              : null;
+            if (
+              lastTrackingData.current[rideId] &&
+              lastTrackingData.current[rideId]?.[0] === currentPosition?.[0] &&
+              lastTrackingData.current[rideId]?.[1] === currentPosition?.[1]
+            ) {
+              status = "Paused";
+            }
+            lastTrackingData.current[rideId] = currentPosition;
+          } else {
+            currentPosition = Array.isArray(trackingData.data.currentPosition) && trackingData.data.currentPosition.length === 2
+              ? [trackingData.data.currentPosition[0], trackingData.data.currentPosition[1]] as [number, number]
+              : null;
+            status = trackingData.data.status || "Started";
+            updatedPickupActions = trackingData.data.pickupActions || [];
+            updatedDropoffActions = trackingData.data.dropoffActions || [];
+            lastTrackingData.current[rideId] = currentPosition;
+          }
+        }
+
+        setTrackingData((prev) => ({
+          ...prev,
+          [rideId]: { success: trackingData.success, data: { currentPosition, status, pickupActions: updatedPickupActions, dropoffActions: updatedDropoffActions } },
+        }));
+
+        if (status === "Completed") {
+          clearInterval(animationIntervals.current[rideId]!);
+          animationIntervals.current[rideId] = null;
+          setRides((prev) => prev.map((r) => (r._id === rideId ? { ...r, status: "Completed" } : r)));
+          console.log(`[RideManagement] Simulation completed for ${rideId}`);
+          return;
+        }
+
+        if (status === "Paused" || updatedPickupActions.some((a) => a.status === "Pending") || updatedDropoffActions.some((a) => a.status === "Pending")) {
+          if (currentPosition && driverMarkerRefs.current[rideId]) {
+            driverMarkerRefs.current[rideId]!.setLatLng(currentPosition);
+            lastPositions.current[rideId] = currentPosition;
+            mapRefs.current[rideId]!.panTo(currentPosition);
+            console.log(`[RideManagement] Simulation paused at: ${currentPosition} for ride ${rideId}`);
+          }
+          return;
+        }
+
+        currentIndex++;
+        lastIndex.current[rideId] = currentIndex;
+        if (currentIndex >= coordinates.length) {
+          clearInterval(animationIntervals.current[rideId]!);
+          animationIntervals.current[rideId] = null;
+          setRides((prev) => prev.map((r) => (r._id === rideId ? { ...r, status: "Completed" } : r)));
+          console.log(`[RideManagement] Simulation completed for ${rideId}`);
+          return;
+        }
+
+        const newPosition = coordinates[currentIndex];
+        driverMarkerRefs.current[rideId]!.setLatLng(newPosition);
+        lastPositions.current[rideId] = newPosition;
+        mapRefs.current[rideId]!.panTo(newPosition);
+        console.log(`[RideManagement] Simulation moved to: ${newPosition} for ride ${rideId}`);
+
+        setRides((prev) => prev.map((r) => (r._id === rideId ? {
+          ...r,
+          status,
+          passengers: r.passengers.map((p) => ({
+            ...p,
+            pickedUp: updatedPickupActions.find((a) => a.passengerId === p.passengerId)?.status === "Completed",
+            droppedOff: updatedDropoffActions.find((a) => a.passengerId === p.passengerId)?.status === "Completed",
+          })),
+        } : r)));
+
+        setPassengerDetails((prev) => ({
+          ...prev,
+          [rideId]: prev[rideId]?.map((p) => ({
+            ...p,
+            pickedUp: updatedPickupActions.find((a) => a.passengerId === p.id)?.status === "Completed",
+            droppedOff: updatedDropoffActions.find((a) => a.passengerId === p.id)?.status === "Completed",
+          })) || [],
+        }));
+      } catch (error) {
+        console.error(`[RideManagement] Simulation error for ${rideId}:`, error);
+        setError(`Simulation error for ride ${rideId}: ${error.message}`);
+        clearInterval(animationIntervals.current[rideId]!);
+        animationIntervals.current[rideId] = null;
+      }
+    }, stepDuration);
+  };
+
+  const findNearestIndex = (coordinates: [number, number][], target: [number, number]): number => {
+    let nearestIndex = 0;
+    let minDistance = Infinity;
+    for (let i = 0; i < coordinates.length; i++) {
+      const [lat, lng] = coordinates[i];
+      const distance = calculateHaversineDistance([lat, lng], target);
+      if (distance < minDistance) {
+        minDistance = distance;
+        nearestIndex = i;
+      }
+    }
+    return nearestIndex;
+  };
+
+  const calculateHaversineDistance = (coord1: [number, number], coord2: [number, number]): number => {
+    if (!coord1 || !coord2 || coord1.length !== 2 || coord2.length !== 2 || coord1.some(isNaN) || coord2.some(isNaN)) {
+      console.error("[RideManagement] Invalid coordinates for Haversine:", { coord1, coord2 });
+      return Infinity;
+    }
+    const toRad = (x: number) => (x * Math.PI) / 180;
+    const R = 6371; // Earth's radius in kilometers
+    const [lat1, lon1] = coord1;
+    const [lat2, lon2] = coord2;
+
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  // Poll for tracking data
+  useEffect(() => {
+    rides.forEach((ride) => {
+      if (["Started", "Paused"].includes(ride.status) && !trackingIntervals.current[ride._id]) {
+        fetchTrackingAndStartSimulation(ride._id);
+        trackingIntervals.current[ride._id] = setInterval(() => fetchTrackingAndStartSimulation(ride._id), 5000);
+      }
+    });
+
+    return () => {
+      Object.values(trackingIntervals.current).forEach((interval) => {
+        if (interval) clearInterval(interval);
+      });
+      trackingIntervals.current = {};
+    };
+  }, [rides]);
+
   const handleCancelRide = async (ride: Ride) => {
     try {
       await apiService.admin.ride.cancelRide(ride._id);
       setRides(rides.map((r) =>
         r._id === ride._id ? { ...r, status: "Canceled" } : r
       ));
+      setTrackingData((prev) => {
+        const { [ride._id]: _, ...rest } = prev;
+        return rest;
+      });
+      setMapErrors((prev) => {
+        const { [ride._id]: _, ...rest } = prev;
+        return rest;
+      });
+      if (trackingIntervals.current[ride._id]) {
+        clearInterval(trackingIntervals.current[ride._id]!);
+        trackingIntervals.current[ride._id] = null;
+      }
+      if (animationIntervals.current[ride._id]) {
+        clearInterval(animationIntervals.current[ride._id]!);
+        animationIntervals.current[ride._id] = null;
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to cancel ride";
-      console.error("Cancel ride failed:", err);
+      console.error("[RideManagement] Cancel ride failed:", err);
       setError(errorMessage);
     }
   };
@@ -152,9 +509,25 @@ export default function RideManagement() {
       setRides(rides.map((r) =>
         r._id === ride._id ? { ...r, status: "Blocked" } : r
       ));
+      setTrackingData((prev) => {
+        const { [ride._id]: _, ...rest } = prev;
+        return rest;
+      });
+      setMapErrors((prev) => {
+        const { [ride._id]: _, ...rest } = prev;
+        return rest;
+      });
+      if (trackingIntervals.current[ride._id]) {
+        clearInterval(trackingIntervals.current[ride._id]!);
+        trackingIntervals.current[ride._id] = null;
+      }
+      if (animationIntervals.current[ride._id]) {
+        clearInterval(animationIntervals.current[ride._id]!);
+        animationIntervals.current[ride._id] = null;
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to block ride";
-      console.error("Block ride failed:", err);
+      console.error("[RideManagement] Block ride failed:", err);
       setError(errorMessage);
     }
   };
@@ -165,15 +538,29 @@ export default function RideManagement() {
       setExpandedRide(null);
     } else {
       setExpandedRide(rideId);
+      const ride = rides.find((r) => r._id === rideId);
+      if (ride && ["Started", "Paused"].includes(ride.status)) {
+        fetchTrackingAndStartSimulation(rideId);
+      }
     }
   };
 
   const initializeMap = useCallback((ride: Ride, mapContainer: HTMLDivElement) => {
-    if (!ride.routeGeometry || mapRefs.current[ride._id] || !leafletLoaded || !leafletLoaded.map) {
-      console.error("Cannot initialize map: Missing routeGeometry, Leaflet not loaded, or map already initialized");
+    if (!leafletLoaded || !leafletLoaded.map) {
+      console.error(`[RideManagement] Cannot initialize map for ride ${ride._id}: Leaflet not loaded`);
+      setMapErrors((prev) => ({
+        ...prev,
+        [ride._id]: "Route map unavailable: Map library not loaded",
+      }));
       return;
     }
 
+    if (mapRefs.current[ride._id]) {
+      console.log(`[RideManagement] Map already initialized for ride ${ride._id}`);
+      return;
+    }
+
+    console.log(`[RideManagement] Initializing map for ride ${ride._id}`);
     const map = leafletLoaded.map(mapContainer, { zoomControl: true }).setView([0, 0], 8);
     leafletLoaded.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       attribution: "© OpenStreetMap contributors",
@@ -210,17 +597,19 @@ export default function RideManagement() {
 
           const [lat, lng] = pickup.location.split(",").map(Number);
           if (isNaN(lat) || isNaN(lng)) {
-            console.error(`Invalid pickup location for passenger ${passenger.passengerId}: ${pickup.location}`);
+            console.error(`[RideManagement] Invalid pickup location for passenger ${passenger.passengerId}: ${pickup.location}`);
             return null;
           }
 
           return leafletLoaded.marker([lat, lng], {
             icon: leafletLoaded.icon({
-              iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png",
+              iconUrl: passenger.pickedUp
+                ? "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png"
+                : "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-grey.png",
               iconSize: [25, 41],
               iconAnchor: [12, 41],
             }),
-          }).addTo(map).bindPopup(`Passenger ${index + 1} (${passenger.passengerName}) - Pickup: ${pickup.placeName}`);
+          }).addTo(map).bindPopup(`Passenger ${index + 1} (${passenger.passengerName}) - Pickup: ${pickup.placeName}${passenger.pickedUp ? " (Picked Up)" : ""}`);
         }).filter((marker): marker is L.Marker => marker !== null);
 
         dropoffMarkerRefs.current[ride._id] = ride.passengers.map((passenger, index) => {
@@ -229,28 +618,52 @@ export default function RideManagement() {
 
           const [lat, lng] = dropoff.location.split(",").map(Number);
           if (isNaN(lat) || isNaN(lng)) {
-            console.error(`Invalid drop-off location for passenger ${passenger.passengerId}: ${dropoff.location}`);
+            console.error(`[RideManagement] Invalid drop-off location for passenger ${passenger.passengerId}: ${dropoff.location}`);
             return null;
           }
 
           return leafletLoaded.marker([lat, lng], {
             icon: leafletLoaded.icon({
-              iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-orange.png",
+              iconUrl: passenger.droppedOff
+                ? "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-orange.png"
+                : "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-grey.png",
               iconSize: [25, 41],
               iconAnchor: [12, 41],
             }),
-          }).addTo(map).bindPopup(`Passenger ${index + 1} (${passenger.passengerName}) - Drop-off: ${dropoff.placeName}`);
+          }).addTo(map).bindPopup(`Passenger ${index + 1} (${passenger.passengerName}) - Drop-off: ${dropoff.placeName}${passenger.droppedOff ? " (Dropped Off)" : ""}`);
         }).filter((marker): marker is L.Marker => marker !== null);
 
+        const tracking = trackingData[ride._id];
+        if (tracking && tracking.data.currentPosition) {
+          const [lat, lng] = tracking.data.currentPosition;
+          if (!isNaN(lat) && !isNaN(lng)) {
+            driverMarkerRefs.current[ride._id] = leafletLoaded.marker([lat, lng], {
+              icon: leafletLoaded.icon({
+                iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-violet.png",
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+              }),
+            }).addTo(map).bindPopup(`Driver: ${ride.driverName} (${tracking.data.status})`);
+          }
+        }
+
         map.fitBounds(leafletLoaded.latLngBounds(coordinates), { padding: [50, 50] });
+        map.invalidateSize();
       } else {
-        console.error("Invalid route geometry:", routeData);
+        console.error(`[RideManagement] Invalid route geometry for ride ${ride._id}:`, routeData);
+        setMapErrors((prev) => ({
+          ...prev,
+          [ride._id]: "Route map unavailable due to invalid route data",
+        }));
       }
     } catch (error) {
-      console.error("Error parsing route geometry:", error);
-      setError("Failed to render route map. Invalid route data.");
+      console.error(`[RideManagement] Error parsing route geometry for ride ${ride._id}:`, error);
+      setMapErrors((prev) => ({
+        ...prev,
+        [ride._id]: "Route map unavailable due to invalid route data",
+      }));
     }
-  }, [leafletLoaded]);
+  }, [leafletLoaded, trackingData]);
 
   const cleanupMap = useCallback((rideId: string) => {
     if (mapRefs.current[rideId]) {
@@ -264,20 +677,36 @@ export default function RideManagement() {
     pickupMarkerRefs.current[rideId] = [];
     dropoffMarkerRefs.current[rideId]?.forEach(marker => marker.remove());
     dropoffMarkerRefs.current[rideId] = [];
+    if (driverMarkerRefs.current[rideId]) {
+      driverMarkerRefs.current[rideId]?.remove();
+      driverMarkerRefs.current[rideId] = null;
+    }
     mapContainerRefs.current[rideId] = null;
+    if (trackingIntervals.current[rideId]) {
+      clearInterval(trackingIntervals.current[rideId]!);
+      trackingIntervals.current[rideId] = null;
+    }
+    if (animationIntervals.current[rideId]) {
+      clearInterval(animationIntervals.current[rideId]!);
+      animationIntervals.current[rideId] = null;
+    }
+    lastPositions.current[rideId] = null;
+    lastIndex.current[rideId] = 0;
+    lastTrackingData.current[rideId] = null;
+    setMapErrors((prev) => {
+      const { [rideId]: _, ...rest } = prev;
+      return rest;
+    });
   }, []);
 
-  useEffect(() => {
-    if (!expandedRide || !leafletLoaded || !leafletLoaded.map) return;
-
-    const ride = rides.find((r) => r._id === expandedRide);
-    if (ride && mapContainerRefs.current[ride._id]) {
-      initializeMap(ride, mapContainerRefs.current[ride._id]!);
-    }
-  }, [expandedRide, rides, initializeMap, leafletLoaded]);
-
-  const renderStatus = (status: string) => {
-    const color = status === "Pending" ? "text-orange-500" : status === "Canceled" ? "text-red-500" : status === "Blocked" ? "text-yellow-500" : "text-green-500";
+  const renderStatus = (ride: Ride) => {
+    const tracking = trackingData[ride._id];
+    const status = tracking ? (Array.isArray(tracking.data) ? ride.status : tracking.data.status) : ride.status;
+    const color = status === "Pending" ? "text-orange-500" : 
+                 status === "Canceled" ? "text-red-500" : 
+                 status === "Blocked" ? "text-yellow-500" : 
+                 status === "Started" ? "text-green-500" : 
+                 status === "Paused" ? "text-blue-500" : "text-green-500";
     return <span className={color}>{status}</span>;
   };
 
@@ -333,7 +762,7 @@ export default function RideManagement() {
                       <td className="p-4">{ride.date}</td>
                       <td className="p-4">{ride.startPlaceName}</td>
                       <td className="p-4">{ride.endPlaceName}</td>
-                      <td className="p-4">{renderStatus(ride.status)}</td>
+                      <td className="p-4">{renderStatus(ride)}</td>
                       <td className="p-4">
                         <div className="flex space-x-2">
                           {ride.status === "Pending" && (
@@ -389,7 +818,7 @@ export default function RideManagement() {
                                 <li><span className="font-medium">Total Fuel Cost:</span> {formatNumber(ride.totalFuelCost)}</li>
                                 <li><span className="font-medium">Cost Per Person:</span> {formatNumber(ride.costPerPerson)}</li>
                                 <li><span className="font-medium">Total People:</span> {ride.totalPeople}</li>
-                                <li><span className="font-medium">Status:</span> {renderStatus(ride.status)}</li>
+                                <li><span className="font-medium">Status:</span> {renderStatus(ride)}</li>
                                 <li><span className="font-medium">Created At:</span> {ride.createdAt}</li>
                               </ul>
                               <h4 className="text-lg font-semibold mt-4 mb-3 text-gray-200">Passenger Details</h4>
@@ -399,7 +828,9 @@ export default function RideManagement() {
                                     <li key={idx}>
                                       <span className="font-medium">Passenger {idx + 1}:</span> {passenger.name} (ID: {truncateId(passenger.id)}) <br />
                                       <span className="font-medium">Pickup Location:</span> {passenger.pickupPlaceName} ({passenger.pickupLocation}) <br />
-                                      <span className="font-medium">Drop-off Location:</span> {passenger.dropoffPlaceName} ({passenger.dropoffLocation})
+                                      <span className="font-medium">Picked Up:</span> {passenger.pickedUp ? "Yes" : "No"} <br />
+                                      <span className="font-medium">Drop-off Location:</span> {passenger.dropoffPlaceName} ({passenger.dropoffLocation}) <br />
+                                      <span className="font-medium">Dropped Off:</span> {passenger.droppedOff ? "Yes" : "No"}
                                     </li>
                                   ))}
                                 </ul>
@@ -409,13 +840,19 @@ export default function RideManagement() {
                             </div>
                             <div>
                               <h4 className="text-lg font-semibold mb-3 text-gray-200">Route Map</h4>
-                              <div
-                                id={`map-${ride._id}`}
-                                className="h-72 w-full rounded-lg border border-gray-600"
-                                ref={(el) => {
-                                  mapContainerRefs.current[ride._id] = el;
-                                }}
-                              />
+                              {mapErrors[ride._id] ? (
+                                <div className="p-3 bg-red-900/50 text-red-300 rounded-md border border-red-800">
+                                  {mapErrors[ride._id]}
+                                </div>
+                              ) : (
+                                <div
+                                  id={`map-${ride._id}`}
+                                  className="h-72 w-full rounded-lg border border-gray-600"
+                                  ref={(el) => {
+                                    mapContainerRefs.current[ride._id] = el;
+                                  }}
+                                />
+                              )}
                             </div>
                           </div>
                         </td>

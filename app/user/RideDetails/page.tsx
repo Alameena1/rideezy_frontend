@@ -567,94 +567,108 @@ const initializeMap = useCallback(
     }
   };
 
-  const startSimulation = (rideId: string, coordinates: [number, number][], distanceKm: number, startPosition: [number, number]) => {
-    if (animationIntervals.current[rideId] || !mapRefs.current[rideId] || !vehicleMarkerRefs.current[rideId]) {
-      console.log("[RideDetails] Simulation aborted: Interval exists, map unavailable, or marker missing for", rideId);
+ const startSimulation = (rideId: string, coordinates: [number, number][], distanceKm: number, startPosition: [number, number]) => {
+  if (animationIntervals.current[rideId] || !mapRefs.current[rideId] || !vehicleMarkerRefs.current[rideId]) {
+    console.log("[RideDetails] Simulation aborted: Interval exists, map unavailable, or marker missing for", rideId);
+    return;
+  }
+
+  if (coordinates.length < 2) {
+    setError("Simulation failed: Insufficient route data");
+    return;
+  }
+
+  const stepDuration = 1000; // 1 second per step
+  let currentIndex = findNearestIndex(coordinates, startPosition);
+  if (currentIndex === -1) currentIndex = 0;
+  let isUpdating = false; // Flag to prevent concurrent updates
+
+  animationIntervals.current[rideId] = setInterval(async () => {
+    if (isUpdating) {
+      console.log("[RideDetails] Skipping update, previous update still in progress for", rideId);
       return;
     }
 
-    if (coordinates.length < 2) {
-      setError("Simulation failed: Insufficient route data");
-      return;
-    }
-
-    const stepDuration = 1000; // 1 second per step
-    let currentIndex = findNearestIndex(coordinates, startPosition);
-    if (currentIndex === -1) currentIndex = 0;
-
-    animationIntervals.current[rideId] = setInterval(async () => {
-      try {
-        const ride = rides.find((r) => r._id === rideId);
-        if (!ride) {
-          console.warn("[RideDetails] Ride not found, stopping simulation for", rideId);
-          clearInterval(animationIntervals.current[rideId]!);
-          animationIntervals.current[rideId] = null;
-          return;
-        }
-
-        const shouldPause = ride.pickupPoints.some((pickup) => {
-          const [pickupLat, pickupLng] = pickup.location.split(",").map(Number);
-          const pickupCoord: [number, number] = [pickupLat, pickupLng];
-          return !isNaN(pickupLat) && !isNaN(pickupLng) && calculateHaversineDistance(coordinates[currentIndex], pickupCoord) < 0.1 && !pickupActions[ride._id]?.[pickup.passengerId];
-        }) || ride.dropoffPoints.some((dropoff) => {
-          const [dropoffLat, dropoffLng] = dropoff.location.split(",").map(Number);
-          const dropoffCoord: [number, number] = [dropoffLat, dropoffLng];
-          return !isNaN(dropoffLat) && !isNaN(dropoffLng) && calculateHaversineDistance(coordinates[currentIndex], dropoffCoord) < 0.1 && pickupActions[ride._id]?.[dropoff.passengerId] && !dropoffActions[ride._id]?.[dropoff.passengerId];
-        });
-
-        setSimulationPaused((prev) => ({ ...prev, [rideId]: shouldPause }));
-
-        if (shouldPause) {
-          console.log("[RideDetails] Simulation paused for", rideId);
-          return;
-        }
-
-        currentIndex++;
-        if (currentIndex >= coordinates.length) {
-          clearInterval(animationIntervals.current[rideId]!);
-          animationIntervals.current[rideId] = null;
-          await apiService.tracking.stopTracking(ride._id);
-          const updatedRides = rides.map((r) => (r._id === rideId ? { ...r, status: "Completed" } : r));
-          setRides(updatedRides);
-          await apiService.ride.updateRide(ride._id, { status: "Completed" });
-          cleanupMap(rideId);
-          console.log("[RideDetails] Simulation completed for", rideId);
-          return;
-        }
-
-        const currentPosition = coordinates[currentIndex];
-        vehicleMarkerRefs.current[rideId]!.setLatLng(currentPosition);
-        lastPositions.current[rideId] = currentPosition;
-        mapRefs.current[rideId]!.panTo(currentPosition);
-        await apiService.tracking.updateTrackingPosition(ride._id, currentPosition);
-
-        const newPausedPassengerIds = [...(pausedPassengerIds[rideId] || [])];
-        ride.pickupPoints.forEach((pickup) => {
-          const [pickupLat, pickupLng] = pickup.location.split(",").map(Number);
-          const pickupCoord: [number, number] = [pickupLat, pickupLng];
-          if (!isNaN(pickupLat) && !isNaN(pickupLng) && calculateHaversineDistance(currentPosition, pickupCoord) < 0.1 && !pickupActions[ride._id]?.[pickup.passengerId] && !newPausedPassengerIds.includes(pickup.passengerId)) {
-            newPausedPassengerIds.push(pickup.passengerId);
-          }
-        });
-        ride.dropoffPoints.forEach((dropoff) => {
-          const [dropoffLat, dropoffLng] = dropoff.location.split(",").map(Number);
-          const dropoffCoord: [number, number] = [dropoffLat, dropoffLng];
-          if (!isNaN(dropoffLat) && !isNaN(dropoffLng) && calculateHaversineDistance(currentPosition, dropoffCoord) < 0.1 && pickupActions[ride._id]?.[dropoff.passengerId] && !dropoffActions[ride._id]?.[dropoff.passengerId] && !newPausedPassengerIds.includes(dropoff.passengerId)) {
-            newPausedPassengerIds.push(dropoff.passengerId);
-          }
-        });
-
-        if (newPausedPassengerIds.length !== (pausedPassengerIds[rideId]?.length || 0) || newPausedPassengerIds.some(id => !pausedPassengerIds[rideId]?.includes(id))) {
-          setPausedPassengerIds((prev) => ({ ...prev, [rideId]: newPausedPassengerIds }));
-        }
-      } catch (error) {
-        console.error("[RideDetails] Simulation error for", rideId, ":", error);
-        setError(`Simulation error for ride ${rideId}: ${error.message}`);
+    try {
+      isUpdating = true; // Lock updates
+      const ride = rides.find((r) => r._id === rideId);
+      if (!ride) {
+        console.warn("[RideDetails] Ride not found, stopping simulation for", rideId);
         clearInterval(animationIntervals.current[rideId]!);
         animationIntervals.current[rideId] = null;
+        return;
       }
-    }, stepDuration);
-  };
+
+      // Pause logic from original code
+      const shouldPause = ride.pickupPoints.some((pickup) => {
+        const [pickupLat, pickupLng] = pickup.location.split(",").map(Number);
+        const pickupCoord: [number, number] = [pickupLat, pickupLng];
+        return !isNaN(pickupLat) && !isNaN(pickupLng) && calculateHaversineDistance(coordinates[currentIndex], pickupCoord) < 0.1 && !pickupActions[ride._id]?.[pickup.passengerId];
+      }) || ride.dropoffPoints.some((dropoff) => {
+        const [dropoffLat, dropoffLng] = dropoff.location.split(",").map(Number);
+        const dropoffCoord: [number, number] = [dropoffLat, dropoffLng];
+        return !isNaN(dropoffLat) && !isNaN(dropoffLng) && calculateHaversineDistance(coordinates[currentIndex], dropoffCoord) < 0.1 && pickupActions[ride._id]?.[dropoff.passengerId] && !dropoffActions[ride._id]?.[dropoff.passengerId];
+      });
+
+      setSimulationPaused((prev) => ({ ...prev, [rideId]: shouldPause }));
+
+      if (shouldPause) {
+        console.log("[RideDetails] Simulation paused for", rideId);
+        return;
+      }
+
+      currentIndex++;
+      if (currentIndex >= coordinates.length) {
+        clearInterval(animationIntervals.current[rideId]!);
+        animationIntervals.current[rideId] = null;
+        await apiService.tracking.stopTracking(ride._id);
+        const updatedRides = rides.map((r) => (r._id === rideId ? { ...r, status: "Completed" } : r));
+        setRides(updatedRides);
+        await apiService.ride.updateRide(ride._id, { status: "Completed" });
+        cleanupMap(rideId);
+        console.log("[RideDetails] Simulation completed for", rideId);
+        return;
+      }
+
+      const currentPosition = coordinates[currentIndex];
+      vehicleMarkerRefs.current[rideId]!.setLatLng(currentPosition);
+      lastPositions.current[rideId] = currentPosition;
+      mapRefs.current[rideId]!.panTo(currentPosition);
+      await apiService.tracking.updateTrackingPosition(ride._id, currentPosition);
+
+      const newPausedPassengerIds = [...(pausedPassengerIds[rideId] || [])];
+      ride.pickupPoints.forEach((pickup) => {
+        const [pickupLat, pickupLng] = pickup.location.split(",").map(Number);
+        const pickupCoord: [number, number] = [pickupLat, pickupLng];
+        if (!isNaN(pickupLat) && !isNaN(pickupLng) && calculateHaversineDistance(currentPosition, pickupCoord) < 0.1 && !pickupActions[ride._id]?.[pickup.passengerId] && !newPausedPassengerIds.includes(pickup.passengerId)) {
+          newPausedPassengerIds.push(pickup.passengerId);
+        }
+      });
+      ride.dropoffPoints.forEach((dropoff) => {
+        const [dropoffLat, dropoffLng] = dropoff.location.split(",").map(Number);
+        const dropoffCoord: [number, number] = [dropoffLat, dropoffLng];
+        if (!isNaN(dropoffLat) && !isNaN(dropoffLng) && calculateHaversineDistance(currentPosition, dropoffCoord) < 0.1 && pickupActions[ride._id]?.[dropoff.passengerId] && !dropoffActions[ride._id]?.[dropoff.passengerId] && !newPausedPassengerIds.includes(dropoff.passengerId)) {
+          newPausedPassengerIds.push(dropoff.passengerId);
+        }
+      });
+
+      if (newPausedPassengerIds.length !== (pausedPassengerIds[rideId]?.length || 0) || newPausedPassengerIds.some(id => !pausedPassengerIds[rideId]?.includes(id))) {
+        setPausedPassengerIds((prev) => ({ ...prev, [rideId]: newPausedPassengerIds }));
+      }
+    } catch (error: any) {
+      console.error("[RideDetails] Simulation error for", rideId, ":", error);
+      if (error.message.includes("Write conflict")) {
+        setError(`Temporary issue updating ride position. Please try resuming the ride.`);
+      } else {
+        setError(`Simulation error for ride ${rideId}: ${error.message}`);
+      }
+      clearInterval(animationIntervals.current[rideId]!);
+      animationIntervals.current[rideId] = null;
+    } finally {
+      isUpdating = false; // Unlock updates
+    }
+  }, stepDuration);
+};
 
   const findNearestIndex = (coordinates: [number, number][], target: [number, number]): number => {
     let nearestIndex = 0;
