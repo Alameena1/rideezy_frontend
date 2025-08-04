@@ -73,7 +73,7 @@ const authOptions: NextAuthOptions = {
     },
 
     async redirect({ baseUrl }) {
-      return `${baseUrl}/`; // redirect to homepage
+      return `${baseUrl}/`; 
     },
   },
 };

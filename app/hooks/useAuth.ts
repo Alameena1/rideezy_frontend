@@ -8,7 +8,7 @@ import axios from "axios";
 import { jwtDecode } from "jwt-decode";
 
 interface User {
-  govId: any;
+  _id: string;
   driverId?: string;
   email?: string;
   name?: string;
@@ -32,7 +32,7 @@ const useAuth = () => {
       if (token) {
         try {
           decodedUser = jwtDecode(token);
-          console.log("Decoded token:", decodedUser);
+          console.log("Decoded token userId:", decodedUser?.userId || decodedUser?.sub);
         } catch (error) {
           console.error("Error decoding token:", error);
         }
@@ -50,7 +50,7 @@ const useAuth = () => {
           Cookies.set("refreshToken", refreshToken, { expires: 7, secure: true, sameSite: "strict" });
         }
         const newUser = {
-          _id: decodedUser?.userId || decodedUser?.sub, // Adjust based on token structure
+          _id: decodedUser?.userId || decodedUser?.sub || session.user.id, // Prioritize userId or sub
           driverId: decodedUser?.userId,
           email: session.user.email || decodedUser?.email,
           name: session.user.name,
@@ -67,7 +67,7 @@ const useAuth = () => {
             console.log("Profile data received:", profileData);
             if (profileData?.success && profileData.data) {
               const newUser = {
-                _id: profileData.data._id || decodedUser.userId, // Use _id from profile if available
+                _id: profileData.data._id || decodedUser.userId, 
                 driverId: decodedUser.userId,
                 email: profileData.data.email || decodedUser.email,
               };
@@ -103,4 +103,3 @@ const useAuth = () => {
 };
 
 export default useAuth;
-

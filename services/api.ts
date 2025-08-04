@@ -6,10 +6,19 @@ import { vehicleApi } from "./user/vehicleApi";
 import { rideApi } from "./user/rideApi";
 import { subscriptionApi } from "./user/subscriptionApi";
 import { geoApi } from "./user/geoApi";
-import { trackingApi } from "./user/trackingApi"; // New import
+import { trackingApi } from "./user/trackingApi";
+import {notificationApi} from './user/notificationApi'
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001/api";
-export const api = createUserApiInstance(API_BASE_URL);
+// Lazy initialization of api
+let apiInstance: ReturnType<typeof createUserApiInstance>;
+
+const getApiInstance = () => {
+  if (!apiInstance) {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001/api";
+    apiInstance = createUserApiInstance(API_BASE_URL);
+  }
+  return apiInstance;
+};
 
 export const apiService = {
   admin: adminApi.adminApiService,
@@ -19,7 +28,13 @@ export const apiService = {
   ride: rideApi,
   subscription: subscriptionApi,
   geo: geoApi,
-  tracking: trackingApi, // Add tracking API to apiService
+  tracking: trackingApi,
+  notification: notificationApi, 
 };
 
+import("./user/notificationApi").then((module) => {
+  apiService.notification = module.notificationApi;
+});
+
+export const api = getApiInstance();
 export default apiService;

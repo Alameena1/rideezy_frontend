@@ -18,7 +18,7 @@ interface Vehicle {
   };
   createdAt: string;
   updatedAt: string;
-  note?: string; // Added note for rejection reason
+  note?: string;
 }
 
 export const vehicleApi = {
