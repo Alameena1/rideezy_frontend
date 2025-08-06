@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signOut, useSession } from "next-auth/react";
 import Cookies from "js-cookie";
@@ -15,25 +15,102 @@ import {
 import { Bell } from "lucide-react";
 import { apiService } from "../../services/api";
 import useAuth from "../hooks/useAuth";
+import { io } from "socket.io-client";
 
 const Navbar = () => {
   const [isUserLoggedIn, setIsUserLoggedIn] = useState(false);
-  const [unreadNotifications, setUnreadNotifications] = useState([]);
+  const [unreadNotifications, setUnreadNotifications] = useState<any[]>([]);
   const router = useRouter();
   const { data: session, status } = useSession();
   const { user, isAuthenticated, isLoading } = useAuth();
+  const socket = useRef<any>(null);
+  const retryCount = useRef(0);
+  const maxRetries = 5;
+
+const connectSocket = () => {
+  if (socket.current) {
+    socket.current.disconnect();
+  }
+
+  if (retryCount.current >= maxRetries) {
+    console.error(`Max retry attempts (${maxRetries}) reached for Socket.IO connection to ws://localhost:3001/`);
+    return;
+  }
+
+  const token = Cookies.get("accessToken");
+  socket.current = io("http://localhost:3001", {
+    withCredentials: true,
+    transports: ["websocket"],
+    auth: { token },
+    reconnection: true,
+    reconnectionAttempts: maxRetries,
+    reconnectionDelay: 2000,
+    reconnectionDelayMax: 5000,
+    timeout: 10000, // Add timeout of 10 seconds
+  });
+
+  const handleConnect = () => {
+    console.log("Socket.IO connected at", new Date().toISOString());
+    retryCount.current = 0;
+    if (user?._id) {
+      socket.current.emit("join", user._id, (error?: string) => {
+        if (error) console.error("Join error:", error);
+        else console.log("Joined Socket.IO room for user:", user._id);
+      });
+      fetchNotifications(user._id); // Fetch missed notifications on connect
+    }
+  };
+
+  const handleNewNotification = (notification: any) => {
+  console.log("Handler active, received notification:", notification);
+  setUnreadNotifications((prev) => {
+    const exists = prev.some((n) => n._id === notification._id);
+    return exists ? prev : [...prev, { ...notification, _id: notification._id || Date.now().toString() }]; // Ensure _id is present
+  });
+  console.log("New notification received, updated state:", unreadNotifications);
+};
+
+  const handleDisconnect = (reason: string) => {
+    console.log("Socket.IO disconnected at", new Date().toISOString(), "Reason:", reason);
+    socket.current = null;
+    if (user?._id && retryCount.current < maxRetries) {
+      retryCount.current += 1;
+      console.log(`Retrying Socket.IO connection (Attempt ${retryCount.current}/${maxRetries})...`);
+      setTimeout(connectSocket, Math.min(2000 * Math.pow(2, retryCount.current), 5000));
+    }
+  };
+
+  socket.current.on("connect", handleConnect);
+  socket.current.on("newNotification", handleNewNotification);
+  socket.current.on("disconnect", handleDisconnect);
+
+  return () => {
+    if (socket.current) {
+      socket.current.off("connect", handleConnect);
+      socket.current.off("newNotification", handleNewNotification);
+      socket.current.off("disconnect", handleDisconnect);
+      socket.current.disconnect();
+    }
+  };
+};
 
   useEffect(() => {
     const token = Cookies.get("accessToken");
     setIsUserLoggedIn(!!token);
     console.log("Cookie Token:", token);
-    console.log("apiService.notification:", apiService.notification);
     console.log("User on mount:", user);
 
     if (token && user?._id) {
       fetchNotifications(user._id);
+      connectSocket();
     }
-  }, [user?._id]); 
+
+    return () => {
+      if (socket.current) {
+        socket.current.disconnect();
+      }
+    };
+  }, [user?._id]);
 
   useEffect(() => {
     console.log("useEffect triggered, status:", status, "session:", session, "user:", user);
@@ -41,19 +118,24 @@ const Navbar = () => {
       setIsUserLoggedIn(true);
       console.log("Authenticated, userId from session:", session.user.id);
       fetchNotifications(session.user.id || user?._id);
+      if (user?._id && !socket.current?.connected) {
+        connectSocket();
+      }
     } else if (status === "unauthenticated") {
       const token = Cookies.get("accessToken");
       setIsUserLoggedIn(!!token);
       console.log("Unauthenticated, Token:", token);
+      if (socket.current) {
+        socket.current.disconnect();
+      }
     }
-  }, [status, session, user?._id]); 
+  }, [status, session, user?._id]);
 
   const fetchNotifications = async (userId: string | undefined) => {
     if (!userId) {
       console.error("No userId provided for fetching notifications");
       return;
     }
-    console.log("popopoopopopopo", userId);
     console.log("Fetching notifications for userId:", userId);
     if (!apiService.notification) {
       console.error("notificationApi not initialized");
@@ -66,7 +148,7 @@ const Navbar = () => {
       const unread = notifications.filter((n: any) => !n.isRead);
       setUnreadNotifications((prev) => {
         const isDifferent = JSON.stringify(prev) !== JSON.stringify(unread);
-        return isDifferent ? unread : prev; // Only update if different
+        return isDifferent ? unread : prev;
       });
       console.log("Unread Notifications set to:", unread);
     } catch (error) {
@@ -79,6 +161,9 @@ const Navbar = () => {
     Cookies.remove("refreshToken");
     setIsUserLoggedIn(false);
     setUnreadNotifications([]);
+    if (socket.current) {
+      socket.current.disconnect();
+    }
     if (session) {
       signOut({ callbackUrl: "/user/login" });
     } else {

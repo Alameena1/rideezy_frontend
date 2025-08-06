@@ -77,7 +77,6 @@ export default function JoinedRideDetails() {
     month: "short",
     year: "numeric",
   });
-
   useEffect(() => {
     if (typeof window !== "undefined") {
       import("leaflet")
