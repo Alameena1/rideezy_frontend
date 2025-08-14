@@ -29,7 +29,7 @@ export default function UserIdVerification() {
     const fetchUsers = async () => {
       try {
         setLoading(true);
-        const fetchedUsers = await apiService.admin.user;
+        const fetchedUsers = await apiService.admin.user.getUsers();
         console.log("Fetched users data:", fetchedUsers);
         if (Array.isArray(fetchedUsers)) {
          

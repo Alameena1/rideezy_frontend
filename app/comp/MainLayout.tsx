@@ -14,21 +14,21 @@ interface SidebarItem {
 interface MainLayoutProps {
   children: ReactNode;
   activeItem: string;
-  hideSidebar?: boolean; 
+  hideSidebar?: boolean;
 }
 
 export default function MainLayout({ children, activeItem, hideSidebar = false }: MainLayoutProps) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const sidebarItems: SidebarItem[] = [
-  { icon: "👤", label: "Profile", active: activeItem === "Profile" }, 
-  { icon: "🚗", label: "Vehicles", active: activeItem === "Vehicles" }, 
-  { icon: "🛣️", label: "Rides", active: activeItem === "Rides" },          
-  { icon: "👑", label: "Subscription", active: activeItem === "Subscription" }, 
-  { icon: "🤝", label: "Joined Ride", active: activeItem === "Joined Ride" },  
-  { icon: "💰", label: "Wallet", active: activeItem === "Wallet" },         
-];
-
+    { icon: "👤", label: "Profile", active: activeItem === "Profile" },
+    { icon: "🚗", label: "Vehicles", active: activeItem === "Vehicles" },
+    { icon: "🛣️", label: "Rides", active: activeItem === "Rides" },
+    { icon: "👑", label: "Subscription", active: activeItem === "Subscription" },
+    { icon: "🤝", label: "Joined Ride", active: activeItem === "Joined Ride" },
+    { icon: "💰", label: "Wallet", active: activeItem === "Wallet" },
+    { icon: "💬", label: "Chat", active: activeItem === "Chat" }, // Added Chat
+  ];
 
   const toggleSidebar = () => {
     setIsSidebarOpen(!isSidebarOpen);

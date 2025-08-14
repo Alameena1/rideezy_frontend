@@ -16,6 +16,7 @@ export const userApi = {
   },
 
   updateProfile: async (updatedData: UserProfile) => {
+    console.log("upaaaaaaaaaaaaaaaaaaaaaa",updatedData)
     const response = await api.put("/user/profile", updatedData);
     return response.data;
   },

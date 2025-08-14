@@ -18,6 +18,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FileText } from "lucide-react";
+import Cookies from "js-cookie";
+import { getValidToken, refreshToken } from "@/app/utils/auth";
 
 const govIdSchema = z.object({
   idNumber: z.string().min(5, { message: "ID number must be at least 5 characters" }),
@@ -45,7 +47,7 @@ export default function Profile() {
       idNumber: "",
       documentUrl: "",
       verificationStatus: "",
-      rejectionNote: "",
+      reason: "",
     },
   });
 
@@ -67,9 +69,7 @@ export default function Profile() {
   useEffect(() => {
     const fetchUserData = async () => {
       try {
-        console.log("Fetching user data...");
         const profileData = await apiService.user.getProfile();
-        console.log("Profile data:", profileData.data);
         if (profileData && profileData.data) {
           setUserData({
             fullName: profileData.data.fullName || "",
@@ -79,15 +79,46 @@ export default function Profile() {
             gender: profileData.data.gender || "",
             country: profileData.data.country || "",
             state: profileData.data.state || "",
-            govId: profileData.data.govId || { idNumber: "", documentUrl: "", verificationStatus: "", rejectionNote: "" },
+            govId: profileData.data.govId || {
+              idNumber: "",
+              documentUrl: "",
+              verificationStatus: "",
+              rejectionNote: "",
+            },
           });
         } else {
           console.error("Invalid profile data structure:", profileData);
           setError("Failed to load profile data. Please try again.");
         }
-      } catch (error) {
+      } catch (error: any) {
         console.error("Error fetching user data:", error);
-        setError("Failed to load profile data. Please try again.");
+        if (error.response?.status === 401) {
+          try {
+            await refreshToken();
+            const profileData = await apiService.user.getProfile();
+            setUserData({
+              fullName: profileData.data.fullName || "",
+              email: profileData.data.email || "",
+              phone: profileData.data.phoneNumber || "",
+              image: profileData.data.image || "",
+              gender: profileData.data.gender || "",
+              country: profileData.data.country || "",
+              state: profileData.data.state || "",
+              govId: profileData.data.govId || {
+                idNumber: "",
+                documentUrl: "",
+                verificationStatus: "",
+                rejectionNote: "",
+              },
+            });
+          } catch (refreshError) {
+            console.error("Refresh token failed:", refreshError);
+            setError("Session expired. Please log in again.");
+            window.location.href = "/user/login";
+          }
+        } else {
+          setError("Failed to load profile data. Please try again.");
+        }
       }
     };
 
@@ -126,10 +157,11 @@ export default function Profile() {
   const uploadFile = async (file: File): Promise<string> => {
     const formData = new FormData();
     formData.append("file", file);
+    const token = await getValidToken();
     const response = await fetch("/api/upload", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+        Authorization: `Bearer ${token}`,
       },
       body: formData,
     });
@@ -144,7 +176,7 @@ export default function Profile() {
     setError(null);
     setIsSubmittingGovId(true);
     try {
-      const token = localStorage.getItem("accessToken");
+      const token = await getValidToken();
       if (!token) {
         setError("Authentication required. Please log in.");
         window.location.href = "/user/login";
@@ -171,7 +203,7 @@ export default function Profile() {
           idNumber: values.idNumber,
           documentUrl: documentUrl,
           verificationStatus: "Pending",
-          rejectionNote: "",
+          reason: "",
         },
       }));
       setShowGovIdForm(false);
@@ -266,10 +298,14 @@ export default function Profile() {
                     <span>Verification pending...</span>
                   </div>
                 ) : isGovIdRejected ? (
-                  <div className="flex items-center text-sm text-red-500">
-                    <span>
-                      ID Verification Rejected: {userData.govId.rejectionNote || "No reason provided"}
-                    </span>
+                  <div className="flex items-center text-sm">
+                    <div className="relative group">
+                      <span className="text-red-500">Rejected</span>
+                      <div className="absolute hidden group-hover:block z-10 w-64 p-2 mt-1 text-sm text-white bg-gray-800 rounded-md shadow-lg">
+                        <p>Reason: {userData.govId.reason || "No reason provided"}</p>
+                        <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-full w-0 h-0 border-l-4 border-r-4 border-b-8 border-l-transparent border-r-transparent border-b-gray-800"></div>
+                      </div>
+                    </div>
                     <button
                       onClick={() => setShowGovIdForm(true)}
                       className="ml-2 text-blue-500 underline text-sm"

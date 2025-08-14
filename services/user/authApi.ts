@@ -6,13 +6,15 @@ export const authApi = {
     const response = await api.post("/auth/login", credentials);
     Cookies.set("accessToken", response.data.accessToken, {
       expires: 1,
-      secure: true,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
+      path: "/",
     });
     Cookies.set("refreshToken", response.data.refreshToken, {
       expires: 7,
-      secure: true,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
+      path: "/",
     });
     return response.data;
   },
@@ -22,12 +24,19 @@ export const authApi = {
     if (!refreshToken) throw new Error("No refresh token found");
     try {
       await api.post("/auth/logout", { refreshToken });
-      Cookies.remove("accessToken");
-      Cookies.remove("refreshToken");
+      Cookies.remove("accessToken", { path: "/" });
+      Cookies.remove("refreshToken", { path: "/" });
     } catch (error) {
       console.error("Logout failed:", error);
       throw error;
     }
+  },
+
+  refreshToken: async (data: { refreshToken: string }) => { 
+    console.log("Sending refresh token request:", data);
+    const response = await api.post("/auth/refresh-token", data);
+    console.log("Refresh token response:", response.data);
+    return response.data;
   },
 
   verifyOtp: async (data: { email: string; otp: string }) => {
@@ -39,7 +48,8 @@ export const authApi = {
     const response = await api.post("/auth/resend-otp", data);
     return response.data;
   },
-    forgotPassword: async (data: { email: string }) => {
+
+  forgotPassword: async (data: { email: string }) => {
     const response = await api.post("/auth/forgot-password", data);
     return response.data;
   },

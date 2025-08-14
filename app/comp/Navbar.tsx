@@ -46,7 +46,7 @@ const connectSocket = () => {
     reconnectionAttempts: maxRetries,
     reconnectionDelay: 2000,
     reconnectionDelayMax: 5000,
-    timeout: 10000, // Add timeout of 10 seconds
+    timeout: 10000, 
   });
 
   const handleConnect = () => {

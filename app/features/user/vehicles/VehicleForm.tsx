@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { apiService } from "@/services/api";
+import Cookies from "js-cookie";
 import {
   Form,
   FormControl,
@@ -112,10 +113,11 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
   const uploadFile = async (file: File): Promise<string> => {
     const formData = new FormData();
     formData.append("file", file);
+    const token = Cookies.get("accessToken");
     const response = await fetch("/api/upload", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${localStorage.getItem("accessToken")}`,
+        Authorization: `Bearer ${token}`,
       },
       body: formData,
     });
@@ -130,10 +132,10 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
     setError(null);
     setIsLoading(true);
     try {
-      const token = localStorage.getItem("accessToken");
+      const token = Cookies.get("accessToken");
       if (!token) {
         setError("Authentication required. Please log in.");
-        window.location.href = "/login";
+        window.location.href = "/user/login";
         return;
       }
 
@@ -186,16 +188,6 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
       setIsLoading(false);
     }
   };
-
-  // Add updateVehicle to apiService if not present
-  useEffect(() => {
-    if (!apiService.vehicle.updateVehicle) {
-      apiService.vehicle.updateVehicle = async (vehicleId: string, vehicleData: any) => {
-        const response = await apiService.vehicle.updateVehicle(`/vehicles/${vehicleId}`, vehicleData);
-        return response.data;
-      };
-    }
-  }, []);
 
   useEffect(() => {
     return () => {

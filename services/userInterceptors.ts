@@ -1,5 +1,6 @@
 import axios from "axios";
 import Cookies from "js-cookie";
+import router from "next/router";
 
 const getToken = () => Cookies.get("accessToken");
 const getRefreshToken = () => Cookies.get("refreshToken");
@@ -17,17 +18,19 @@ export const createUserApiInstance = (baseURL: string) => {
     (config) => {
       if (
         config.url?.includes("/auth/verify-otp") ||
-        config.url?.includes("/auth/resend-otp")
+        config.url?.includes("/auth/resend-otp") ||
+        config.url?.includes("/auth/login") ||
+        config.url?.includes("/auth/refresh-token")
       ) {
         return config;
       }
 
       const token = getToken();
-      console.log("Token being sent:", token);
+      console.log("Request URL:", config.url, "Token:", token);
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
       } else {
-        console.warn("No accessToken found in cookies");
+        console.warn("No accessToken found in cookies for", config.url);
       }
       return config;
     },
@@ -37,28 +40,23 @@ export const createUserApiInstance = (baseURL: string) => {
   api.interceptors.response.use(
     (response) => response,
     async (error) => {
+      console.log("Interceptor error:", error.response?.status, error.response?.data, "URL:", error.config?.url);
       const originalRequest = error.config;
-
-      if (
-        error.response?.status === 403 &&
-        error.response?.data?.message === "Your account has been blocked. Contact support."
-      ) {
-        Cookies.remove("accessToken");
-        Cookies.remove("refreshToken");
-        return Promise.reject(error);
-      }
 
       if (
         error.response?.status === 401 &&
         !originalRequest._retry &&
         !originalRequest.url?.includes("/auth/verify-otp") &&
         !originalRequest.url?.includes("/auth/resend-otp") &&
-        !originalRequest.url?.includes("/auth/login")
+        !originalRequest.url?.includes("/auth/login") &&
+        !originalRequest.url?.includes("/auth/refresh-token")
       ) {
+        console.log("Attempting to refresh token...");
         originalRequest._retry = true;
 
         try {
           const refreshToken = getRefreshToken();
+          console.log("Refresh token:", refreshToken);
           if (!refreshToken) throw new Error("No refresh token found");
 
           const { data } = await axios.post(
@@ -66,32 +64,37 @@ export const createUserApiInstance = (baseURL: string) => {
             { refreshToken },
             { withCredentials: true }
           );
+          console.log("New tokens:", data);
 
           Cookies.set("accessToken", data.accessToken, {
             expires: 1,
-            secure: true,
+            secure: process.env.NODE_ENV === "production",
             sameSite: "strict",
+            path: "/",
           });
           if (data.refreshToken) {
             Cookies.set("refreshToken", data.refreshToken, {
               expires: 7,
-              secure: true,
+              secure: process.env.NODE_ENV === "production",
               sameSite: "strict",
+              path: "/",
             });
           }
 
+          api.defaults.headers.Authorization = `Bearer ${data.accessToken}`;
           originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
+          console.log("Retrying original request:", originalRequest.url);
           return api(originalRequest);
         } catch (refreshError) {
           console.error("Refresh token failed:", refreshError);
-          Cookies.remove("accessToken");
-          Cookies.remove("refreshToken");
-          window.location.href = "/user/login";
+          Cookies.remove("accessToken", { path: "/" });
+          Cookies.remove("refreshToken", { path: "/" });
+          router.push("/user/login");
           return Promise.reject(refreshError);
         }
       }
 
-      console.log("Interceptor caught error:", error.response?.status, error.response?.data);
+      console.log("Interceptor rejecting error:", error.response?.status, error.response?.data);
       return Promise.reject(error);
     }
   );

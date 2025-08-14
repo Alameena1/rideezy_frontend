@@ -9,6 +9,7 @@ interface SubscriptionPlan {
 }
 
 interface CurrentSubscription {
+  originalPrice: number;
   plan: SubscriptionPlan;
   startDate: string;
   endDate: string;
@@ -28,8 +29,9 @@ export default function CurrentPlanCard({ currentSubscription }: CurrentPlanCard
             <span className="font-medium">Plan:</span> {currentSubscription.plan.name}
           </p>
           <p className="text-sm text-gray-600">
-            <span className="font-medium">Price:</span> ₹{currentSubscription.plan.price}
+            <span className="font-medium">Price:</span> ₹{currentSubscription.originalPrice} {/* Use originalPrice instead */}
           </p>
+          {/* Rest of your component remains the same */}
           <p className="text-sm text-gray-600">
             <span className="font-medium">Duration:</span> {currentSubscription.plan.durationMonths} month(s)
           </p>

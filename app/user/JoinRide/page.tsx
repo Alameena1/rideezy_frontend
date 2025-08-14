@@ -13,12 +13,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { MapPin, Clock, Route, IndianRupee, Search, Navigation } from "lucide-react";
+import { MapPin, Clock, Route, IndianRupee, Search, Navigation, MessageCircle } from "lucide-react";
 import { format } from "date-fns";
 import axios from "axios";
 import useAuth from "@/app/hooks/useAuth";
 import { useRidePayment } from "../../features/user/ride/useRidePayment";
 import MainLayout from "@/app/comp/MainLayout";
+import { useRouter } from "next/navigation";
 
 const MapComponent = dynamic(() => import("../../../app/comp/MapComponent"), {
   ssr: false,
@@ -36,6 +37,7 @@ interface Ride {
   distanceKm: number;
   costPerPerson: number;
   routeGeometry: string;
+  driverId: string; // Assuming driverId is available
 }
 
 interface FormData {
@@ -51,6 +53,7 @@ interface PlaceNames {
 
 const JoinRidePage: React.FC = () => {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const router = useRouter();
   const {
     register,
     setValue,
@@ -207,7 +210,6 @@ const JoinRidePage: React.FC = () => {
       return;
     }
 
-  
     if (!userLocation || userLocation.trim() === "") {
       setError("Please select your pickup location before joining a ride.");
       console.warn("userLocation is invalid:", userLocation);
@@ -267,6 +269,11 @@ const JoinRidePage: React.FC = () => {
 
   const handleSelectRide = (ride: Ride) => {
     setSelectedRide(ride);
+  };
+
+  const handleChatWithDriver = (rideId: string, driverId: string) => {
+ 
+    router.push(`/user/chat?rideId=${rideId}&driverId=${driverId}`);
   };
 
   const mapComponentProps = useMemo(
@@ -457,28 +464,46 @@ const JoinRidePage: React.FC = () => {
                                   </div>
                                 </div>
 
-                                <Button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleJoinRide(ride);
-                                  }}
-                                  className="w-full"
-                                  size="sm"
-                                  disabled={
-                                    getAvailableSeats(ride) === 0 ||
-                                    !userLocation ||
-                                    userLocation.trim() === "" ||
-                                    !destination ||
-                                    destination.trim() === "" ||
-                                    paymentLoading === ride.rideId
-                                  }
-                                >
-                                  {paymentLoading === ride.rideId
-                                    ? "Processing Payment..."
-                                    : getAvailableSeats(ride) === 0
-                                    ? "Ride Full"
-                                    : `Pay ₹${ride.costPerPerson.toFixed(2)} to Join`}
-                                </Button>
+                                <div className="space-y-2">
+                                  {/* Chat Button above Pay Button */}
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full flex items-center justify-center gap-2"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleChatWithDriver(ride._id, ride.driverId);
+                                    }}
+                                    disabled={!ride.driverId}
+                                  >
+                                    <MessageCircle className="h-4 w-4" />
+                                    Chat with Driver
+                                  </Button>
+
+                                  {/* Pay Button */}
+                                  <Button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleJoinRide(ride);
+                                    }}
+                                    className="w-full flex items-center justify-center gap-2"
+                                    size="sm"
+                                    disabled={
+                                      getAvailableSeats(ride) === 0 ||
+                                      !userLocation ||
+                                      userLocation.trim() === "" ||
+                                      !destination ||
+                                      destination.trim() === "" ||
+                                      paymentLoading === ride.rideId
+                                    }
+                                  >
+                                    {paymentLoading === ride.rideId
+                                      ? "Processing Payment..."
+                                      : getAvailableSeats(ride) === 0
+                                      ? "Ride Full"
+                                      : `Pay ₹${ride.costPerPerson.toFixed(2)}`}
+                                  </Button>
+                                </div>
                               </div>
                             </CardContent>
                           </Card>

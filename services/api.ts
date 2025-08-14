@@ -8,6 +8,7 @@ import { subscriptionApi } from "./user/subscriptionApi";
 import { geoApi } from "./user/geoApi";
 import { trackingApi } from "./user/trackingApi";
 import {notificationApi} from './user/notificationApi'
+import { chatApi } from "./user/chatApi";
 
 // Lazy initialization of api
 let apiInstance: ReturnType<typeof createUserApiInstance>;
@@ -30,6 +31,7 @@ export const apiService = {
   geo: geoApi,
   tracking: trackingApi,
   notification: notificationApi, 
+  chat:chatApi
 };
 
 import("./user/notificationApi").then((module) => {
