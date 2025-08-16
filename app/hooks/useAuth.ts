@@ -1,4 +1,3 @@
-// src/app/hooks/useAuth.ts
 "use client";
 
 import { useEffect, useState } from "react";
@@ -7,13 +6,14 @@ import { useSession } from "next-auth/react";
 import { apiService } from "../../services/api";
 import Cookies from "js-cookie";
 import { jwtDecode } from "jwt-decode";
-import { getValidToken } from "@/app/utils/auth";
+import { getValidToken, removeToken } from "@/app/utils/auth";
 
 interface User {
   _id: string;
   driverId?: string;
   email?: string;
   name?: string;
+  fullName?: string; 
 }
 
 const useAuth = () => {
@@ -25,9 +25,7 @@ const useAuth = () => {
 
   const logout = () => {
     console.log("Logging out user");
-    // Clear tokens from Cookies
-    Cookies.remove("accessToken");
-    Cookies.remove("refreshToken");
+    removeToken();
     setIsAuthenticated(false);
     setUser(null);
     router.push("/user/login");
@@ -39,7 +37,6 @@ const useAuth = () => {
       console.log("Checking auth, sessionStatus:", sessionStatus);
 
       try {
-        // Prioritize next-auth session if authenticated
         if (sessionStatus === "authenticated" && session?.user) {
           console.log("Google login detected, storing tokens");
           const accessToken = session.user.access_token;
@@ -69,17 +66,17 @@ const useAuth = () => {
             });
           }
 
-          const newUser = {
+          const newUser: User = {
             _id: decodedUser?.userId || decodedUser?.sub || session.user.id,
             driverId: decodedUser?.userId,
             email: session.user.email || decodedUser?.email,
             name: session.user.name,
+            fullName: session.user.name, // Added for consistency
           };
           console.log("Setting user from Google login:", newUser);
           setUser(newUser);
           setIsAuthenticated(true);
 
-          // Check user status for Google login
           const profileData = await apiService.user.getProfile();
           if (profileData?.success && profileData.data) {
             if (profileData.data.status === "Blocked") {
@@ -92,8 +89,6 @@ const useAuth = () => {
             throw new Error("Invalid profile data");
           }
         } else {
-          // Use getValidToken for custom login to handle token refresh
-          console.log("Custom login check, attempting to get valid token");
           const token = await getValidToken();
           console.log("Token from getValidToken:", token ? "present" : "missing");
 
@@ -107,7 +102,6 @@ const useAuth = () => {
               throw new Error("Invalid token format");
             }
 
-            console.log("Validating token with apiService.getProfile");
             const profileData = await apiService.user.getProfile();
             console.log("Profile data received:", profileData);
 
@@ -118,11 +112,12 @@ const useAuth = () => {
                 return;
               }
 
-              const newUser = {
+              const newUser: User = {
                 _id: profileData.data._id || decodedUser.userId,
                 driverId: decodedUser.userId,
                 email: profileData.data.email || decodedUser.email,
                 name: profileData.data.name,
+                fullName: profileData.data.name || decodedUser.name, // Added for consistency
               };
               console.log("Setting user from profile data:", newUser);
               setUser(newUser);

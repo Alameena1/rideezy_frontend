@@ -1,10 +1,17 @@
-// src/app/utils/auth.ts
 import jwt from 'jsonwebtoken';
 import apiService from '@/services/api';
+import Cookies from 'js-cookie';
 
 export const getToken = (): string | null => {
   if (typeof window !== 'undefined') {
-    return localStorage.getItem('token');
+    return localStorage.getItem('token') || Cookies.get('accessToken') || null;
+  }
+  return null;
+};
+
+export const getRefreshToken = (): string | null => {
+  if (typeof window !== 'undefined') {
+    return localStorage.getItem('refreshToken') || Cookies.get('refreshToken') || null;
   }
   return null;
 };
@@ -12,12 +19,33 @@ export const getToken = (): string | null => {
 export const setToken = (token: string): void => {
   if (typeof window !== 'undefined') {
     localStorage.setItem('token', token);
+    Cookies.set('accessToken', token, {
+      expires: 1,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+    });
+  }
+};
+
+export const setRefreshToken = (refreshToken: string): void => {
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('refreshToken', refreshToken);
+    Cookies.set('refreshToken', refreshToken, {
+      expires: 7,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+    });
   }
 };
 
 export const removeToken = (): void => {
   if (typeof window !== 'undefined') {
     localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
+    Cookies.remove('accessToken');
+    Cookies.remove('refreshToken');
   }
 };
 
@@ -33,12 +61,20 @@ export const isTokenExpired = (token: string): boolean => {
 
 export const refreshToken = async (): Promise<string> => {
   try {
-    const response = await apiService.auth.refreshToken();
+    const refreshToken = getRefreshToken();
+    if (!refreshToken) {
+      throw new Error('No refresh token available');
+    }
+
+    const response = await apiService.auth.refreshToken({ refreshToken });
     if (response.success && response.token) {
       setToken(response.token);
+      if (response.refreshToken) {
+        setRefreshToken(response.refreshToken);
+      }
       return response.token;
     }
-    throw new Error('Failed to refresh token');
+    throw new Error('Failed to refresh token: ' + (response.message || 'Unknown error'));
   } catch (error) {
     removeToken();
     throw error;

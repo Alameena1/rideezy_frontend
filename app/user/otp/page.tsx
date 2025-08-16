@@ -1,7 +1,7 @@
 // src/pages/user/otp.tsx
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, JSX } from "react";
 import { useRouter, useSearchParams } from "next/navigation"; 
 import Head from "next/head";
 import { apiService } from "@/services/api"; 

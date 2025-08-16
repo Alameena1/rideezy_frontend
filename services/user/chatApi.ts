@@ -1,4 +1,3 @@
-// src/services/api/chatApi.ts
 import { api } from "../api";
 
 interface Message {
@@ -19,8 +18,9 @@ interface Conversation {
 export const chatApi = {
   getConversation: async (conversationId: string) => {
     try {
+      console.log("Fetching conversation:", conversationId);
       const response = await api.get(`/chat/conversations/${conversationId}`);
-      console.log("popopopoop",response)
+      console.log("getConversation response:", response);
       return {
         success: response.data.success,
         conversation: response.data.conversation,
@@ -33,7 +33,9 @@ export const chatApi = {
 
   getMessages: async (conversationId: string) => {
     try {
+      console.log("Fetching messages for conversation:", conversationId);
       const response = await api.get(`/chat/conversations/${conversationId}/messages`);
+      console.log("getMessages response:", response);
       return {
         success: response.data.success,
         messages: response.data.messages,
@@ -46,7 +48,9 @@ export const chatApi = {
 
   createConversation: async (participants: string[]) => {
     try {
+      console.log("Creating conversation with participants:", participants);
       const response = await api.post("/chat/conversations", { participants });
+      console.log("createConversation response:", response);
       return {
         success: response.data.success,
         conversation: response.data.conversation,
@@ -57,7 +61,7 @@ export const chatApi = {
     }
   },
 
-  sendMessage: async (convId: string | undefined, conversationId: string, token: string | null, content: string) => {
+  sendMessage: async (conversationId: string, content: string) => {
     try {
       const response = await api.post(`/chat/conversations/${conversationId}/messages`, { content });
       return {
@@ -72,7 +76,9 @@ export const chatApi = {
 
   getUserConversations: async (userId: string) => {
     try {
+      console.log("Fetching conversations for user:", userId);
       const response = await api.get(`/chat/users/${userId}/conversations`);
+      console.log("getUserConversations response:", response.data);
       return {
         success: response.data.success,
         conversations: response.data.conversations,
@@ -83,9 +89,11 @@ export const chatApi = {
     }
   },
 
-  getOrCreateRideConversation: async (data: { rideId: string; driverId: string }) => {
+  getOrCreateRideConversation: async (data: { rideId: string; driverId: string; userId: string }) => {
     try {
+      console.log("Getting or creating ride conversation:", data);
       const response = await api.post("/chat/ride-conversation", data);
+      console.log("getOrCreateRideConversation response:", response);
       return {
         success: response.data.success,
         conversation: response.data.conversation,
