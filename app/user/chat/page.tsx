@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MessageCircle, Loader2 } from "lucide-react";
 import { useSearchParams, useRouter } from "next/navigation";
-import useAuth  from "@/app/hooks/useAuth"; 
+import useAuth from "@/app/hooks/useAuth";
 import MainLayout from "@/app/comp/MainLayout";
 import apiService from "@/services/api";
 import { useChat } from "../../hooks/useChat";
@@ -43,6 +43,8 @@ const Chat: React.FC = () => {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const userId = user?._id;
 
+  console.log("Component mounted with userId:", userId, "conversationId:", conversationId, "rideId:", rideId, "driverId:", driverId);
+
   const { messages, setMessages, error: chatError, isConnected, typingUsers, handleTyping, sendMessage, setError: setChatError } = useChat(
     conversationId || '',
     userId || ''
@@ -51,21 +53,17 @@ const Chat: React.FC = () => {
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [messageInput, setMessageInput] = useState("");
-  const [error, setError] = useState("");
-  const [isTyping, setIsTyping] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const [isTyping, setIsTyping] = useState(false);
 
   const { error: socketError } = useSocketStore();
 
   useEffect(() => {
-    if (socketError || chatError) {
-      setError(socketError || chatError);
-    }
-  }, [socketError, chatError]);
-
-  useEffect(() => {
+    console.log("useEffect triggered with authLoading:", authLoading, "isAuthenticated:", isAuthenticated, "userId:", userId);
     if (authLoading) return;
     if (!isAuthenticated || !userId) {
       setError("Please log in to access the chat.");
@@ -75,16 +73,18 @@ const Chat: React.FC = () => {
 
     const fetchData = async () => {
       setIsLoading(true);
+      console.log("Starting fetchData with userId:", userId, "conversationId:", conversationId, "rideId:", rideId, "driverId:", driverId);
       try {
         let convId = conversationId;
 
         const convsResponse = await apiService.chat.getUserConversations(userId);
+        console.log("getUserConversations response:", convsResponse);
         if (!convsResponse.success) {
           setError(convsResponse.message || "Failed to fetch user conversations.");
           setIsLoading(false);
           return;
         }
-        setConversations(convsResponse.conversations);
+        setConversations(convsResponse.conversations || []);
 
         if (rideId && driverId && !conversationId) {
           const existingConversation = convsResponse.conversations.find(
@@ -100,13 +100,14 @@ const Chat: React.FC = () => {
         }
 
         if (rideId && driverId && !convId) {
-          const response = await apiService.chat.getOrCreateRideConversation({ rideId, driverId });
+          const response = await apiService.chat.getOrCreateRideConversation({ rideId, driverId, userId });
+          console.log("getOrCreateRideConversation response:", response);
           if (!response.success) {
             setError(response.message || "Failed to start conversation with driver.");
             setIsLoading(false);
             return;
           }
-          convId = response.conversation._id;
+          convId = response.conversation?._id || response.conversation; // Handle potential structure variation
           setConversation(response.conversation);
           router.replace(`/user/chat?conversationId=${convId}`);
         }
@@ -118,12 +119,13 @@ const Chat: React.FC = () => {
         }
 
         if (!/^[0-9a-fA-F]{24}$/.test(convId)) {
-          setError("Invalid conversation ID format.");
+          setError("Invalid conaaversation ID format.");
           setIsLoading(false);
           return;
         }
 
         const convResponse = await apiService.chat.getConversation(convId);
+        console.log("getConversation response:", convResponse);
         if (!convResponse.success) {
           setError(convResponse.message || "Failed to fetch conversation.");
           if (convResponse.status === 401) {
@@ -138,6 +140,7 @@ const Chat: React.FC = () => {
         console.error("Chat fetch error:", err);
       } finally {
         setIsLoading(false);
+        console.log("fetchData completed, conversation:", conversation, "error:", error);
       }
     };
 
@@ -145,10 +148,16 @@ const Chat: React.FC = () => {
   }, [conversationId, rideId, driverId, userId, isAuthenticated, authLoading, router]);
 
   useEffect(() => {
-    if (messages.length > 0) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (scrollRef.current && messages.length > 0) {
+      const viewport = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]') as HTMLDivElement | null;
+      if (viewport) {
+        viewport.scroll({
+          top: viewport.scrollHeight,
+          behavior: "smooth",
+        });
+      }
     }
-  }, [messages.length]);
+  }, [messages]);
 
   const handleTypingWrapper = useCallback(() => {
     if (!isTyping) {
@@ -178,7 +187,7 @@ const Chat: React.FC = () => {
       timestamp: new Date().toISOString(),
       createdAt: new Date(),
     };
-    console.log('Adding optimistic message:', optimisticMessage); // Debug log
+    console.log('Adding optimistic message:', optimisticMessage);
     setMessages((prev) => [...prev, optimisticMessage]);
 
     const success = await sendMessage(messageInput);
@@ -222,6 +231,11 @@ const Chat: React.FC = () => {
       ? new Date(lastMessage.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       : "";
   };
+
+  // Temporarily remove strict check to debug
+  // if (!conversation && !isLoading) {
+  //   return <div>Loading conversation...</div>;
+  // }
 
   return (
     <MainLayout activeItem="Chat">
@@ -292,7 +306,7 @@ const Chat: React.FC = () => {
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setError("")}
+                    onClick={() => setError(null)}
                     className="text-red-500 hover:bg-red-200"
                   >
                     Clear
@@ -300,7 +314,7 @@ const Chat: React.FC = () => {
                 </div>
               )}
 
-              <ScrollArea className="flex-1 p-4 overflow-y-auto">
+              <ScrollArea ref={scrollRef} className="flex-1 p-4 overflow-y-auto" style={{ maxHeight: "calc(100vh - 300px)" }}>
                 {isLoading ? (
                   <div className="flex items-center justify-center h-full">
                     <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
@@ -321,9 +335,9 @@ const Chat: React.FC = () => {
                             msg.senderId._id === userId ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-800"
                           } break-words`}
                         >
-                          <div className="font-medium text-sm">
+                          {/* <div className="font-medium text-sm">
                             {msg.senderId._id === userId ? "You" : msg.senderId.fullName || "Unknown User"}
-                          </div>
+                          </div> */}
                           <p className="text-sm">{msg.content}</p>
                           <div className="text-xs opacity-80 mt-1">
                             {new Date(msg.timestamp).toLocaleTimeString([], {

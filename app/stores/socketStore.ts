@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { io, Socket } from 'socket.io-client';
 import { getToken, getRefreshToken, refreshToken } from '@/app/utils/auth';
+import Cookies from 'js-cookie';
 
 interface SocketStore {
   socket: Socket | null;
@@ -41,6 +42,13 @@ export const useSocketStore = create<SocketStore>((set, get) => ({
     newSocket.on('connect', () => {
       console.log('Connected to chat server:', newSocket.id);
       set({ isConnected: true, error: '' });
+      newSocket.emit('join', userId, (error?: string) => {
+        if (error) {
+          console.error('Failed to join user room:', error);
+        } else {
+          console.log('Joined user room for notifications:', userId);
+        }
+      });
     });
 
     newSocket.on('disconnect', (reason) => {

@@ -66,7 +66,20 @@ export const useChat = (conversationId: string, userId: string) => {
                 : m
             );
           }
-          return [...prev, { ...message, timestamp: new Date(message.createdAt).toISOString() }];
+          // Avoid adding duplicate if message is from current user
+          if (message.senderId._id === userId) {
+            return prev;
+          }
+          // Attempt to populate fullName from existing messages if available
+          const existingSender = prev.find((m) => m.senderId._id === message.senderId._id);
+          return [...prev, {
+            ...message,
+            timestamp: new Date(message.createdAt).toISOString(),
+            senderId: {
+              ...message.senderId,
+              fullName: existingSender?.senderId.fullName || message.senderId.fullName || "Unknown User",
+            },
+          }];
         });
       });
 

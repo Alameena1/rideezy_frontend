@@ -18,7 +18,21 @@ interface User {
 
 const useAuth = () => {
   const router = useRouter();
-  const { data: session, status: sessionStatus } = useSession();
+  interface SessionUser {
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+    access_token?: string;
+    refresh_token?: string;
+    id?: string;
+  }
+
+  interface CustomSession {
+    user?: SessionUser;
+    [key: string]: any;
+  }
+
+  const { data: session, status: sessionStatus } = useSession() as { data: CustomSession | null, status: string };
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
@@ -70,8 +84,8 @@ const useAuth = () => {
             _id: decodedUser?.userId || decodedUser?.sub || session.user.id,
             driverId: decodedUser?.userId,
             email: session.user.email || decodedUser?.email,
-            name: session.user.name,
-            fullName: session.user.name, // Added for consistency
+            name: session.user.name ?? undefined,
+            fullName: session.user.name ?? undefined, 
           };
           console.log("Setting user from Google login:", newUser);
           setUser(newUser);
