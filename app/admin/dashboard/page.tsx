@@ -36,6 +36,7 @@ export default function Dashboard() {
       try {
         setLoading(true);
         const response = await apiService.admin.dashboard.getDashboardMetrics();
+        console.log("opopopopopo",response)
         setMetrics(response.metrics);
         setUserGrowth(response.userGrowth);
         setRideCount(response.rideCount);
@@ -143,18 +144,19 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={revenueDistribution}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={100}
-                  label
-                >
-                  {revenueDistribution.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
+  data={revenueDistribution}
+  dataKey="value"
+  nameKey="name"
+  cx="50%"
+  cy="50%"
+  outerRadius={100}
+  label={({ name, value }) => `${name}: ${value.toFixed(2)}`}
+>
+  {revenueDistribution.map((entry, index) => (
+    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+  ))}
+</Pie>
+
                 <Tooltip
                   contentStyle={{ backgroundColor: "#1F2937", border: "none", color: "#ffffff" }}
                 />

@@ -23,17 +23,17 @@ import { useWalletPayment } from "@/app/features/user/wallet/useWalletPayment";
 
 interface WalletResponse {
   success: boolean;
-  user: {
-    wallet: {
-      balance: number;
-      transactions: {
-        transactionId: string;
-        amount: number;
-        type: "DEPOSIT" | "WITHDRAWAL" | "SUBSCRIPTION";
-        createdAt: string;
-      }[];
-    };
-  };
+  balance: number;
+  transactions: {
+    transactionId: string;
+    amount: number;
+    type: "DEPOSIT" | "WITHDRAWAL" | "SUBSCRIPTION" | "REFUND";
+    createdAt: string;
+    description?: string;
+  }[];
+  total: number;
+  totalPages: number;
+  currentPage: number;
 }
 
 interface Wallet {
@@ -42,9 +42,13 @@ interface Wallet {
   transactions: {
     transactionId: string;
     amount: number;
-    type: "DEPOSIT" | "WITHDRAWAL" | "SUBSCRIPTION";
+    type: "DEPOSIT" | "WITHDRAWAL" | "SUBSCRIPTION" | "REFUND";
     createdAt: string;
+    description?: string;
   }[];
+  total: number;
+  totalPages: number;
+  currentPage: number;
 }
 
 export default function Wallet() {
@@ -54,7 +58,9 @@ export default function Wallet() {
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [amount, setAmount] = useState<number>(0);
-  const userId = user?._id; 
+  const [currentPage, setCurrentPage] = useState(1);
+  const limit = 3;
+  const userId = user?._id;
 
   const currentDate = new Date().toLocaleDateString("en-GB", {
     weekday: "short",
@@ -66,11 +72,15 @@ export default function Wallet() {
   const { handlePayment, paymentLoading } = useWalletPayment({
     userId: userId || undefined,
     onSuccess: (walletResponse: WalletResponse) => {
-      setWallet((prevWallet) => ({
-        balance: walletResponse.user.wallet.balance,
+      console.log("Payment success response:", walletResponse); // Debug log
+      setWallet({
+        balance: walletResponse.balance || 0,
         currency: "INR",
-        transactions: walletResponse.user.wallet.transactions,
-      }));
+        transactions: walletResponse.transactions,
+        total: walletResponse.total,
+        totalPages: walletResponse.totalPages,
+        currentPage: walletResponse.currentPage,
+      });
       setError(null);
       setIsModalOpen(false);
       setAmount(0);
@@ -89,19 +99,22 @@ export default function Wallet() {
       return;
     }
 
-    console.log("Fetching wallet for userId:", userId);
+    console.log("Fetching wallet for userId:", userId, "Page:", currentPage);
     const fetchWallet = async () => {
       setIsLoading(true);
       setError(null);
       try {
-        const response = await walletApi.getWallet(userId);
-        console.log("Wallet API response:", response);
+        const response = await walletApi.getWallet(userId, currentPage, limit);
+        console.log("Wallet state set:", response); // Debug log
         if (response.success) {
-          setWallet((prevWallet) => ({
-            balance: response.balance || prevWallet?.balance || 0,
+          setWallet({
+            balance: response.balance || 0,
             currency: "INR",
-            transactions: response.transactions || prevWallet?.transactions || [],
-          }));
+            transactions: response.transactions || [],
+            total: response.total || 0,
+            totalPages: response.totalPages || 1,
+            currentPage: response.currentPage || 1,
+          });
         } else {
           setError("Failed to load wallet data. Please try again.");
         }
@@ -114,7 +127,7 @@ export default function Wallet() {
     };
 
     fetchWallet();
-  }, [userId, authLoading, isAuthenticated]);
+  }, [userId, authLoading, isAuthenticated, currentPage]);
 
   const handleAddFunds = () => {
     if (amount <= 0) {
@@ -127,6 +140,12 @@ export default function Wallet() {
       currency: "INR",
       user: user ? { name: user.name || "Guest User", email: user.email || "guest@example.com" } : undefined,
     });
+  };
+
+  const handlePageChange = (newPage: number) => {
+    if (newPage >= 1 && newPage <= (wallet?.totalPages || 1)) {
+      setCurrentPage(newPage);
+    }
   };
 
   if (authLoading) {
@@ -175,33 +194,57 @@ export default function Wallet() {
                 <div className="bg-white p-6 rounded-lg shadow-md mb-6">
                   <h3 className="text-xl font-semibold text-gray-700">Current Balance</h3>
                   <p className="text-3xl font-bold text-indigo-600 mt-2">
-                    {wallet.balance.toFixed(2)} {wallet.currency}
+                    {(wallet.balance ?? 0).toFixed(2)} {wallet.currency}
                   </p>
                 </div>
                 <div className="bg-white p-6 rounded-lg shadow-md">
                   <h3 className="text-xl font-semibold text-gray-700">Transaction History</h3>
                   {wallet.transactions.length > 0 ? (
-                    <ul className="mt-4 space-y-4">
-                      {wallet.transactions
-                        .filter((transaction) => transaction.type !== "SUBSCRIPTION") // Filter out SUBSCRIPTION transactions
-                        .map((transaction) => (
+                    <>
+                      <ul className="mt-4 space-y-4">
+                        {wallet.transactions.map((transaction) => (
                           <li
                             key={transaction.transactionId}
                             className="flex justify-between items-center p-3 bg-gray-50 rounded-md"
                           >
                             <span className="text-gray-600">
-                              {transaction.type} - {new Date(transaction.createdAt).toLocaleDateString()}
+                              {transaction.description || `${transaction.type} - ${new Date(transaction.createdAt).toLocaleDateString()}`}
                             </span>
                             <span
                               className={`font-medium ${
-                                transaction.type === "DEPOSIT" ? "text-green-600" : "text-red-600"
+                                transaction.type === "DEPOSIT" || transaction.type === "REFUND"
+                                  ? "text-green-600"
+                                  : "text-red-600"
                               }`}
                             >
-                              {transaction.type === "DEPOSIT" ? "+" : "-"}{transaction.amount.toFixed(2)} {wallet.currency}
+                              {transaction.type === "DEPOSIT" || transaction.type === "REFUND"
+                                ? `+${transaction.amount.toFixed(2)}`
+                                : `-${transaction.amount.toFixed(2)}`}{" "}
+                              {wallet.currency}
                             </span>
                           </li>
                         ))}
-                    </ul>
+                      </ul>
+                      <div className="mt-6 flex justify-between items-center">
+                        <Button
+                          onClick={() => handlePageChange(currentPage - 1)}
+                          disabled={currentPage === 1}
+                          className="bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:bg-gray-100"
+                        >
+                          Previous
+                        </Button>
+                        <span className="text-gray-600">
+                          Page {wallet.currentPage} of {wallet.totalPages}
+                        </span>
+                        <Button
+                          onClick={() => handlePageChange(currentPage + 1)}
+                          disabled={currentPage === wallet.totalPages}
+                          className="bg-gray-200 text-gray-700 hover:bg-gray-300 disabled:bg-gray-100"
+                        >
+                          Next
+                        </Button>
+                      </div>
+                    </>
                   ) : (
                     <p className="text-gray-500 mt-4">No wallet transactions yet.</p>
                   )}
@@ -258,4 +301,4 @@ export default function Wallet() {
       </div>
     </MainLayout>
   );
-}
+} 

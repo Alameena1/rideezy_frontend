@@ -40,7 +40,7 @@ export const subscriptionApi = {
   }) => {
     try {
       const response = await api.post("/subscriptions/verify", data);
-      console.log("yyyyyyyyyyy")
+      console.log("yyyyyyyyyyy");
       return response.data;
     } catch (error: any) {
       console.error("Failed to verify and subscribe:", error.response?.status, error.response?.data);
@@ -48,7 +48,17 @@ export const subscriptionApi = {
     }
   },
 
- getSubscriptionStatus: async () => {
+  subscribeWithWallet: async (data: { userId: string; planId: string }) => {
+    try {
+      const response = await api.post("/subscriptions/subscribe-wallet", data);
+      return response.data;
+    } catch (error: any) {
+      console.error("Failed to subscribe with wallet:", error.response?.status, error.response?.data);
+      throw error;
+    }
+  },
+
+  getSubscriptionStatus: async () => {
     try {
       const response = await api.get("/subscriptions/status", {
         withCredentials: true,

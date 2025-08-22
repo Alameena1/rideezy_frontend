@@ -1,95 +1,168 @@
 import { useState } from "react";
-import { apiService } from "@/services/api";
 import Swal from "sweetalert2";
+import { subscriptionApi } from "@/services/user/subscriptionApi";
+import { walletApi } from "@/services/user/walletApi";
 
-interface RazorpayResponse {
-  razorpay_payment_id: string;
-  razorpay_order_id: string;
-  razorpay_signature: string;
-}
-
-interface UseRazorpayProps {
+interface RazorpayOptions {
   userId: string;
-  onSuccess: (subscriptionResponse: any) => void;
-  onError: (errorMessage: string) => void;
+  onSuccess: (response: any) => void;
+  onError: (error: string) => void;
 }
 
-export const useRazorpay = ({ userId, onSuccess, onError }: UseRazorpayProps) => {
-  const [paymentLoading, setPaymentLoading] = useState<string | null>(null);
+interface SubscriptionPlan {
+  _id: string;
+  name: string;
+  durationMonths: number;
+  price: number;
+  description: string;
+}
 
-  const loadRazorpayScript = () => {
-    return new Promise((resolve) => {
-      const script = document.createElement("script");
-      script.src = "https://checkout.razorpay.com/v1/checkout.js";
-      script.onload = () => resolve(true);
-      script.onerror = () => resolve(false);
-      document.body.appendChild(script);
-    });
-  };
+interface User {
+  _id?: string;
+  name?: string;
+  email?: string;
+}
 
-  const handleSubscribe = async (
-    plan: { _id: string; name: string },
-    user: { name?: string; email?: string }
-  ) => {
-    if (!userId) {
-      onError("User ID is missing. Please log in again.");
+export const useRazorpay = ({ userId, onSuccess, onError }: RazorpayOptions) => {
+  const [paymentLoading, setPaymentLoading] = useState(false);
+
+  const handleSubscribe = async (plan: SubscriptionPlan, user: User) => {
+    if (!userId || !user) {
+      onError("User information is missing. Please log in again.");
       return;
     }
 
-    setPaymentLoading(plan._id);
+    // Fetch wallet balance
+    let walletBalance = 0;
     try {
-      const scriptLoaded = await loadRazorpayScript();
-      if (!scriptLoaded) {
-        onError("Failed to load Razorpay SDK. Please try again.");
-        return;
-      }
-
-      const orderResponse = await apiService.subscription.createOrder(plan._id);
-      const { id: orderId, amount, currency } = orderResponse.order;
-
-      const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_KOCURsj88Mu4Sj",
-        amount: amount,
-        currency: currency,
-        name: "Your App Name",
-        description: `Subscription to ${plan.name}`,
-        order_id: orderId,
-        handler: async (response: RazorpayResponse) => {
-          try {
-            const verifyData = {
-              userId,
-              planId: plan._id,
-              paymentId: response.razorpay_payment_id,
-              orderId: response.razorpay_order_id,
-              signature: response.razorpay_signature,
-            };
-            const verifyResponse = await apiService.subscription.verifyAndSubscribe(verifyData);
-            alert("Payment successful! Subscription activated.");
-            const subscriptionResponse = await apiService.subscription.checkSubscription(userId);
-            onSuccess(subscriptionResponse);
-          } catch (err: any) {
-            onError(err.response?.data?.message || "Payment verification failed. Please try again.");
-          }
-        },
-        prefill: {
-          name: user?.name || "",
-          email: user?.email || "",
-        },
-        theme: {
-          color: "#2563EB",
-        },
-      };
-
-      const razorpay = new (window as any).Razorpay(options);
-      razorpay.on("payment.failed", (response: any) => {
-        onError(`Payment failed: ${response.error.description}`);
-      });
-      razorpay.open();
-    } catch (err: any) {
-      onError(err.response?.data?.message || "Failed to initiate payment. Please try again.");
-    } finally {
-      setPaymentLoading(null);
+      const walletResponse = await walletApi.getWallet(userId);
+      walletBalance = walletResponse.balance || 0;
+    } catch (error) {
+      console.error("Failed to fetch wallet balance:", error);
+      onError("Failed to fetch wallet balance. Please try again.");
+      return;
     }
+
+    // Show SweetAlert with payment options
+    Swal.fire({
+      title: "Choose Payment Method",
+      text: `Plan: ${plan.name} (₹${plan.price})`,
+      icon: "question",
+      showCancelButton: true,
+      cancelButtonText: "Cancel",
+      showDenyButton: true,
+      confirmButtonText: walletBalance >= plan.price ? "Pay with Wallet" : "Wallet (Insufficient Balance)",
+      denyButtonText: "Pay with Razorpay",
+      confirmButtonColor: walletBalance >= plan.price ? "#2563EB" : "#D1D5DB",
+      denyButtonColor: "#2563EB",
+      allowOutsideClick: false,
+    }).then(async (result) => {
+      if (result.isConfirmed && walletBalance >= plan.price) {
+        // Wallet payment
+        setPaymentLoading(true);
+        try {
+          const response = await subscriptionApi.subscribeWithWallet({ userId, planId: plan._id });
+          if (response.success) {
+            Swal.fire({
+              icon: "success",
+              title: "Subscription Successful",
+              text: "You have successfully subscribed using your wallet!",
+              confirmButtonColor: "#2563EB",
+            });
+            onSuccess(response);
+          } else {
+            throw new Error(response.message || "Failed to subscribe with wallet");
+          }
+        } catch (error: any) {
+          Swal.fire({
+            icon: "error",
+            title: "Subscription Failed",
+            text: error.message || "Failed to subscribe with wallet. Please try again.",
+            confirmButtonColor: "#2563EB",
+          });
+          onError(error.message || "Failed to subscribe with wallet");
+        } finally {
+          setPaymentLoading(false);
+        }
+      } else if (result.isDenied) {
+        // Razorpay payment
+        setPaymentLoading(true);
+        try {
+          const orderResponse = await subscriptionApi.createOrder(plan._id);
+          if (!orderResponse.success) {
+            throw new Error(orderResponse.message || "Failed to create order");
+          }
+
+          const options = {
+            key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_0o5iV9J7s9C6i9",
+            amount: orderResponse.order.amount,
+            currency: orderResponse.order.currency,
+            name: "Subscription Payment",
+            description: `Subscription for ${plan.name}`,
+            order_id: orderResponse.order.id,
+            handler: async function (response: any) {
+              try {
+                const verifyResponse = await subscriptionApi.verifyAndSubscribe({
+                  userId,
+                  planId: plan._id,
+                  paymentId: response.razorpay_payment_id,
+                  orderId: response.razorpay_order_id,
+                  signature: response.razorpay_signature,
+                });
+                if (verifyResponse.success) {
+                  Swal.fire({
+                    icon: "success",
+                    title: "Subscription Successful",
+                    text: "You have successfully subscribed!",
+                    confirmButtonColor: "#2563EB",
+                  });
+                  onSuccess(verifyResponse);
+                } else {
+                  throw new Error(verifyResponse.message || "Payment verification failed");
+                }
+              } catch (error: any) {
+                Swal.fire({
+                  icon: "error",
+                  title: "Payment Failed",
+                  text: error.message || "Payment verification failed. Please try again.",
+                  confirmButtonColor: "#2563EB",
+                });
+                onError(error.message || "Payment verification failed");
+              }
+            },
+            prefill: {
+              name: user.name || "Guest User",
+              email: user.email || "guest@example.com",
+            },
+            theme: {
+              color: "#2563EB",
+            },
+          };
+
+          const rzp = new (window as any).Razorpay(options);
+          rzp.on("payment.failed", function (response: any) {
+            Swal.fire({
+              icon: "error",
+              title: "Payment Failed",
+              text: response.error.description || "Payment failed. Please try again.",
+              confirmButtonColor: "#2563EB",
+            });
+            onError(response.error.description || "Payment failed");
+          });
+          rzp.open();
+        } catch (error: any) {
+          Swal.fire({
+            icon: "error",
+            title: "Order Creation Failed",
+            text: error.message || "Failed to create payment order. Please try again.",
+            confirmButtonColor: "#2563EB",
+          });
+          onError(error.message || "Failed to create payment order");
+        } finally {
+          setPaymentLoading(false);
+        }
+      }
+    });
   };
 
   return { handleSubscribe, paymentLoading };

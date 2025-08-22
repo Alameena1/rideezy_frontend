@@ -31,8 +31,8 @@ interface Ride {
   costPerPerson: number;
   totalPeople: number;
   passengers: { passengerId: string; passengerName: string; pickedUp?: boolean; droppedOff?: boolean }[];
-  pickupPoints: { passengerId: string; location: string; placename: string }[];
-  dropoffPoints: { passengerId: string; location: string; placename: string }[];
+  pickupPoints: { passengerId: string; location: string; placeName: string }[];
+  dropoffPoints: { passengerId: string; location: string; placeName: string }[];
   status: "Pending" | "Started" | "Completed";
   routeGeometry: string;
   paymentStatus: "Paid" | "Pending";
@@ -599,7 +599,6 @@ export default function JoinedRideDetails() {
                   const seatsLeft = (ride.totalPeople - 1) - ride.passengerCount;
                   const userPickup = ride.pickupPoints.find((p) => p.passengerId === userId);
                   const userDropoff = ride.dropoffPoints.find((p) => p.passengerId === userId);
-
                   return (
                     <Card key={ride._id} className="bg-white border border-gray-100 shadow-sm rounded-lg p-5 hover:shadow-md transition-shadow">
                       <div className="flex flex-col gap-4">
@@ -701,13 +700,13 @@ export default function JoinedRideDetails() {
                                 <p className="text-sm text-gray-600">
                                   <span className="font-medium">Your Pickup:</span>{" "}
                                   {userPickup
-                                    ? `${userPickup.placename} (${userPickup.location})`
+                                    ? `${userPickup.placeName} `
                                     : "Not assigned (Contact support)"}
                                 </p>
                                 <p className="text-sm text-gray-600">
                                   <span className="font-medium">Your Drop-off:</span>{" "}
                                   {userDropoff
-                                    ? `${userDropoff.placename} (${userDropoff.location})`
+                                    ? `${userDropoff.placeName} `
                                     : "Not assigned (Contact support)"}
                                 </p>
                                 <p className="text-sm text-gray-600">
@@ -742,9 +741,9 @@ export default function JoinedRideDetails() {
                                         <li key={index}>
                                           <span className="font-medium">Passenger {index + 1}:</span> {passenger.passengerName} <br />
                                           <span className="font-medium">Pickup:</span>{" "}
-                                          {pickup ? pickup.placename : "Not assigned"} <br />
+                                          {pickup ? pickup.placeName : "Not assigned"} <br />
                                           <span className="font-medium">Drop-off:</span>{" "}
-                                          {dropoff ? dropoff.placename : "Not assigned"} <br />
+                                          {dropoff ? dropoff.placeName : "Not assigned"} <br />
                                           <span className="font-medium">Picked Up:</span>{" "}
                                           {passenger.pickedUp ? "Yes" : "No"} <br />
                                           <span className="font-medium">Dropped Off:</span>{" "}
