@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import useAuth from "@/app/hooks/useAuth";
 import { apiService } from "@/services/api";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -37,6 +38,7 @@ interface Ride {
   routeGeometry: string;
   paymentStatus: "Paid" | "Pending";
   currentPosition?: [number, number] | null;
+  requestStatus?: "pending" | "accepted" | "rejected"; // New field for request status
 }
 
 interface TrackingData {
@@ -51,6 +53,7 @@ interface TrackingData {
 
 export default function JoinedRideDetails() {
   const { user, isAuthenticated } = useAuth();
+  const router = useRouter();
   const [rides, setRides] = useState<Ride[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -77,6 +80,7 @@ export default function JoinedRideDetails() {
     month: "short",
     year: "numeric",
   });
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       import("leaflet")
@@ -139,6 +143,7 @@ export default function JoinedRideDetails() {
         routeGeometry: ride.routeGeometry || "",
         paymentStatus: ride.paymentStatus || "Pending",
         currentPosition: ride.currentPosition || null,
+        requestStatus: ride.requestStatus || "accepted", // Default to "accepted" if not specified
       }));
 
       setRides(mappedRides);
@@ -207,7 +212,7 @@ export default function JoinedRideDetails() {
                 iconSize: [25, 41],
                 iconAnchor: [12, 41],
               }),
-            }).addTo(map).bindPopup(`Passenger ${index + 1} (${passenger.passengerName}) - Pickup: ${pickup.placename}`);
+            }).addTo(map).bindPopup(`Passenger ${index + 1} (${passenger.passengerName}) - Pickup: ${pickup.placeName}`);
           }).filter((marker): marker is L.Marker => marker !== null);
 
           dropoffMarkerRefs.current[ride._id] = ride.passengers.map((passenger, index) => {
@@ -228,7 +233,7 @@ export default function JoinedRideDetails() {
                 iconSize: [25, 41],
                 iconAnchor: [12, 41],
               }),
-            }).addTo(map).bindPopup(`Passenger ${index + 1} (${passenger.passengerName}) - Drop-off: ${dropoff.placename}`);
+            }).addTo(map).bindPopup(`Passenger ${index + 1} (${passenger.passengerName}) - Drop-off: ${dropoff.placeName}`);
           }).filter((marker): marker is L.Marker => marker !== null);
 
           if (ride.status === "Started" && ride.currentPosition) {
@@ -284,7 +289,6 @@ export default function JoinedRideDetails() {
   const fetchTrackingAndStartSimulation = async (rideId: string, retries = 0, maxRetries = 3) => {
     try {
       console.log("[JoinedRideDetails] Fetching tracking for rideId:", rideId);
-      console.log("[JoinedRideDetails] Current rides state:", rides);
       const ride = rides.find((r) => r._id === rideId);
       if (!ride) {
         console.error("[JoinedRideDetails] Ride not found in state for rideId:", rideId);
@@ -305,7 +309,6 @@ export default function JoinedRideDetails() {
           currentPosition = trackingData.data.length === 2 && trackingData.data.every((n: number) => !isNaN(n))
             ? [trackingData.data[0], trackingData.data[1]] as [number, number]
             : null;
-          // Infer pause if the position hasn't changed
           if (
             lastTrackingData.current[rideId] &&
             lastTrackingData.current[rideId]?.[0] === currentPosition?.[0] &&
@@ -423,7 +426,6 @@ export default function JoinedRideDetails() {
             currentPosition = trackingData.data.length === 2 && trackingData.data.every((n: number) => !isNaN(n))
               ? [trackingData.data[0], trackingData.data[1]] as [number, number]
               : null;
-            // Infer pause if position hasn't changed
             if (
               lastTrackingData.current[rideId] &&
               lastTrackingData.current[rideId]?.[0] === currentPosition?.[0] &&
@@ -556,14 +558,23 @@ export default function JoinedRideDetails() {
     if (result.isConfirmed) {
       try {
         await apiService.ride.cancelJoinedRide(rideId);
-        setRides(rides.filter((ride) => ride.rideId !== rideId));
-        Swal.fire("Cancelled!", "Your ride has been cancelled successfully.", "success");
+        // Update the ride status to reflect cancellation without removing it
+        setRides((prev) =>
+          prev.map((ride) =>
+            ride.rideId === rideId ? { ...ride, requestStatus: "rejected" } : ride
+          )
+        );
+        Swal.fire("Cancelled!", "Your ride request has been cancelled successfully.", "success");
       } catch (error: any) {
         console.error("[JoinedRideDetails] Error cancelling ride:", error);
         setError(`Failed to cancel ride: ${error.message || "Unknown error"}`);
         Swal.fire("Error!", `Failed to cancel ride: ${error.message || "Unknown error"}`, "error");
       }
     }
+  };
+
+  const handleChatWithDriver = (rideId: string, driverId: string) => {
+    router.push(`/user/chat?rideId=${rideId}&driverId=${driverId}`);
   };
 
   useEffect(() => {
@@ -599,6 +610,8 @@ export default function JoinedRideDetails() {
                   const seatsLeft = (ride.totalPeople - 1) - ride.passengerCount;
                   const userPickup = ride.pickupPoints.find((p) => p.passengerId === userId);
                   const userDropoff = ride.dropoffPoints.find((p) => p.passengerId === userId);
+                  const isUserPassenger = ride.passengers.some((p) => p.passengerId === userId);
+
                   return (
                     <Card key={ride._id} className="bg-white border border-gray-100 shadow-sm rounded-lg p-5 hover:shadow-md transition-shadow">
                       <div className="flex flex-col gap-4">
@@ -634,19 +647,41 @@ export default function JoinedRideDetails() {
                                 </span>
                               </p>
                               <p>
-                                <span className="font-medium">Your Cost:</span>{" "}
-                                {(ride.costPerPerson ?? 0).toFixed(2)} INR
-                              </p>
-                              <p>
-                                <span className="font-medium">Payment:</span>{" "}
+                                <span className="font-medium">Request Status:</span>{" "}
                                 <span
-                                  className={`${
-                                    ride.paymentStatus === "Paid" ? "text-green-600" : "text-red-600"
-                                  } font-medium`}
+                                  className={`font-medium ${
+                                    ride.requestStatus === "pending"
+                                      ? "text-yellow-600"
+                                      : ride.requestStatus === "rejected"
+                                      ? "text-red-600"
+                                      : "text-green-600"
+                                  }`}
                                 >
-                                  {ride.paymentStatus}
+                                  {ride.requestStatus === "pending"
+                                    ? "Pending Approval"
+                                    : ride.requestStatus === "rejected"
+                                    ? "Rejected"
+                                    : "Accepted"}
                                 </span>
                               </p>
+                              {isUserPassenger && (
+                                <p>
+                                  <span className="font-medium">Your Cost:</span>{" "}
+                                  {(ride.costPerPerson ?? 0).toFixed(2)} INR
+                                </p>
+                              )}
+                              {isUserPassenger && (
+                                <p>
+                                  <span className="font-medium">Payment:</span>{" "}
+                                  <span
+                                    className={`${
+                                      ride.paymentStatus === "Paid" ? "text-green-600" : "text-red-600"
+                                    } font-medium`}
+                                  >
+                                    {ride.paymentStatus}
+                                  </span>
+                                </p>
+                              )}
                               <p>
                                 <span className="font-medium">Driver:</span> {ride.driverName}
                               </p>
@@ -656,19 +691,20 @@ export default function JoinedRideDetails() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="rounded-full border-gray-300 text-gray-700 hover:bg-gray-100"
-                              onClick={() => alert("Contacting driver...")}
+                              className="rounded-full border-gray-300 text-gray-700 hover:bg-green-100"
+                              onClick={() => handleChatWithDriver(ride._id, ride.driverId)}
+                              disabled={!ride.driverId || ride.driverId === "N/A" || ride.requestStatus !== "accepted"}
                             >
-                              <Phone className="h-4 w-4 mr-1" /> Contact
+                              <Phone className="h-4 w-4 mr-1" /> Chat with Driver
                             </Button>
-                            {ride.status === "Pending" && (
+                            {ride.status === "Pending" && ride.requestStatus === "pending" && (
                               <Button
                                 variant="outline"
                                 size="sm"
                                 className="rounded-full border-red-300 text-red-600 hover:bg-red-50"
                                 onClick={() => handleCancelRide(ride.rideId!)}
                               >
-                                <X className="h-4 w-4 mr-1" /> Cancel
+                                <X className="h-4 w-4 mr-1" /> Cancel Request
                               </Button>
                             )}
                           </div>
@@ -697,25 +733,36 @@ export default function JoinedRideDetails() {
                                 <h4 className="text-md font-medium text-gray-700 mb-2">
                                   Your Ride Details
                                 </h4>
-                                <p className="text-sm text-gray-600">
-                                  <span className="font-medium">Your Pickup:</span>{" "}
-                                  {userPickup
-                                    ? `${userPickup.placeName} `
-                                    : "Not assigned (Contact support)"}
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                  <span className="font-medium">Your Drop-off:</span>{" "}
-                                  {userDropoff
-                                    ? `${userDropoff.placeName} `
-                                    : "Not assigned (Contact support)"}
-                                </p>
+                                {ride.requestStatus !== "rejected" && (
+                                  <>
+                                    <p className="text-sm text-gray-600">
+                                      <span className="font-medium">Your Pickup:</span>{" "}
+                                      {userPickup
+                                        ? `${userPickup.placeName}`
+                                        : "Not assigned (Contact support)"}
+                                    </p>
+                                    <p className="text-sm text-gray-600">
+                                      <span className="font-medium">Your Drop-off:</span>{" "}
+                                      {userDropoff
+                                        ? `${userDropoff.placeName}`
+                                        : "Not assigned (Contact support)"}
+                                    </p>
+                                  </>
+                                )}
+                                {ride.requestStatus === "rejected" && (
+                                  <p className="text-sm text-red-600">
+                                    Request was rejected by the driver.
+                                  </p>
+                                )}
                                 <p className="text-sm text-gray-600">
                                   <span className="font-medium">Distance:</span>{" "}
                                   {(ride.distanceKm ?? 0).toFixed(2)} km
                                 </p>
-                                <p className="text-sm text-gray-600">
-                                  <span className="font-medium">Seats Available:</span> {seatsLeft}
-                                </p>
+                                {ride.requestStatus === "accepted" && (
+                                  <p className="text-sm text-gray-600">
+                                    <span className="font-medium">Seats Available:</span> {seatsLeft}
+                                  </p>
+                                )}
                               </div>
                               <div>
                                 <h4 className="text-md font-medium text-gray-700 mb-2">Route Map</h4>
@@ -730,7 +777,7 @@ export default function JoinedRideDetails() {
                             </div>
                             <div className="mt-4">
                               <h4 className="text-md font-medium text-gray-700 mb-2">Other Passengers</h4>
-                              {ride.passengers.length > 1 ? (
+                              {ride.requestStatus === "accepted" && ride.passengers.length > 1 ? (
                                 <ul className="list-disc pl-5 space-y-2 text-sm text-gray-600">
                                   {ride.passengers
                                     .filter((p) => p.passengerId !== userId)

@@ -1037,6 +1037,7 @@ console.log("mappedRides",mappedRides)
               ) : (
                 <div className="grid gap-6">
                   {rides.map((ride) => {
+                    console.log("[RideDetails] Rendering ride:", rides);
                     const seatsLeft = (ride.totalPeople - 1) - ride.passengerCount;
                     const place = placeNames[ride._id] || { startPlace: ride.startPoint, endPlace: ride.endPoint };
 

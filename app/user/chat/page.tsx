@@ -28,10 +28,13 @@ interface Participant {
 }
 
 interface Conversation {
+  lastMessageTime?: string | number | Date;
+  lastMessage?: string;
   _id: string;
   participants: Participant[];
   createdAt: string;
   rideId?: string;
+  unreadCount?: number;
 }
 
 const Chat: React.FC = () => {
@@ -42,8 +45,6 @@ const Chat: React.FC = () => {
   const driverId = searchParams.get("driverId");
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const userId = user?._id;
-
-  console.log("Component mounted with userId:", userId, "conversationId:", conversationId, "rideId:", rideId, "driverId:", driverId);
 
   const { messages, setMessages, error: chatError, isConnected, typingUsers, handleTyping, sendMessage, setError: setChatError } = useChat(
     conversationId || '',
@@ -59,11 +60,11 @@ const Chat: React.FC = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const [isTyping, setIsTyping] = useState(false);
+  const [prevConversationId, setPrevConversationId] = useState<string | null>(null);
 
-  const { error: socketError } = useSocketStore();
+  const { error: socketError, socket } = useSocketStore();
 
   useEffect(() => {
-    console.log("useEffect triggered with authLoading:", authLoading, "isAuthenticated:", isAuthenticated, "userId:", userId);
     if (authLoading) return;
     if (!isAuthenticated || !userId) {
       setError("Please log in to access the chat.");
@@ -73,22 +74,31 @@ const Chat: React.FC = () => {
 
     const fetchData = async () => {
       setIsLoading(true);
-      console.log("Starting fetchData with userId:", userId, "conversationId:", conversationId, "rideId:", rideId, "driverId:", driverId);
       try {
         let convId = conversationId;
 
         const convsResponse = await apiService.chat.getUserConversations(userId);
-        console.log("getUserConversations response:", convsResponse);
         if (!convsResponse.success) {
           setError(convsResponse.message || "Failed to fetch user conversations.");
           setIsLoading(false);
           return;
         }
-        setConversations(convsResponse.conversations || []);
+        const convs = convsResponse.conversations as Conversation[];
+        const uniqueConvs = Array.from(new Map(convs.map(c => [c._id, c])).values());
+        // Fetch last message for each conversation to populate lastMessage and lastMessageTime
+        const updatedConvs = await Promise.all(uniqueConvs.map(async (conv) => {
+          const msgResponse = await apiService.chat.getMessages(conv._id);
+          if (msgResponse.success && msgResponse.messages.length > 0) {
+            const lastMsg = msgResponse.messages.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+            return { ...conv, lastMessage: lastMsg.content, lastMessageTime: lastMsg.createdAt };
+          }
+          return conv;
+        }));
+        setConversations(updatedConvs);
 
         if (rideId && driverId && !conversationId) {
-          const existingConversation = convsResponse.conversations.find(
-            (conv: { rideId: string; participants: any[] }) =>
+          const existingConversation = updatedConvs.find(
+            (conv: Conversation) =>
               conv.rideId === rideId &&
               conv.participants.some((p) => p._id === userId) &&
               conv.participants.some((p) => p._id === driverId)
@@ -101,14 +111,15 @@ const Chat: React.FC = () => {
 
         if (rideId && driverId && !convId) {
           const response = await apiService.chat.getOrCreateRideConversation({ rideId, driverId, userId });
-          console.log("getOrCreateRideConversation response:", response);
           if (!response.success) {
             setError(response.message || "Failed to start conversation with driver.");
             setIsLoading(false);
             return;
           }
-          convId = response.conversation?._id || response.conversation; // Handle potential structure variation
+          convId = response.conversation?._id || response.conversation;
           setConversation(response.conversation);
+          const newConvs = [...updatedConvs.filter(c => c._id !== convId), response.conversation];
+          setConversations(newConvs);
           router.replace(`/user/chat?conversationId=${convId}`);
         }
 
@@ -119,13 +130,12 @@ const Chat: React.FC = () => {
         }
 
         if (!/^[0-9a-fA-F]{24}$/.test(convId)) {
-          setError("Invalid conaaversation ID format.");
+          setError("Invalid conversation ID format.");
           setIsLoading(false);
           return;
         }
 
         const convResponse = await apiService.chat.getConversation(convId);
-        console.log("getConversation response:", convResponse);
         if (!convResponse.success) {
           setError(convResponse.message || "Failed to fetch conversation.");
           if (convResponse.status === 401) {
@@ -137,10 +147,8 @@ const Chat: React.FC = () => {
         setConversation(convResponse.conversation);
       } catch (err) {
         setError("Failed to load chat data: " + (err instanceof Error ? err.message : "Unknown error"));
-        console.error("Chat fetch error:", err);
       } finally {
         setIsLoading(false);
-        console.log("fetchData completed, conversation:", conversation, "error:", error);
       }
     };
 
@@ -148,16 +156,62 @@ const Chat: React.FC = () => {
   }, [conversationId, rideId, driverId, userId, isAuthenticated, authLoading, router]);
 
   useEffect(() => {
+    if (socket) {
+      const newMessageHandler = (message: Message) => {
+        setMessages((prev) => {
+          if (prev.some((m) => m._id === message._id)) return prev;
+          return [...prev, message];
+        });
+        setConversations((prev) => {
+          const updatedConversations = prev.map((conv) =>
+            conv._id === message.conversationId
+              ? { ...conv, lastMessage: message.content, lastMessageTime: message.createdAt }
+              : conv
+          );
+          const uniqueUpdated = Array.from(new Map(updatedConversations.map((c) => [c._id, c])).values());
+          return uniqueUpdated.sort((a, b) =>
+            (b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : new Date(b.createdAt).getTime()) -
+            (a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : new Date(a.createdAt).getTime())
+          );
+        });
+        if (message.conversationId !== conversationId) {
+          setConversations((prev) =>
+            prev.map((conv) =>
+              conv._id === message.conversationId ? { ...conv, unreadCount: (conv.unreadCount || 0) + 1 } : conv
+            )
+          );
+        }
+      };
+
+      socket.on("newMessage", newMessageHandler);
+
+      return () => {
+        socket.off("newMessage", newMessageHandler);
+      };
+    }
+  }, [socket, conversationId, setMessages]);
+
+  useEffect(() => {
     if (scrollRef.current && messages.length > 0) {
       const viewport = scrollRef.current.querySelector('[data-radix-scroll-area-viewport]') as HTMLDivElement | null;
       if (viewport) {
-        viewport.scroll({
-          top: viewport.scrollHeight,
-          behavior: "smooth",
+        requestAnimationFrame(() => {
+          viewport.scrollTo({
+            top: viewport.scrollHeight,
+            behavior: conversationId !== prevConversationId || messages.length === 1 ? 'auto' : 'smooth',
+          });
         });
       }
     }
-  }, [messages]);
+    if (conversationId && conversationId !== prevConversationId) {
+      setConversations((prev) =>
+        prev.map((conv) =>
+          conv._id === conversationId ? { ...conv, unreadCount: 0 } : conv
+        )
+      );
+      setPrevConversationId(conversationId);
+    }
+  }, [messages, conversationId]);
 
   const handleTypingWrapper = useCallback(() => {
     if (!isTyping) {
@@ -174,7 +228,6 @@ const Chat: React.FC = () => {
 
   const sendMessageWrapper = async () => {
     if (!messageInput.trim() || !userId) {
-      console.log('Cannot send message: message empty or userId missing', { userId, messageInput });
       return;
     }
 
@@ -187,7 +240,6 @@ const Chat: React.FC = () => {
       timestamp: new Date().toISOString(),
       createdAt: new Date(),
     };
-    console.log('Adding optimistic message:', optimisticMessage);
     setMessages((prev) => [...prev, optimisticMessage]);
 
     const success = await sendMessage(messageInput);
@@ -205,42 +257,19 @@ const Chat: React.FC = () => {
     return otherParticipant?.fullName || "Unknown Contact";
   };
 
-  const getOtherParticipantId = (conv: Conversation) => {
-    const otherParticipant = conv.participants.find((p) => p._id !== userId);
-    return otherParticipant?._id || "";
+  const getTimeAgo = (dateStr: string | number | Date) => {
+    const now = new Date();
+    const date = new Date(dateStr);
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+    return diffDays > 0 ? `${diffDays}d ago` : diffHours > 0 ? `${diffHours}h ago` : "Just now";
   };
-
-  const getLastMessagePreview = (convId: string) => {
-    const convMessages = messages.filter((msg) => msg.conversationId === convId);
-    const lastMessage = [...convMessages].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    )[0];
-    return lastMessage
-      ? lastMessage.content.length > 20
-        ? `${lastMessage.content.substring(0, 20)}...`
-        : lastMessage.content
-      : "No messages yet";
-  };
-
-  const getLastMessageTime = (convId: string) => {
-    const convMessages = messages.filter((msg) => msg.conversationId === convId);
-    const lastMessage = [...convMessages].sort(
-      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-    )[0];
-    return lastMessage
-      ? new Date(lastMessage.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-      : "";
-  };
-
-  // Temporarily remove strict check to debug
-  // if (!conversation && !isLoading) {
-  //   return <div>Loading conversation...</div>;
-  // }
 
   return (
     <MainLayout activeItem="Chat">
-      <div className="container mx-auto p-4 flex h-[calc(100vh-150px)] min-h-[600px]">
-        <div className="w-1/3 bg-gray-100 p-4 rounded-l-lg shadow-md overflow-hidden flex flex-col">
+      <div className="container mx-auto p-4 flex flex-col md:flex-row h-[calc(100vh-150px)] min-h-[600px]">
+        <div className="w-full md:w-1/3 bg-gray-100 p-4 rounded-l-lg shadow-md overflow-hidden flex flex-col mb-4 md:mb-0 md:mr-4">
           <h2 className="text-lg font-semibold mb-4">Chats</h2>
           {isLoading ? (
             <div className="flex items-center justify-center h-full">
@@ -253,9 +282,16 @@ const Chat: React.FC = () => {
               <div className="space-y-2">
                 {conversations.map((conv) => {
                   const otherParticipant = conv.participants.find((p) => p._id !== userId);
-                  const lastMessage = getLastMessagePreview(conv._id);
-                  const lastMessageTime = getLastMessageTime(conv._id);
+                  const lastMessagePreview = conv.lastMessage
+                    ? conv.lastMessage.length > 20
+                      ? `${conv.lastMessage.substring(0, 20)}...`
+                      : conv.lastMessage
+                    : "No messages yet";
+                  const lastMessageTime = conv.lastMessageTime
+                    ? getTimeAgo(conv.lastMessageTime)
+                    : "";
                   const isActive = (conversationId || conversation?._id) === conv._id;
+                  const isUnread = conv.unreadCount && conv.unreadCount > 0;
 
                   return (
                     <div
@@ -270,12 +306,13 @@ const Chat: React.FC = () => {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-center">
-                          <h3 className="font-medium text-sm truncate">
+                          <h3 className={`font-medium text-sm truncate ${isUnread ? "font-bold" : ""}`}>
                             {otherParticipant?.fullName || "Unknown Contact"}
+                            {isUnread && <span className="ml-2 w-2 h-2 bg-blue-500 rounded-full inline-block"></span>}
                           </h3>
                           <span className="text-xs text-gray-400">{lastMessageTime}</span>
                         </div>
-                        <p className="text-xs text-gray-500 truncate">{lastMessage}</p>
+                        <p className="text-xs text-gray-500 truncate">{lastMessagePreview}</p>
                         {typingUsers.includes(otherParticipant?._id || "") && (
                           <span className="text-xs text-green-500">Typing...</span>
                         )}
@@ -288,16 +325,16 @@ const Chat: React.FC = () => {
           )}
         </div>
 
-        <div className="w-2/3 ml-4 flex flex-col h-full">
+        <div className="w-full md:w-2/3 flex flex-col h-full">
           <Card className="flex flex-col h-full">
-            <CardHeader className="border-b p-4">
+            <CardHeader className="border-b p-4 flex justify-between items-center">
               <CardTitle className="flex items-center gap-2">
                 <MessageCircle className="h-5 w-5" />
                 <span className="font-semibold">{getContactName()}</span>
-                {!isConnected && (
-                  <span className="text-xs text-yellow-600 ml-2">(Connecting...)</span>
-                )}
               </CardTitle>
+              {!isConnected && (
+                <span className="text-xs text-yellow-600">(Connecting...)</span>
+              )}
             </CardHeader>
             <CardContent className="flex-1 flex flex-col p-0 overflow-hidden">
               {error && (
@@ -335,9 +372,6 @@ const Chat: React.FC = () => {
                             msg.senderId._id === userId ? "bg-blue-500 text-white" : "bg-gray-200 text-gray-800"
                           } break-words`}
                         >
-                          {/* <div className="font-medium text-sm">
-                            {msg.senderId._id === userId ? "You" : msg.senderId.fullName || "Unknown User"}
-                          </div> */}
                           <p className="text-sm">{msg.content}</p>
                           <div className="text-xs opacity-80 mt-1">
                             {new Date(msg.timestamp).toLocaleTimeString([], {

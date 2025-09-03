@@ -165,8 +165,6 @@ const RideFormContainer: React.FC = () => {
       });
       if (error.response?.status === 401) {
         console.log("[RideFormContainer] Unauthorized, redirecting to login");
-        // Avoid automatic redirect; let user decide
-        // window.location.href = "/login";
       }
     } finally {
       setIsLoading(false);
@@ -189,6 +187,7 @@ const RideFormContainer: React.FC = () => {
               register={register}
               setValue={setValue}
               error={errors.startPoint?.message}
+              allowCurrentLocation={true} // Enable current location for start point
             />
             <AddressSearch
               label="End Point"
@@ -197,6 +196,7 @@ const RideFormContainer: React.FC = () => {
               register={register}
               setValue={setValue}
               error={errors.endPoint?.message}
+              allowCurrentLocation={false} // Disable for end point
             />
             <RideFormFields
               vehicles={vehicles}

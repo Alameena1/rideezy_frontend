@@ -10,7 +10,7 @@ import {
   FormField,
   FormItem,
   FormLabel,
-  FormMessage
+  FormMessage,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -55,6 +55,7 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
       licensePlate: "",
       color: "",
       insuranceNumber: "",
+      mileage: 0,
       vehicleImage: null,
       documentImage: null,
     },
@@ -141,8 +142,8 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
 
       const payload: any = {
         vehicleName: values.vehicleName,
-        vehicleType: values.vehicleType,
-        licensePlate: values.licensePlate,
+        vehicleType: values.vehicleType, // Included but not editable in UI
+        licensePlate: values.licensePlate, // Included but not editable in UI
         color: values.color,
         insuranceNumber: values.insuranceNumber,
         mileage: values.mileage,
@@ -224,19 +225,13 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Vehicle Type</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select vehicle type" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      <SelectItem value="Motorcycle">Motorcycle</SelectItem>
-                      <SelectItem value="Car">Car</SelectItem>
-                      <SelectItem value="Truck">Truck</SelectItem>
-                      <SelectItem value="Van">Van</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <FormControl>
+                    <Input
+                      value={field.value}
+                      readOnly={isEditMode} // Make read-only in edit mode
+                      className={isEditMode ? "bg-gray-100 cursor-not-allowed" : ""}
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -248,7 +243,11 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
                 <FormItem>
                   <FormLabel>License Plate</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g. ABC123" {...field} />
+                    <Input
+                      value={field.value}
+                      readOnly={isEditMode} // Make read-only in edit mode
+                      className={isEditMode ? "bg-gray-100 cursor-not-allowed" : ""}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

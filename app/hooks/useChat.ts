@@ -16,11 +16,12 @@ export const useChat = (conversationId: string, userId: string) => {
   const [error, setError] = useState(socketError);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const hasConnected = useRef(false); // Track if connect has been called
+  const hasConnected = useRef(false);
+  const prevConversationId = useRef<string | null>(null);
 
   const handleTypingUpdate = useCallback(({ userId: typerId, isTyping }: { userId: string; isTyping: boolean }) => {
     setTypingUsers((prev) =>
-      isTyping ? [...prev.filter((id) => id !== typerId), typerId] : prev.filter((id) => id !== typerId)
+      isTyping ? [...new Set([...prev, typerId])] : prev.filter((id) => id !== typerId)
     );
   }, []);
 
@@ -31,18 +32,21 @@ export const useChat = (conversationId: string, userId: string) => {
     }
 
     if (!hasConnected.current) {
-      console.log('Initiating socket connection for user:', userId);
       connect(userId);
       hasConnected.current = true;
     }
 
     if (socket && isConnected) {
+      if (prevConversationId.current && prevConversationId.current !== conversationId) {
+        socket.emit('leaveConversation', prevConversationId.current);
+      }
       socket.emit('joinConversation', conversationId, (joinError?: string) => {
         if (joinError) {
           console.error('Failed to join conversation:', joinError);
           setError(joinError);
         }
       });
+      prevConversationId.current = conversationId;
 
       socket.on('chatHistory', (history: Message[]) => {
         setMessages(history.map((msg) => ({
@@ -51,26 +55,19 @@ export const useChat = (conversationId: string, userId: string) => {
         })));
       });
 
-      socket.on('newMessage', (message: Message) => {
-        console.log('New message received from server:', message); // Debug log
+      const newMessageHandler = (message: Message) => {
+        if (message.conversationId !== conversationId) return;
         setMessages((prev) => {
-          const isOptimistic = prev.some((m) => m._id.startsWith(`optimistic-${conversationId}-`) && m.content === message.content);
-          if (isOptimistic) {
-            return prev.map((m) =>
-              m._id.startsWith(`optimistic-${conversationId}-`) && m.content === message.content
-                ? {
-                    ...message,
-                    timestamp: new Date(message.createdAt).toISOString(),
-                    senderId: m.senderId._id === userId ? { _id: userId, fullName: m.senderId.fullName } : message.senderId, // Preserve sender if it's the user
-                  }
-                : m
-            );
-          }
-          // Avoid adding duplicate if message is from current user
+          // Prevent duplicate messages
+          if (prev.some((m) => m._id === message._id)) return prev;
+          // Replace optimistic message if it exists
           if (message.senderId._id === userId) {
-            return prev;
+            const withoutOptimistic = prev.filter((m) => !m._id.startsWith(`optimistic-${conversationId}-`));
+            return [...withoutOptimistic, {
+              ...message,
+              timestamp: new Date(message.createdAt).toISOString(),
+            }];
           }
-          // Attempt to populate fullName from existing messages if available
           const existingSender = prev.find((m) => m.senderId._id === message.senderId._id);
           return [...prev, {
             ...message,
@@ -81,21 +78,22 @@ export const useChat = (conversationId: string, userId: string) => {
             },
           }];
         });
-      });
+      };
 
+      socket.on('newMessage', newMessageHandler);
       socket.on('typing', handleTypingUpdate);
+
+      return () => {
+        socket.off('chatHistory');
+        socket.off('newMessage', newMessageHandler);
+        socket.off('typing');
+      };
     }
 
     return () => {
-      if (socket) {
-        socket.off('chatHistory');
-        socket.off('newMessage');
-        socket.off('typing');
-        if (!conversationId) {
-          console.log('Disconnecting socket on cleanup');
-          disconnect();
-          hasConnected.current = false;
-        }
+      if (socket && !conversationId) {
+        disconnect();
+        hasConnected.current = false;
       }
     };
   }, [conversationId, userId, socket, isConnected, connect, disconnect, handleTypingUpdate]);

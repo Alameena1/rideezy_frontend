@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import axios from "axios";
 import { signIn } from "next-auth/react";
 import { apiService } from "@/services/api";
+import Cookies from "js-cookie";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -21,6 +22,14 @@ export default function LoginPage() {
     general: "",
   });
   const [loading, setLoading] = useState(false);
+
+  // Check if user is already logged in
+  useEffect(() => {
+    const userToken = Cookies.get("accessToken");
+    if (userToken) {
+      router.push("/"); // Redirect to homepage instead of dashboard
+    }
+  }, [router]);
 
   const validateEmail = (email: string) => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -63,7 +72,6 @@ export default function LoginPage() {
 
     if (!validateForm()) return;
 
-    console.log("Setting loading to true");
     setLoading(true);
     try {
       const data = await apiService.auth.login({
@@ -71,8 +79,13 @@ export default function LoginPage() {
         password: formData.password,
       });
 
-      localStorage.setItem("token", data?.accessToken);
-      router.push("/");
+      // Store tokens in cookies
+      Cookies.set("accessToken", data.accessToken, { expires: 1, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/" });
+      if (data.refreshToken) {
+        Cookies.set("refreshToken", data.refreshToken, { expires: 7, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/" });
+      }
+
+      router.push("/"); // Redirect to homepage after login
     } catch (error) {
       console.error("Login Failed:", error);
 
@@ -97,7 +110,6 @@ export default function LoginPage() {
         general: errorMessage,
       }));
     } finally {
-      console.log("Setting loading to false");
       setLoading(false);
     }
   };
@@ -109,11 +121,12 @@ export default function LoginPage() {
   const handleForgotPassword = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    console.log("Attempting to redirect to /user/forgot-password");
     router.push("/user/forgot-password");
   };
 
-  console.log("LoginPage rendered");
+  if (Cookies.get("accessToken")) {
+    return null; // Prevent rendering if already logged in
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">

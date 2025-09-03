@@ -7,7 +7,7 @@ interface SocketStore {
   socket: Socket | null;
   isConnected: boolean;
   error: string;
-  connect: (userId: string) => void; // Add userId to ensure single connection
+  connect: (userId: string) => void;
   disconnect: () => void;
   setError: (error: string) => void;
 }

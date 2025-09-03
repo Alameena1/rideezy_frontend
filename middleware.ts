@@ -8,7 +8,7 @@ export function middleware(request: NextRequest) {
 
   console.log("Middleware:", { pathname, isAdminRoute, isUserRoute });
 
-  // Handle login, signup, OTP, forgot-password, and reset-password routes
+  // Handle public routes (login, signup, etc.)
   if (
     pathname === "/admin/login" ||
     pathname === "/user/login" ||
@@ -27,15 +27,14 @@ export function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL("/admin/dashboard", request.url));
     }
 
-    // Redirect authenticated users to subscriptions page, unless on /user/login with a success message
-    const successMessage = request.nextUrl.searchParams.get("success");
+    // Redirect authenticated users to homepage if logged in
+    const referer = request.headers.get("referer") || "/";
     if (
       (pathname === "/user/login" || pathname === "/user/signup" || pathname === "/user/otp") &&
-      userToken &&
-      !(pathname === "/user/login" && successMessage) // Allow /user/login with success message
+      userToken
     ) {
-      console.log("User already logged in, redirecting to subscriptions page");
-      return NextResponse.redirect(new URL("/user/subscription", request.url));
+      console.log("User already logged in, redirecting to referer or homepage");
+      return NextResponse.redirect(new URL(referer.split("/user/login")[0] || "/", request.url));
     }
 
     return NextResponse.next();
@@ -43,7 +42,7 @@ export function middleware(request: NextRequest) {
 
   // Protect user routes: redirect to login if no user token
   const userToken = request.cookies.get("accessToken")?.value;
-  if (isUserRoute && !userToken) {
+  if (isUserRoute && !userToken && !pathname.includes("login") && !pathname.includes("signup") && !pathname.includes("otp") && !pathname.includes("forgot-password") && !pathname.includes("reset-password")) {
     console.log("No user token, redirecting to user login");
     return NextResponse.redirect(new URL("/user/login", request.url));
   }
@@ -51,7 +50,7 @@ export function middleware(request: NextRequest) {
   // Protect admin routes: redirect to admin login if no admin token
   const adminToken = request.cookies.get("adminAuthToken")?.value;
   console.log("Admin route check:", { isAdminRoute, adminToken, cookies: request.cookies.getAll() });
-  if (isAdminRoute && !adminToken) {
+  if (isAdminRoute && !adminToken && !pathname.includes("login")) {
     console.log("No admin token, redirecting to admin login");
     return NextResponse.redirect(new URL("/admin/login", request.url));
   }

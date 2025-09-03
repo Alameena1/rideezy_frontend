@@ -105,7 +105,7 @@ export default function Wallet() {
       setError(null);
       try {
         const response = await walletApi.getWallet(userId, currentPage, limit);
-        console.log("Wallet state set:", response); // Debug log
+        
         if (response.success) {
           setWallet({
             balance: response.balance || 0,
@@ -203,6 +203,7 @@ export default function Wallet() {
                     <>
                       <ul className="mt-4 space-y-4">
                         {wallet.transactions.map((transaction) => (
+                          
                           <li
                             key={transaction.transactionId}
                             className="flex justify-between items-center p-3 bg-gray-50 rounded-md"

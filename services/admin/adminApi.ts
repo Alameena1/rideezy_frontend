@@ -15,7 +15,7 @@ export const adminApiService = {
   vehicle: adminVehicleApi,
   subscription: adminSubscriptionApi,
   ride: adminRideApi,
-  dashboard: adminDashboardApi, // New service
+  dashboard: adminDashboardApi, 
 };
 
 export default adminApiService;

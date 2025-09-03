@@ -11,7 +11,7 @@ export const getToken = (): string | null => {
 
 export const getRefreshToken = (): string | null => {
   if (typeof window !== 'undefined') {
-    return localStorage.getItem('refreshToken') || Cookies.get('refreshToken') || null;
+    return Cookies.get('refreshToken') || null;
   }
   return null;
 };
