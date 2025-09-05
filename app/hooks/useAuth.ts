@@ -8,12 +8,19 @@ import Cookies from "js-cookie";
 import { jwtDecode } from "jwt-decode";
 import { getValidToken, removeToken } from "@/app/utils/auth";
 
+interface TokenPayload {
+  userId: string;
+  email?: string;
+  role: "user" | "admin";
+}
+
 interface User {
   _id: string;
   driverId?: string;
   email?: string;
   name?: string;
-  fullName?: string; 
+  fullName?: string;
+  role: "user" | "admin";
 }
 
 const useAuth = () => {
@@ -55,7 +62,7 @@ const useAuth = () => {
           console.log("Google login detected, storing tokens");
           const accessToken = session.user.access_token;
           const refreshToken = session.user.refresh_token;
-          let decodedUser: any = null;
+          let decodedUser: TokenPayload | null = null;
 
           if (accessToken) {
             Cookies.set("accessToken", accessToken, {
@@ -65,10 +72,14 @@ const useAuth = () => {
               path: "/",
             });
             try {
-              decodedUser = jwtDecode(accessToken);
-              console.log("Decoded Google access token userId:", decodedUser?.userId || decodedUser?.sub);
+              decodedUser = jwtDecode<TokenPayload>(accessToken);
+              console.log("Decoded Google access token:", decodedUser);
+              if (decodedUser.role !== "user") {
+                throw new Error("Invalid role for Google login");
+              }
             } catch (error) {
               console.error("Error decoding Google access token:", error);
+              throw error;
             }
           }
           if (refreshToken) {
@@ -81,11 +92,12 @@ const useAuth = () => {
           }
 
           const newUser: User = {
-            _id: decodedUser?.userId || decodedUser?.sub || session.user.id,
+            _id: decodedUser?.userId || session.user.id || "",
             driverId: decodedUser?.userId,
             email: session.user.email || decodedUser?.email,
             name: session.user.name ?? undefined,
-            fullName: session.user.name ?? undefined, 
+            fullName: session.user.name ?? undefined,
+            role: decodedUser?.role || "user",
           };
           console.log("Setting user from Google login:", newUser);
           setUser(newUser);
@@ -107,10 +119,13 @@ const useAuth = () => {
           console.log("Token from getValidToken:", token ? "present" : "missing");
 
           if (token) {
-            let decodedUser: any = null;
+            let decodedUser: TokenPayload | null = null;
             try {
-              decodedUser = jwtDecode(token);
-              console.log("Decoded token userId:", decodedUser?.userId || decodedUser?.sub);
+              decodedUser = jwtDecode<TokenPayload>(token);
+              console.log("Decoded token:", decodedUser);
+              if (decodedUser.role !== "user") {
+                throw new Error("Invalid role in token");
+              }
             } catch (error) {
               console.error("Error decoding token:", error);
               throw new Error("Invalid token format");
@@ -131,7 +146,8 @@ const useAuth = () => {
                 driverId: decodedUser.userId,
                 email: profileData.data.email || decodedUser.email,
                 name: profileData.data.name,
-                fullName: profileData.data.name || decodedUser.name, // Added for consistency
+                fullName: profileData.data.name || decodedUser.email,
+                role: decodedUser.role,
               };
               console.log("Setting user from profile data:", newUser);
               setUser(newUser);

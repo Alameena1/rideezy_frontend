@@ -51,9 +51,24 @@ interface Wallet {
   currentPage: number;
 }
 
+// Safe length access utility function
+const getSafeLength = (array: any[] | undefined | null): number => {
+  if (Array.isArray(array)) {
+    return array.length;
+  }
+  return 0;
+};
+
 export default function Wallet() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
-  const [wallet, setWallet] = useState<Wallet | null>(null);
+  const [wallet, setWallet] = useState<Wallet>({
+    balance: 0,
+    currency: "INR",
+    transactions: [],
+    total: 0,
+    totalPages: 1,
+    currentPage: 1,
+  });
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -72,15 +87,15 @@ export default function Wallet() {
   const { handlePayment, paymentLoading } = useWalletPayment({
     userId: userId || undefined,
     onSuccess: (walletResponse: WalletResponse) => {
-      console.log("Payment success response:", walletResponse); // Debug log
-      setWallet({
-        balance: walletResponse.balance || 0,
+      console.log("Payment success response:", walletResponse);
+      setWallet(prev => ({
+        balance: walletResponse.balance || prev.balance,
         currency: "INR",
-        transactions: walletResponse.transactions,
-        total: walletResponse.total,
-        totalPages: walletResponse.totalPages,
-        currentPage: walletResponse.currentPage,
-      });
+        transactions: walletResponse.transactions || prev.transactions || [],
+        total: walletResponse.total || prev.total,
+        totalPages: walletResponse.totalPages || prev.totalPages,
+        currentPage: walletResponse.currentPage || prev.currentPage,
+      }));
       setError(null);
       setIsModalOpen(false);
       setAmount(0);
@@ -117,10 +132,20 @@ export default function Wallet() {
           });
         } else {
           setError("Failed to load wallet data. Please try again.");
+          // Set default wallet state on error
+          setWallet(prev => ({
+            ...prev,
+            transactions: prev.transactions || []
+          }));
         }
       } catch (err: any) {
         console.error("Error fetching wallet:", err.response?.data || err);
         setError(err.response?.data?.message || "Failed to load wallet data. Please try again.");
+        // Ensure transactions is always an array even on error
+        setWallet(prev => ({
+          ...prev,
+          transactions: prev.transactions || []
+        }));
       } finally {
         setIsLoading(false);
       }
@@ -199,11 +224,10 @@ export default function Wallet() {
                 </div>
                 <div className="bg-white p-6 rounded-lg shadow-md">
                   <h3 className="text-xl font-semibold text-gray-700">Transaction History</h3>
-                  {wallet.transactions.length > 0 ? (
+                  {getSafeLength(wallet.transactions) > 0 ? (
                     <>
                       <ul className="mt-4 space-y-4">
-                        {wallet.transactions.map((transaction) => (
-                          
+                        {wallet.transactions?.map((transaction) => (
                           <li
                             key={transaction.transactionId}
                             className="flex justify-between items-center p-3 bg-gray-50 rounded-md"
@@ -224,7 +248,7 @@ export default function Wallet() {
                               {wallet.currency}
                             </span>
                           </li>
-                        ))}
+                        )) ?? []}
                       </ul>
                       <div className="mt-6 flex justify-between items-center">
                         <Button
@@ -302,4 +326,4 @@ export default function Wallet() {
       </div>
     </MainLayout>
   );
-} 
+}

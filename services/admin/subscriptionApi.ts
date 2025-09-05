@@ -1,4 +1,5 @@
 import { adminApi } from "./adminApi";
+import axios from "axios";
 
 export interface SubscriptionPlan {
   _id: string;
@@ -15,7 +16,9 @@ export const adminSubscriptionApi = {
   getSubscriptionPlans: async (): Promise<SubscriptionPlan[]> => {
     try {
       const response = await adminApi.get("/subscriptions");
-      return response.data.plans;
+      console.log("Subscription Plans Response:", response);
+      // Change from response.data.data to just response.data
+      return response.data;  // The data is returned directly as an array
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.message || "Failed to fetch subscription plans");

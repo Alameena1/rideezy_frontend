@@ -1,25 +1,32 @@
 import axios from "axios";
 import Cookies from "js-cookie";
+import { getRefreshToken, getValidToken } from "../app/utils/auth";
 
 export const createAdminApiInstance = (baseURL: string) => {
   const api = axios.create({
-    baseURL: baseURL,
+    baseURL,
     headers: {
       "Content-Type": "application/json",
     },
-    withCredentials: true,
   });
 
   api.interceptors.request.use(
-    (config) => {
-      const token = Cookies.get("adminAuthToken");
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-        console.log("Added Authorization header for admin:", token);
-      } else {
-        console.log("No adminAuthToken found in cookies");
+    async (config) => {
+      const unauthenticatedRoutes = ["/admin/login", "/admin/refresh-token", "/admin/logout"];
+      if (config.url && unauthenticatedRoutes.some((route) => config.url!.includes(route))) {
+        return config;
       }
-      return config;
+
+      try {
+        const token = await getValidToken();
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+      } catch (error) {
+        console.error("Failed to get valid token:", error);
+        return config;
+      }
     },
     (error) => Promise.reject(error)
   );
@@ -33,47 +40,55 @@ export const createAdminApiInstance = (baseURL: string) => {
         error.response?.status === 403 &&
         error.response?.data?.message === "Your account has been blocked. Contact support."
       ) {
-        Cookies.remove("adminAuthToken");
-        Cookies.remove("refreshToken");
+        Cookies.remove("adminAuthToken", { path: "/" });
+        Cookies.remove("refreshToken", { path: "/" });
         return Promise.reject(error);
       }
 
       if (
         error.response?.status === 401 &&
         !originalRequest._retry &&
-        !originalRequest.url?.includes("/login")
+        !originalRequest.url?.includes("/admin/login") &&
+        !originalRequest.url?.includes("/admin/refresh-token") &&
+        !originalRequest.url?.includes("/admin/logout")
       ) {
         originalRequest._retry = true;
 
         try {
-          const refreshToken = Cookies.get("refreshToken");
+          const refreshToken = getRefreshToken();
           if (!refreshToken) throw new Error("No refresh token found");
 
-          const { data } = await axios.post(
-            `${baseURL}/refresh`,
+          const response = await axios.post(
+            `${baseURL}/admin/refresh-token`,
             { refreshToken },
-            { withCredentials: true }
+            { headers: { "Content-Type": "application/json" } }
           );
 
-          Cookies.set("adminAuthToken", data.accessToken, {
+          const { token: newAccessToken, refreshToken: newRefreshToken } = response.data;
+
+          Cookies.set("adminAuthToken", newAccessToken, {
             expires: 1,
-            secure: true,
+            secure: process.env.NODE_ENV === "production",
             sameSite: "strict",
+            path: "/",
           });
-          if (data.refreshToken) {
-            Cookies.set("refreshToken", data.refreshToken, {
+
+          if (newRefreshToken) {
+            Cookies.set("refreshToken", newRefreshToken, {
               expires: 7,
-              secure: true,
+              secure: process.env.NODE_ENV === "production",
               sameSite: "strict",
+              path: "/",
             });
           }
 
-          originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
+          api.defaults.headers.Authorization = `Bearer ${newAccessToken}`;
+          originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
           return api(originalRequest);
         } catch (refreshError) {
           console.error("Refresh token failed:", refreshError);
-          Cookies.remove("adminAuthToken");
-          Cookies.remove("refreshToken");
+          Cookies.remove("adminAuthToken", { path: "/" });
+          Cookies.remove("refreshToken", { path: "/" });
           window.location.href = "/admin/login";
           return Promise.reject(refreshError);
         }

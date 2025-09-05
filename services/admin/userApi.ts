@@ -5,7 +5,8 @@ export const adminUserApi = {
   getUsers: async () => {
     try {
       const response = await adminApi.get("/users");
-      return response.data.users;
+      console.log("Fetched Users:", response.data);
+      return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.message || "Failed to fetch users");

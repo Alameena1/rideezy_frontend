@@ -1,30 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { apiService } from "@/services/api";
+import { setToken, setRefreshToken } from "@/app/utils/auth";
 
 export default function AdminLoginPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false); // New state for login success
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
-  
+
     try {
       const response = await apiService.admin.auth.login(formData.email, formData.password);
       console.log("Login successful:", response);
-      router.push("/admin/dashboard");
-      router.refresh(); 
+      if (response.success) {
+        setToken(response.accessToken);
+        if (response.refreshToken) {
+          setRefreshToken(response.refreshToken);
+        }
+        setIsLoggedIn(true); // Set login state
+      } else {
+        setError(response.message || "Failed to login");
+      }
     } catch (err) {
       if (err instanceof Error) {
         console.error("Login error:", err.message);
@@ -38,6 +47,14 @@ export default function AdminLoginPage() {
     }
   };
 
+  // Effect to handle redirection after login
+  useEffect(() => {
+    if (isLoggedIn) {
+      console.log("Navigating to /admin/dashboard due to login success...");
+      router.push("/admin/dashboard");
+    }
+  }, [isLoggedIn, router]);
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-900">
       <div className="w-full max-w-md p-8 space-y-8 bg-gray-800 rounded-lg shadow-lg border border-gray-700">
@@ -45,13 +62,13 @@ export default function AdminLoginPage() {
           <h1 className="text-3xl font-bold text-gray-100">Admin Login</h1>
           <p className="mt-2 text-gray-400">Rideezy</p>
         </div>
-        
+
         {error && (
           <div className="p-3 bg-red-900/50 text-red-300 rounded-md border border-red-800">
             {error}
           </div>
         )}
-        
+
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="space-y-4">
             <div>
@@ -69,7 +86,7 @@ export default function AdminLoginPage() {
                 placeholder="admin@rideezy.com"
               />
             </div>
-            
+
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-300">
                 Password
@@ -97,7 +114,7 @@ export default function AdminLoginPage() {
             </button>
           </div>
         </form>
-        
+
         <div className="text-center pt-4 border-t border-gray-700">
           <p className="text-sm text-gray-400">
             Need access? Contact your system administrator

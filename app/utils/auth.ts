@@ -1,51 +1,53 @@
-import jwt from 'jsonwebtoken';
-import apiService from '@/services/api';
-import Cookies from 'js-cookie';
+import jwt from "jsonwebtoken";
+import apiService from "@/services/api";
+import Cookies from "js-cookie";
 
 export const getToken = (): string | null => {
-  if (typeof window !== 'undefined') {
-    return localStorage.getItem('token') || Cookies.get('accessToken') || null;
+  if (typeof window !== "undefined") {
+    return localStorage.getItem("token") || Cookies.get("accessToken") || null;
   }
   return null;
 };
 
 export const getRefreshToken = (): string | null => {
-  if (typeof window !== 'undefined') {
-    return Cookies.get('refreshToken') || null;
+  if (typeof window !== "undefined") {
+    return Cookies.get("refreshToken") || null;
   }
   return null;
 };
 
 export const setToken = (token: string): void => {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('token', token);
-    Cookies.set('accessToken', token, {
+  if (typeof window !== "undefined") {
+    // Use adminAuthToken for admin context
+    Cookies.set("adminAuthToken", token, {
       expires: 1,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
     });
+    // Optionally keep in localStorage for fallback
+    localStorage.setItem("token", token);
   }
 };
 
 export const setRefreshToken = (refreshToken: string): void => {
-  if (typeof window !== 'undefined') {
-    localStorage.setItem('refreshToken', refreshToken);
-    Cookies.set('refreshToken', refreshToken, {
+  if (typeof window !== "undefined") {
+    Cookies.set("refreshToken", refreshToken, {
       expires: 7,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "strict",
+      path: "/",
     });
+    localStorage.setItem("refreshToken", refreshToken);
   }
 };
 
 export const removeToken = (): void => {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
-    Cookies.remove('accessToken');
-    Cookies.remove('refreshToken');
+  if (typeof window !== "undefined") {
+    localStorage.removeItem("token");
+    localStorage.removeItem("refreshToken");
+    Cookies.remove("adminAuthToken");
+    Cookies.remove("refreshToken");
   }
 };
 
@@ -63,7 +65,7 @@ export const refreshToken = async (): Promise<string> => {
   try {
     const refreshToken = getRefreshToken();
     if (!refreshToken) {
-      throw new Error('No refresh token available');
+      throw new Error("No refresh token available");
     }
 
     const response = await apiService.auth.refreshToken({ refreshToken });
@@ -74,7 +76,7 @@ export const refreshToken = async (): Promise<string> => {
       }
       return response.token;
     }
-    throw new Error('Failed to refresh token: ' + (response.message || 'Unknown error'));
+    throw new Error("Failed to refresh token: " + (response.message || "Unknown error"));
   } catch (error) {
     removeToken();
     throw error;
@@ -82,9 +84,9 @@ export const refreshToken = async (): Promise<string> => {
 };
 
 export const getValidToken = async (): Promise<string> => {
-  const token = getToken();
+  const token = getToken() || Cookies.get("adminAuthToken"); // Check adminAuthToken first
   if (!token) {
-    throw new Error('No token available');
+    throw new Error("No token available");
   }
 
   if (isTokenExpired(token)) {

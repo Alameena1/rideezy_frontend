@@ -1,38 +1,40 @@
 import axios from "axios";
 import Cookies from "js-cookie";
 import router from "next/router";
-
-const getToken = () => Cookies.get("accessToken");
-const getRefreshToken = () => Cookies.get("refreshToken");
+import { getRefreshToken, getValidToken } from "../app/utils/auth"; // Adjust path to your auth.ts file
 
 export const createUserApiInstance = (baseURL: string) => {
   const api = axios.create({
-    baseURL: baseURL,
+    baseURL, // e.g., http://localhost:3001/api
     headers: {
       "Content-Type": "application/json",
     },
-    withCredentials: true,
   });
 
   api.interceptors.request.use(
-    (config) => {
-      if (
-        config.url?.includes("/auth/verify-otp") ||
-        config.url?.includes("/auth/resend-otp") ||
-        config.url?.includes("/auth/login") ||
-        config.url?.includes("/auth/refresh-token")
-      ) {
+    async (config) => {
+      // Skip adding Authorization header for unauthenticated routes
+      const unauthenticatedRoutes = [
+        "/auth/verify-otp",
+        "/auth/resend-otp",
+        "/auth/login",
+        "/auth/signup",
+        "/auth/refresh-token",
+      ];
+      if (config.url && unauthenticatedRoutes.some((route) => config.url!.includes(route))) {
         return config;
       }
 
-      const token = getToken();
-      console.log("Request URL:", config.url, "Token:", token);
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      } else {
-        console.warn("No accessToken found in cookies for", config.url);
+      try {
+        const token = await getValidToken();
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+      } catch (error) {
+        console.error("Failed to get valid token:", error);
+        return config; // Proceed without token to avoid blocking the request
       }
-      return config;
     },
     (error) => Promise.reject(error)
   );
@@ -56,24 +58,25 @@ export const createUserApiInstance = (baseURL: string) => {
 
         try {
           const refreshToken = getRefreshToken();
-          console.log("Refresh token:", refreshToken);
           if (!refreshToken) throw new Error("No refresh token found");
 
-          const { data } = await axios.post(
+          const response = await axios.post(
             `${baseURL}/auth/refresh-token`,
             { refreshToken },
-            { withCredentials: true }
+            { headers: { "Content-Type": "application/json" } }
           );
-          console.log("New tokens:", data);
 
-          Cookies.set("accessToken", data.accessToken, {
+          const { token: newAccessToken, refreshToken: newRefreshToken } = response.data;
+
+          Cookies.set("accessToken", newAccessToken, {
             expires: 1,
             secure: process.env.NODE_ENV === "production",
             sameSite: "strict",
             path: "/",
           });
-          if (data.refreshToken) {
-            Cookies.set("refreshToken", data.refreshToken, {
+
+          if (newRefreshToken) {
+            Cookies.set("refreshToken", newRefreshToken, {
               expires: 7,
               secure: process.env.NODE_ENV === "production",
               sameSite: "strict",
@@ -81,8 +84,8 @@ export const createUserApiInstance = (baseURL: string) => {
             });
           }
 
-          api.defaults.headers.Authorization = `Bearer ${data.accessToken}`;
-          originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
+          api.defaults.headers.Authorization = `Bearer ${newAccessToken}`;
+          originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
           console.log("Retrying original request:", originalRequest.url);
           return api(originalRequest);
         } catch (refreshError) {

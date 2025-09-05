@@ -23,13 +23,57 @@ interface User {
   email?: string;
 }
 
+// Function to load the Razorpay script dynamically
+const loadRazorpayScript = (): Promise<boolean> => {
+  return new Promise((resolve) => {
+    if (typeof window !== "undefined" && (window as any).Razorpay) {
+      resolve(true);
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://checkout.razorpay.com/v1/checkout.js";
+    script.async = true;
+    script.onload = () => {
+      console.log("Razorpay SDK loaded successfully");
+      resolve(true);
+    };
+    script.onerror = () => {
+      console.error("Failed to load Razorpay SDK");
+      resolve(false);
+    };
+    document.body.appendChild(script);
+  });
+};
+
 export const useRazorpay = ({ userId, onSuccess, onError }: RazorpayOptions) => {
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [razorpayLoaded, setRazorpayLoaded] = useState(false);
+
+  // Load Razorpay script on component mount
+  useState(() => {
+    loadRazorpayScript().then((loaded) => {
+      setRazorpayLoaded(loaded);
+      if (!loaded) {
+        console.error("Razorpay script failed to load");
+      }
+    });
+  });
 
   const handleSubscribe = async (plan: SubscriptionPlan, user: User) => {
     if (!userId || !user) {
       onError("User information is missing. Please log in again.");
       return;
+    }
+
+    // Ensure Razorpay is loaded
+    if (!razorpayLoaded) {
+      const loaded = await loadRazorpayScript();
+      if (!loaded) {
+        onError("Failed to load payment processor. Please try again.");
+        return;
+      }
+      setRazorpayLoaded(true);
     }
 
     // Fetch wallet balance
@@ -137,7 +181,18 @@ export const useRazorpay = ({ userId, onSuccess, onError }: RazorpayOptions) => 
             theme: {
               color: "#2563EB",
             },
+            modal: {
+              ondismiss: function() {
+                console.log('Checkout form closed by user');
+                setPaymentLoading(false);
+              }
+            }
           };
+
+          // Check if Razorpay is available
+          if (!(window as any).Razorpay) {
+            throw new Error("Payment processor not available. Please refresh the page and try again.");
+          }
 
           const rzp = new (window as any).Razorpay(options);
           rzp.on("payment.failed", function (response: any) {
@@ -148,6 +203,7 @@ export const useRazorpay = ({ userId, onSuccess, onError }: RazorpayOptions) => 
               confirmButtonColor: "#2563EB",
             });
             onError(response.error.description || "Payment failed");
+            setPaymentLoading(false);
           });
           rzp.open();
         } catch (error: any) {
@@ -165,5 +221,5 @@ export const useRazorpay = ({ userId, onSuccess, onError }: RazorpayOptions) => 
     });
   };
 
-  return { handleSubscribe, paymentLoading };
+  return { handleSubscribe, paymentLoading, razorpayLoaded };
 };

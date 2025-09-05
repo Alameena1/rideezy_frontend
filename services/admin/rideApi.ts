@@ -33,7 +33,7 @@ export const adminRideApi = {
   getRides: async (): Promise<Ride[]> => {
     try {
       const response = await adminApi.get("/rides");
-      return response.data.rides;
+      return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.message || "Failed to fetch rides");

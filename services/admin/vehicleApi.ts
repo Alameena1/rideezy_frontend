@@ -5,7 +5,8 @@ export const adminVehicleApi = {
   getVehicles: async () => {
     try {
       const response = await adminApi.get("/vehicles");
-      return response.data.vehicles;
+      console.log("Fetched Vehicles:", response.data);
+      return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.message || "Failed to fetch vehicles");
@@ -17,6 +18,7 @@ export const adminVehicleApi = {
   updateVehicleStatus: async (vehicleId: string, status: "Approved" | "Rejected", note?: string) => {
     try {
       const response = await adminApi.patch(`/vehicles/${vehicleId}/status`, { status, note });
+      console.log("Updated Vehicle Status:", response.data);
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {

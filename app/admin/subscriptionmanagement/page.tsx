@@ -34,14 +34,20 @@ export default function Subscription() {
     const fetchSubscriptions = async () => {
       try {
         setLoading(true);
+        setError(null);
         const fetchedSubscriptions = await apiService.admin.subscription.getSubscriptionPlans();
+
+        console.log("Fetched Subscriptions:", fetchedSubscriptions);
         if (Array.isArray(fetchedSubscriptions)) {
           setSubscriptions(fetchedSubscriptions);
         } else {
+          console.error("Invalid response format:", fetchedSubscriptions);
+          setError("Invalid response format from server");
           setSubscriptions([]);
         }
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : "Failed to fetch subscriptions";
+        console.error("Error fetching subscriptions:", err);
         setError(errorMessage);
         setSubscriptions([]);
       } finally {
@@ -61,7 +67,7 @@ export default function Subscription() {
 
   const openEditModal = (plan: SubscriptionPlan) => {
     setModalMode("edit");
-    setCurrentPlan(plan);
+    setCurrentPlan({...plan});
     setModalError(null);
     setShowModal(true);
   };
@@ -76,17 +82,32 @@ export default function Subscription() {
       if (modalMode === "add") {
         const createdPlan = await apiService.admin.subscription.createSubscriptionPlan(currentPlan);
         setSubscriptions([...subscriptions, createdPlan]);
+        Swal.fire(
+          'Success!',
+          'Subscription plan created successfully.',
+          'success'
+        );
       } else {
         const updatedPlan = await apiService.admin.subscription.updateSubscriptionPlan(currentPlan._id!, currentPlan);
         setSubscriptions(subscriptions.map((plan) =>
           plan._id === currentPlan._id ? updatedPlan : plan
         ));
+        Swal.fire(
+          'Success!',
+          'Subscription plan updated successfully.',
+          'success'
+        );
       }
       setShowModal(false);
       setModalError(null);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : `Failed to ${modalMode === "add" ? "add" : "update"} subscription plan`;
       setModalError(errorMessage);
+      Swal.fire(
+        'Error!',
+        errorMessage,
+        'error'
+      );
     }
   };
 
@@ -123,17 +144,33 @@ export default function Subscription() {
   };
 
   const handleToggleStatus = async (planId: string, currentStatus: "Active" | "Blocked") => {
-    const newStatus = currentStatus === "Active" ? "Blocked" : "Active";
-    try {
-      await apiService.admin.subscription.toggleSubscriptionPlanStatus(planId, newStatus);
-      setSubscriptions(subscriptions.map((plan) =>
-        plan._id === planId ? { ...plan, status: newStatus } : plan
-      ));
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to update subscription plan status";
-      setError(errorMessage);
-    }
-  };
+  const newStatus = currentStatus === "Active" ? "Blocked" : "Active";
+  
+  console.log("Toggling status for plan ID:", planId);
+  console.log("Current status:", currentStatus);
+  console.log("New status:", newStatus);
+  
+  try {
+    await apiService.admin.subscription.toggleSubscriptionPlanStatus(planId, newStatus);
+    setSubscriptions(subscriptions.map((plan) =>
+      plan._id === planId ? { ...plan, status: newStatus } : plan
+    ));
+    Swal.fire(
+      'Success!',
+      `Subscription plan ${newStatus.toLowerCase()} successfully.`,
+      'success'
+    );
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : "Failed to update subscription plan status";
+    console.error("Error toggling status:", err);
+    setError(errorMessage);
+    Swal.fire(
+      'Error!',
+      errorMessage,
+      'error'
+    );
+  }
+};
 
   const renderStatus = (status: string) => {
     switch (status) {
@@ -190,7 +227,7 @@ export default function Subscription() {
                     <td className="p-3">{index + 1}</td>
                     <td className="p-3">{subscription.name}</td>
                     <td className="p-3">{subscription.durationMonths}</td>
-                    <td className="p-3">{subscription.price}</td>
+                    <td className="p-3">${subscription.price}</td>
                     <td className="p-3">{subscription.description}</td>
                     <td className="p-3">
                       {subscription.createdAt ? new Date(subscription.createdAt).toLocaleDateString() : "N/A"}
@@ -259,7 +296,7 @@ export default function Subscription() {
                     type="number"
                     placeholder="Duration (Months)"
                     className="w-full p-3 bg-gray-700 text-white rounded border border-gray-600 focus:outline-none focus:border-blue-500"
-                    value={currentPlan.durationMonths}
+                    value={currentPlan.durationMonths || ""}
                     onChange={(e) => setCurrentPlan({ ...currentPlan, durationMonths: Number(e.target.value) })}
                   />
                 </div>
@@ -269,7 +306,7 @@ export default function Subscription() {
                     type="number"
                     placeholder="Price ($)"
                     className="w-full p-3 bg-gray-700 text-white rounded border border-gray-600 focus:outline-none focus:border-blue-500"
-                    value={currentPlan.price}
+                    value={currentPlan.price || ""}
                     onChange={(e) => setCurrentPlan({ ...currentPlan, price: Number(e.target.value) })}
                   />
                 </div>

@@ -1,5 +1,6 @@
 import Cookies from "js-cookie";
-import { adminApi } from "./adminApi"; // Import directly from adminApi.ts
+import axios from "axios";
+import { adminApi } from "./adminApi";
 
 export const adminAuthApi = {
   login: async (email: string, password: string) => {
@@ -32,7 +33,9 @@ export const adminAuthApi = {
 
   refreshToken: async () => {
     try {
-      const response = await adminApi.post("/refresh", {});
+      const refreshToken = Cookies.get("refreshToken");
+      if (!refreshToken) throw new Error("No refresh token found");
+      const response = await adminApi.post("/refresh-token", { refreshToken });
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
