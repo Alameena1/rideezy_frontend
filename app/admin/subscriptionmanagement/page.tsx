@@ -11,6 +11,8 @@ interface SubscriptionPlan {
   durationMonths: number;
   price: number;
   description: string;
+  maxStartingRides: number;
+  maxJoiningRides: number;
   status: "Active" | "Blocked";
   createdAt: string;
   updatedAt?: string;
@@ -27,6 +29,8 @@ export default function Subscription() {
     durationMonths: 0,
     price: 0,
     description: "",
+    maxStartingRides: 0,
+    maxJoiningRides: 0,
   });
   const [modalError, setModalError] = useState<string | null>(null);
 
@@ -60,7 +64,7 @@ export default function Subscription() {
 
   const openAddModal = () => {
     setModalMode("add");
-    setCurrentPlan({ name: "", durationMonths: 0, price: 0, description: "" });
+    setCurrentPlan({ name: "", durationMonths: 0, price: 0, description: "", maxStartingRides: 0, maxJoiningRides: 0 });
     setModalError(null);
     setShowModal(true);
   };
@@ -73,8 +77,8 @@ export default function Subscription() {
   };
 
   const handleSavePlan = async () => {
-    if (!currentPlan.name || !currentPlan.durationMonths || !currentPlan.price || !currentPlan.description) {
-      setModalError("ALL FIELDS ARE REQUIRED");
+    if (!currentPlan.name || currentPlan.durationMonths <= 0 || currentPlan.price < 0 || !currentPlan.description || currentPlan.maxStartingRides < 0 || currentPlan.maxJoiningRides < 0) {
+      setModalError("All fields are required and must be non-negative (duration at least 1)");
       return;
     }
 
@@ -214,7 +218,9 @@ export default function Subscription() {
                   <th className="p-3 border-b border-gray-700">#</th>
                   <th className="p-3 border-b border-gray-700">Name</th>
                   <th className="p-3 border-b border-gray-700">Duration (Months)</th>
-                  <th className="p-3 border-b border-gray-700">Price ($)</th>
+                  <th className="p-3 border-b border-gray-700">Price</th>
+                  <th className="p-3 border-b border-gray-700">Max Starting Rides</th>
+                  <th className="p-3 border-b border-gray-700">Max Joining Rides</th>
                   <th className="p-3 border-b border-gray-700">Description</th>
                   <th className="p-3 border-b border-gray-700">Created On</th>
                   <th className="p-3 border-b border-gray-700">Status</th>
@@ -227,7 +233,9 @@ export default function Subscription() {
                     <td className="p-3">{index + 1}</td>
                     <td className="p-3">{subscription.name}</td>
                     <td className="p-3">{subscription.durationMonths}</td>
-                    <td className="p-3">${subscription.price}</td>
+                    <td className="p-3">{subscription.price}</td>
+                    <td className="p-3">{subscription.maxStartingRides}</td>
+                    <td className="p-3">{subscription.maxJoiningRides}</td>
                     <td className="p-3">{subscription.description}</td>
                     <td className="p-3">
                       {subscription.createdAt ? new Date(subscription.createdAt).toLocaleDateString() : "N/A"}
@@ -237,9 +245,7 @@ export default function Subscription() {
                       <div className="flex space-x-2">
                         <button
                           onClick={() => handleToggleStatus(subscription._id, subscription.status)}
-                          className={`${
-                            subscription.status === "Active" ? "bg-red-700 hover:bg-red-600" : "bg-green-700 hover:bg-green-600"
-                          } text-white rounded p-2`}
+                          className={`${subscription.status === "Active" ? "bg-red-700 hover:bg-red-600" : "bg-green-700 hover:bg-green-600"} text-white rounded p-2`}
                         >
                           {subscription.status === "Active" ? "Block" : "Activate"}
                         </button>
@@ -291,9 +297,12 @@ export default function Subscription() {
                   />
                 </div>
                 <div>
-                  <label className="block text-gray-300 mb-1">Duration (Months)</label>
+                  <label className="block text-gray-300 mb-1">Duration (Months) <span className="text-red-500">*</span></label>
                   <input
                     type="number"
+                    min="1"
+                    max="120"
+                    step="1"
                     placeholder="Duration (Months)"
                     className="w-full p-3 bg-gray-700 text-white rounded border border-gray-600 focus:outline-none focus:border-blue-500"
                     value={currentPlan.durationMonths || ""}
@@ -301,17 +310,46 @@ export default function Subscription() {
                   />
                 </div>
                 <div>
-                  <label className="block text-gray-300 mb-1">Price ($)</label>
+                  <label className="block text-gray-300 mb-1">Price <span className="text-red-500">*</span></label>
                   <input
                     type="number"
-                    placeholder="Price ($)"
+                    min="0"
+                    max="10000"
+                    step="0.01"
+                    placeholder="Price"
                     className="w-full p-3 bg-gray-700 text-white rounded border border-gray-600 focus:outline-none focus:border-blue-500"
                     value={currentPlan.price || ""}
                     onChange={(e) => setCurrentPlan({ ...currentPlan, price: Number(e.target.value) })}
                   />
                 </div>
                 <div>
-                  <label className="block text-gray-300 mb-1">Description</label>
+                  <label className="block text-gray-300 mb-1">Max Starting Rides <span className="text-red-500">*</span></label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="1000"
+                    step="1"
+                    placeholder="Max Starting Rides"
+                    className="w-full p-3 bg-gray-700 text-white rounded border border-gray-600 focus:outline-none focus:border-blue-500"
+                    value={currentPlan.maxStartingRides || ""}
+                    onChange={(e) => setCurrentPlan({ ...currentPlan, maxStartingRides: Number(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-300 mb-1">Max Joining Rides <span className="text-red-500">*</span></label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="1000"
+                    step="1"
+                    placeholder="Max Joining Rides"
+                    className="w-full p-3 bg-gray-700 text-white rounded border border-gray-600 focus:outline-none focus:border-blue-500"
+                    value={currentPlan.maxJoiningRides || ""}
+                    onChange={(e) => setCurrentPlan({ ...currentPlan, maxJoiningRides: Number(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-gray-300 mb-1">Description <span className="text-red-500">*</span></label>
                   <textarea
                     placeholder="Description"
                     className="w-full p-3 bg-gray-700 text-white rounded border border-gray-600 focus:outline-none focus:border-blue-500"
@@ -332,9 +370,7 @@ export default function Subscription() {
                   Cancel
                 </button>
                 <button
-                  className={`${
-                    modalMode === "add" ? "bg-blue-700 hover:bg-blue-600" : "bg-yellow-700 hover:bg-yellow-600"
-                  } text-white px-4 py-2 rounded`}
+                  className={`${modalMode === "add" ? "bg-blue-700 hover:bg-blue-600" : "bg-yellow-700 hover:bg-yellow-600"} text-white px-4 py-2 rounded`}
                   onClick={handleSavePlan}
                 >
                   {modalMode === "add" ? "Add Plan" : "Update Plan"}
