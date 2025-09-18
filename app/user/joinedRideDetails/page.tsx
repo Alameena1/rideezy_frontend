@@ -113,7 +113,7 @@ export default function JoinedRideDetails() {
     }
   }, [rides]);
 
-  const fetchJoinedRides = async () => {
+ const fetchJoinedRides = async () => {
     setIsLoading(true);
     try {
       const joinedRidesData = await apiService.ride.getJoinedRides();
@@ -142,8 +142,7 @@ export default function JoinedRideDetails() {
         status: ride.status || "Pending",
         routeGeometry: ride.routeGeometry || "",
         paymentStatus: ride.paymentStatus || "Pending",
-        currentPosition: ride.currentPosition || null,
-        requestStatus: ride.requestStatus || "accepted", // Default to "accepted" if not specified
+        requestStatus: ride.requestStatus || (ride.passengers.some((p: any) => p.passengerId === userId) ? "accepted" : "pending"), // Correctly set requestStatus
       }));
 
       setRides(mappedRides);
@@ -543,7 +542,7 @@ export default function JoinedRideDetails() {
     }
   };
 
-  const handleCancelRide = async (rideId: string) => {
+ const handleCancelRide = async (rideId: string) => {
     const result = await Swal.fire({
       title: "Are you sure?",
       text: "Do you really want to cancel this ride? This action cannot be undone!",
@@ -558,10 +557,9 @@ export default function JoinedRideDetails() {
     if (result.isConfirmed) {
       try {
         await apiService.ride.cancelJoinedRide(rideId);
-        // Update the ride status to reflect cancellation without removing it
         setRides((prev) =>
           prev.map((ride) =>
-            ride.rideId === rideId ? { ...ride, requestStatus: "rejected" } : ride
+            ride.rideId === rideId ? { ...ride, status: "Cancelled", requestStatus: "rejected" } : ride
           )
         );
         Swal.fire("Cancelled!", "Your ride request has been cancelled successfully.", "success");
@@ -607,7 +605,7 @@ export default function JoinedRideDetails() {
             ) : (
               <div className="grid gap-6">
                 {rides.map((ride) => {
-                  const seatsLeft = (ride.totalPeople - 1) - ride.passengerCount;
+                  const seatsLeft = ride.passengerCount - ride.passengers.length; // Updated to use correct seat calculation
                   const userPickup = ride.pickupPoints.find((p) => p.passengerId === userId);
                   const userDropoff = ride.dropoffPoints.find((p) => p.passengerId === userId);
                   const isUserPassenger = ride.passengers.some((p) => p.passengerId === userId);
@@ -639,6 +637,8 @@ export default function JoinedRideDetails() {
                                       ? "text-amber-600"
                                       : ride.status === "Started"
                                       ? "text-blue-600"
+                                      : ride.status === "Cancelled"
+                                      ? "text-red-600"
                                       : "text-green-600"
                                   } font-medium`}
                                 >
@@ -697,14 +697,14 @@ export default function JoinedRideDetails() {
                             >
                               <Phone className="h-4 w-4 mr-1" /> Chat with Driver
                             </Button>
-                            {ride.status === "Pending" && ride.requestStatus === "pending" && (
+                            {ride.status === "Pending" && (ride.requestStatus === "pending" || ride.requestStatus === "accepted") && (
                               <Button
                                 variant="outline"
                                 size="sm"
                                 className="rounded-full border-red-300 text-red-600 hover:bg-red-50"
                                 onClick={() => handleCancelRide(ride.rideId!)}
                               >
-                                <X className="h-4 w-4 mr-1" /> Cancel Request
+                                <X className="h-4 w-4 mr-1" /> Cancel {ride.requestStatus === "pending" ? "Request" : "Ride"}
                               </Button>
                             )}
                           </div>

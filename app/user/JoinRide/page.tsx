@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { MapPin, Clock, Route, IndianRupee, Search, Navigation, MessageCircle } from "lucide-react";
+import { MapPin, Clock, Route, IndianRupee, Search, Navigation, MessageCircle, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import axios from "axios";
 import useAuth from "@/app/hooks/useAuth";
@@ -35,9 +35,14 @@ interface Ride {
   passengerCount: number;
   totalPeople: number;
   distanceKm: number;
-  costPerPerson: number;
+  costPerPerson?: number;
+  perKmRate?: number;
   routeGeometry: string;
-  driverId: string; // Assuming driverId is available
+  driverId: string;
+  passengers: { passengerId: string; passengerName: string; pickedUp?: boolean; droppedOff?: boolean }[];
+  passengerDistances: { passengerId: string; distanceKm: number }[];
+  passengerCosts: { passengerId: string; cost: number }[];
+  pendingRequests?: { passengerId: string; distanceKm: number; status: string }[];
 }
 
 interface FormData {
@@ -71,6 +76,8 @@ const JoinRidePage: React.FC = () => {
 
   const userLocation = watch("userLocation");
   const destination = watch("destination");
+  const userLocationName = watch("userLocationName");
+  const destinationName = watch("destinationName");
   const [rides, setRides] = useState<Ride[]>([]);
   const [placeNames, setPlaceNames] = useState<PlaceNames>({});
   const [error, setError] = useState<string | null>(null);
@@ -78,12 +85,18 @@ const JoinRidePage: React.FC = () => {
   const [mapCenter] = useState<[number, number]>([10.8505, 76.2711]);
   const [selectedRide, setSelectedRide] = useState<Ride | null>(null);
   const [joinLocation, setJoinLocation] = useState<string | null>(null);
+  const [passengerDistance, setPassengerDistance] = useState<number | null>(null);
+  const [passengerCost, setPassengerCost] = useState<number | null>(null);
+  const [isCostLoading, setIsCostLoading] = useState(false);
+  const [isJoinRideSuccessful, setIsJoinRideSuccessful] = useState(false);
   const [L, setL] = useState<any>(null);
 
   const { handleRidePayment, paymentLoading } = useRidePayment({
     userId: user?._id || "",
     pickupLocation: userLocation,
     dropoffLocation: destination,
+    pickupPlaceName: userLocationName,
+    dropoffPlaceName: destinationName,
     onSuccess: (ride) => {
       setJoinLocation(userLocation);
       setError(null);
@@ -104,7 +117,10 @@ const JoinRidePage: React.FC = () => {
         }
       });
     },
-    onError: (errorMessage) => setError(errorMessage),
+    onError: (errorMessage) => {
+      setError(errorMessage);
+      setIsCostLoading(false);
+    },
   });
 
   useEffect(() => {
@@ -139,7 +155,10 @@ const JoinRidePage: React.FC = () => {
   const reverseGeocode = async (lat: number, lng: number): Promise<string> => {
     try {
       const response = await axios.get(
-        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
+        {
+          headers: { 'User-Agent': 'YourAppName/1.0 (contact@example.com)' },
+        }
       );
       return response.data.display_name || `${lat},${lng}`;
     } catch (error) {
@@ -168,6 +187,160 @@ const JoinRidePage: React.FC = () => {
     }
   }, [rides]);
 
+  const calculateDistanceBetweenPoints = (point1: string, point2: string): number => {
+    try {
+      const [lat1, lng1] = point1.split(',').map(Number);
+      const [lat2, lng2] = point2.split(',').map(Number);
+      
+      if (isNaN(lat1) || isNaN(lng1) || isNaN(lat2) || isNaN(lng2)) {
+        return 0;
+      }
+      
+      // Haversine formula to calculate distance between two points
+      const R = 6371; // Earth's radius in kilometers
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLng = (lng2 - lng1) * Math.PI / 180;
+      const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLng/2) * Math.sin(dLng/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      const distance = R * c;
+      
+      return distance;
+    } catch (error) {
+      console.error("Error calculating distance:", error);
+      return 0;
+    }
+  };
+
+  const fetchPassengerCost = useCallback(
+    async (ride: Ride) => {
+      if (!userLocation || !destination || !user?._id) {
+        console.warn("[JoinRidePage] Missing userLocation, destination, or user ID:", {
+          userLocation,
+          destination,
+          userId: user?._id,
+        });
+        setError("Please provide valid pickup and drop-off locations and ensure you are logged in.");
+        setIsCostLoading(false);
+        return;
+      }
+
+      setIsCostLoading(true);
+      setError(null);
+      
+      try {
+        console.log("[JoinRidePage] Calling joinRide API with:", {
+          rideId: ride.rideId,
+          userId: user?._id,
+          userLocation,
+          destination,
+          userLocationName,
+          destinationName,
+        });
+
+        // First try to get the distance from the backend
+        let backendDistance: number | null = null;
+        let pendingRequestId: string | null = null;
+        
+        try {
+          const response = await apiService.ride.joinRide(
+            ride.rideId,
+            user?._id || "",
+            userLocation,
+            destination,
+            userLocationName,
+            destinationName
+          );
+          
+          console.log("[JoinRidePage] joinRide response:", response);
+          
+          if (response.data && response.data.pendingRequests) {
+            const pendingRequest = response.data.pendingRequests.find(
+              (req: any) => req.passengerId === user?._id
+            );
+            
+            if (pendingRequest && pendingRequest.distanceKm !== undefined) {
+              backendDistance = pendingRequest.distanceKm;
+              pendingRequestId = pendingRequest._id || pendingRequest.passengerId;
+              console.log("[JoinRidePage] Got distance from backend:", backendDistance);
+            }
+          }
+        } catch (apiError: any) {
+          console.warn("[JoinRidePage] API call failed, using fallback calculation:", apiError.message);
+          // Continue with fallback calculation
+        }
+
+        // If backend didn't provide distance, calculate it locally
+        let finalDistance = backendDistance;
+        if (finalDistance === null || finalDistance === undefined) {
+          console.log("[JoinRidePage] Calculating distance locally");
+          finalDistance = calculateDistanceBetweenPoints(userLocation, destination);
+          
+          // If local calculation fails, use a percentage of the total ride distance
+          if (finalDistance <= 0) {
+            finalDistance = ride.distanceKm * 0.7; // 70% of total distance as estimate
+            console.log("[JoinRidePage] Using estimated distance:", finalDistance);
+          }
+        }
+
+        const perKmRate = ride.perKmRate ?? 6.37; // Fallback perKmRate
+        const cost = Math.max(finalDistance * perKmRate, 20); // Minimum fare of ₹20
+        
+        console.log(
+          `[JoinRidePage] Final calculation: ₹${cost} (distanceKm: ${finalDistance}, perKmRate: ${perKmRate})`
+        );
+        
+        setPassengerDistance(finalDistance);
+        setPassengerCost(cost);
+        setIsJoinRideSuccessful(true);
+        
+        // Store the ride and passenger info for payment
+        localStorage.setItem('pendingRideRequest', JSON.stringify({
+          rideId: ride.rideId,
+          passengerId: user?._id,
+          distance: finalDistance,
+          cost: cost,
+          timestamp: Date.now()
+        }));
+        
+      } catch (error: any) {
+        console.error("[JoinRidePage] Error in fetchPassengerCost:", {
+          error: error.message,
+          response: error.response?.data,
+          status: error.response?.status,
+          userId: user?._id,
+          rideId: ride.rideId,
+        });
+        
+        // Fallback calculation if everything fails
+        const perKmRate = ride.perKmRate ?? 6.37;
+        const estimatedDistance = ride.distanceKm * 0.7;
+        const cost = Math.max(estimatedDistance * perKmRate, 20);
+        
+        setPassengerDistance(estimatedDistance);
+        setPassengerCost(cost);
+        setIsJoinRideSuccessful(false);
+        setError("Using estimated fare. " + (error.response?.data?.message || "Please verify locations."));
+      } finally {
+        setIsCostLoading(false);
+      }
+    },
+    [userLocation, destination, userLocationName, destinationName, user?._id]
+  );
+
+  useEffect(() => {
+    if (selectedRide && userLocation && destination && user?._id) {
+      fetchPassengerCost(selectedRide);
+    } else {
+      setPassengerDistance(null);
+      setPassengerCost(null);
+      setIsCostLoading(false);
+      setIsJoinRideSuccessful(false);
+    }
+  }, [selectedRide, userLocation, destination, user?._id, fetchPassengerCost]);
+
   const handleSearch = async () => {
     if (!userLocation || !destination) {
       setError("Please select both your location and destination.");
@@ -175,18 +348,23 @@ const JoinRidePage: React.FC = () => {
     }
 
     setIsLoading(true);
+    setError(null);
+    
     try {
       const response = await apiService.ride.findNearestRides({ userLocation, destination });
-      console.log("Fetched rides:", response);
+      console.log("[JoinRidePage] Fetched rides:", response);
       setRides(response);
-      setError(null);
       setSelectedRide(null);
       setJoinLocation(null);
+      setPassengerDistance(null);
+      setPassengerCost(null);
+      setIsCostLoading(false);
+      setIsJoinRideSuccessful(false);
     } catch (err: any) {
       const message =
         err.response?.data?.message || err.message || "Failed to fetch rides. Please try again.";
       setError(message);
-      console.error("Error fetching rides:", err);
+      console.error("[JoinRidePage] Error fetching rides:", err);
     } finally {
       setIsLoading(false);
     }
@@ -198,7 +376,14 @@ const JoinRidePage: React.FC = () => {
   };
 
   const handleJoinRide = async (ride: Ride) => {
-    console.log("Attempting to join ride with userLocation:", userLocation, "destination:", destination);
+    console.log(
+      "[JoinRidePage] Attempting to join ride with userLocation:",
+      userLocation,
+      "destination:",
+      destination,
+      "userId:",
+      user?._id
+    );
 
     if (!isAuthenticated) {
       setError("Please log in to join a ride.");
@@ -212,34 +397,46 @@ const JoinRidePage: React.FC = () => {
 
     if (!userLocation || userLocation.trim() === "") {
       setError("Please select your pickup location before joining a ride.");
-      console.warn("userLocation is invalid:", userLocation);
+      console.warn("[JoinRidePage] userLocation is invalid:", userLocation);
       return;
     }
 
     if (!destination || destination.trim() === "") {
       setError("Please select your drop-off location before joining a ride.");
-      console.warn("destination is invalid:", destination);
+      console.warn("[JoinRidePage] destination is invalid:", destination);
       return;
     }
 
     if (!validateLocationFormat(userLocation)) {
       setError("Invalid pickup location format. Please select a valid location (latitude,longitude).");
-      console.warn("Invalid userLocation format:", userLocation);
+      console.warn("[JoinRidePage] Invalid userLocation format:", userLocation);
       return;
     }
 
     if (!validateLocationFormat(destination)) {
       setError("Invalid drop-off location format. Please select a valid location (latitude,longitude).");
-      console.warn("Invalid destination format:", destination);
+      console.warn("[JoinRidePage] Invalid destination format:", destination);
+      return;
+    }
+
+    if (passengerCost === null) {
+      setError("Cost calculation failed. Please retry or select a different ride.");
+      console.warn("[JoinRidePage] Cost not calculated:", { passengerCost });
       return;
     }
 
     handleRidePayment(ride, user);
   };
 
+  const handleRetryCostCalculation = (ride: Ride) => {
+    setError(null);
+    setIsCostLoading(true);
+    fetchPassengerCost(ride);
+  };
+
   const handleSetLocation = useCallback(
     (loc: string, isUserLocation: boolean) => {
-      console.log("Setting location:", loc, "isUserLocation:", isUserLocation);
+      console.log("[JoinRidePage] Setting location:", loc, "isUserLocation:", isUserLocation);
       if (isUserLocation) {
         setValue("userLocation", loc, { shouldValidate: true });
       } else {
@@ -250,9 +447,9 @@ const JoinRidePage: React.FC = () => {
   );
 
   const getAvailableSeats = useCallback((ride: Ride) => {
-    const availableSeats = Math.max(0, ride.totalPeople - 1 - ride.passengerCount);
+    const availableSeats = Math.max(0, ride.passengerCount - ride.passengers.length);
     console.log(
-      `Ride ${ride.rideId}: totalPeople=${ride.totalPeople}, passengerCount=${ride.passengerCount}, availableSeats=${availableSeats}`
+      `[JoinRidePage] Ride ${ride.rideId}: passengerCount=${ride.passengerCount}, passengersLength=${ride.passengers.length}, availableSeats=${availableSeats}`
     );
     return availableSeats;
   }, []);
@@ -272,7 +469,6 @@ const JoinRidePage: React.FC = () => {
   };
 
   const handleChatWithDriver = (rideId: string, driverId: string) => {
- 
     router.push(`/user/chat?rideId=${rideId}&driverId=${driverId}`);
   };
 
@@ -409,6 +605,13 @@ const JoinRidePage: React.FC = () => {
                             startPlaceName: ride.startPoint,
                             endPlaceName: ride.endPoint,
                           };
+                        
+                        // Calculate display cost
+                        let displayCost = ride.perKmRate ? Math.max(ride.distanceKm * ride.perKmRate, 20) : 20;
+                        if (selectedRide?._id === ride._id) {
+                          displayCost = passengerCost !== null ? passengerCost : displayCost;
+                        }
+
                         return (
                           <Card
                             key={ride.rideId}
@@ -456,16 +659,26 @@ const JoinRidePage: React.FC = () => {
                                   </div>
                                   <div className="flex items-center gap-1">
                                     <Route className="h-3 w-3 text-gray-500" />
-                                    <span>{ride.distanceKm} km</span>
+                                    <span>{ride.distanceKm.toFixed(2)} km</span>
                                   </div>
                                   <div className="flex items-center gap-1">
                                     <IndianRupee className="h-3 w-3 text-gray-500" />
-                                    <span>₹{ride.costPerPerson.toFixed(2)}</span>
+                                    <span>
+                                      {isCostLoading && selectedRide?._id === ride._id 
+                                        ? "Calculating..." 
+                                        : `₹${displayCost.toFixed(2)}`
+                                      }
+                                    </span>
                                   </div>
+                                  {selectedRide?._id === ride._id && passengerDistance !== null && (
+                                    <div className="flex items-center gap-1 col-span-2">
+                                      <Route className="h-3 w-3 text-gray-500" />
+                                      <span>Your distance: {passengerDistance.toFixed(2)} km</span>
+                                    </div>
+                                  )}
                                 </div>
 
                                 <div className="space-y-2">
-                                  {/* Chat Button above Pay Button */}
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -479,8 +692,20 @@ const JoinRidePage: React.FC = () => {
                                     <MessageCircle className="h-4 w-4" />
                                     Chat with Driver
                                   </Button>
-
-                                  {/* Pay Button */}
+                                  {selectedRide?._id === ride._id && !isJoinRideSuccessful && !isCostLoading && (
+                                    <Button
+                                      variant="outline"
+                                      size="sm"
+                                      className="w-full flex items-center justify-center gap-2"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleRetryCostCalculation(ride);
+                                      }}
+                                    >
+                                      <RefreshCw className="h-4 w-4" />
+                                      Retry Cost Calculation
+                                    </Button>
+                                  )}
                                   <Button
                                     onClick={(e) => {
                                       e.stopPropagation();
@@ -494,14 +719,18 @@ const JoinRidePage: React.FC = () => {
                                       userLocation.trim() === "" ||
                                       !destination ||
                                       destination.trim() === "" ||
-                                      paymentLoading === ride.rideId
+                                      paymentLoading === ride.rideId ||
+                                      (selectedRide?._id === ride._id && (isCostLoading || passengerCost === null))
                                     }
                                   >
                                     {paymentLoading === ride.rideId
                                       ? "Processing Payment..."
                                       : getAvailableSeats(ride) === 0
                                       ? "Ride Full"
-                                      : `Pay ₹${ride.costPerPerson.toFixed(2)}`}
+                                      : selectedRide?._id === ride._id && (isCostLoading || passengerCost === null)
+                                      ? "Calculating Cost..."
+                                      : `Pay ₹${passengerCost?.toFixed(2) || "0.00"}`
+                                    }
                                   </Button>
                                 </div>
                               </div>

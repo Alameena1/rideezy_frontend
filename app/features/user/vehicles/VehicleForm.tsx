@@ -24,6 +24,7 @@ const vehicleSchema = z.object({
   color: z.string().min(1, { message: "Color is required" }),
   insuranceNumber: z.string().min(1, { message: "Insurance number is required" }),
   mileage: z.coerce.number().int().min(0, { message: "Mileage must be a positive integer" }),
+  seatCapacity: z.coerce.number().int().min(1, { message: "Seat capacity must be at least 1" }), // New field
   vehicleImage: z
     .any()
     .refine((file) => !file || (file instanceof File && file.size > 0), { message: "Invalid vehicle image" })
@@ -56,12 +57,12 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
       color: "",
       insuranceNumber: "",
       mileage: 0,
+      seatCapacity: 1, // Default seat capacity
       vehicleImage: null,
       documentImage: null,
     },
   });
 
-  // Fetch vehicle data for edit mode
   useEffect(() => {
     if (isEditMode) {
       const fetchVehicle = async () => {
@@ -78,6 +79,7 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
             color: vehicle.color || "",
             insuranceNumber: vehicle.insuranceNumber || "",
             mileage: vehicle.mileage,
+            seatCapacity: vehicle.seatCapacity || 1, // Load seat capacity
             vehicleImage: null,
             documentImage: null,
           });
@@ -147,9 +149,9 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
         color: values.color,
         insuranceNumber: values.insuranceNumber,
         mileage: values.mileage,
+        seatCapacity: values.seatCapacity, // Include seat capacity
       };
 
-      // Only upload new images if provided
       if (values.vehicleImage instanceof File) {
         payload.vehicleImage = await uploadFile(values.vehicleImage);
       }
@@ -219,7 +221,6 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
                 </FormItem>
               )}
             />
-
             <FormField
               control={form.control}
               name="vehicleType"
@@ -228,24 +229,22 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
                   <FormLabel>Vehicle Type</FormLabel>
                   <FormControl>
                     {isEditMode ? (
-                      // Read-only input for edit mode
                       <Input
                         value={field.value}
                         readOnly
                         className="bg-gray-100 cursor-not-allowed"
                       />
                     ) : (
-                      // Select input for add mode
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <SelectTrigger>
                           <SelectValue placeholder="Select vehicle type" />
                         </SelectTrigger>
                         <SelectContent>
-  <SelectItem value="Car">Car</SelectItem>
-  <SelectItem value="Van">Van</SelectItem>
-  <SelectItem value="Motorcycle">Motorcycle</SelectItem>
-  <SelectItem value="Truck">Truck</SelectItem>
-</SelectContent>
+                          <SelectItem value="Car">Car</SelectItem>
+                          <SelectItem value="Van">Van</SelectItem>
+                          <SelectItem value="Motorcycle">Motorcycle</SelectItem>
+                          <SelectItem value="Truck">Truck</SelectItem>
+                        </SelectContent>
                       </Select>
                     )}
                   </FormControl>
@@ -253,7 +252,6 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
                 </FormItem>
               )}
             />
-
             <FormField
               control={form.control}
               name="licensePlate"
@@ -262,14 +260,12 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
                   <FormLabel>License Plate</FormLabel>
                   <FormControl>
                     {isEditMode ? (
-                      // Read-only input for edit mode
                       <Input
                         value={field.value}
                         readOnly
                         className="bg-gray-100 cursor-not-allowed"
                       />
                     ) : (
-                      // Regular input for add mode
                       <Input placeholder="e.g., ABC123" {...field} />
                     )}
                   </FormControl>
@@ -277,7 +273,6 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
                 </FormItem>
               )}
             />
-
             <FormField
               control={form.control}
               name="mileage"
@@ -291,7 +286,19 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
                 </FormItem>
               )}
             />
-
+            <FormField
+              control={form.control}
+              name="seatCapacity"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Seat Capacity</FormLabel>
+                  <FormControl>
+                    <Input type="number" step="1" placeholder="e.g. 4" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name="color"
@@ -305,7 +312,6 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
                 </FormItem>
               )}
             />
-
             <FormField
               control={form.control}
               name="insuranceNumber"
@@ -319,7 +325,6 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
                 </FormItem>
               )}
             />
-
             <FormField
               control={form.control}
               name="vehicleImage"
@@ -359,7 +364,6 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
                 </FormItem>
               )}
             />
-
             <FormField
               control={form.control}
               name="documentImage"

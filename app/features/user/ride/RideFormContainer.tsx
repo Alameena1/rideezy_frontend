@@ -26,10 +26,17 @@ interface RouteData {
   geometry: any;
 }
 
+interface Vehicle {
+  _id: string;
+  vehicleName: string;
+  mileage: number;
+  seatCapacity: number;
+}
+
 const RideFormContainer: React.FC = () => {
   const [routeData, setRouteData] = useState<RouteData | null>(null);
-  const [vehicles, setVehicles] = useState<any[]>([]);
-  const [costPerPerson, setCostPerPerson] = useState<number | null>(null);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [perKmRate, setPerKmRate] = useState<number | null>(null); // Changed from costPerPerson
   const [platformFee, setPlatformFee] = useState<number | null>(null);
   const [distanceInKm, setDistanceInKm] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -104,7 +111,7 @@ const RideFormContainer: React.FC = () => {
       const platformFee = isSubscribed ? 0 : Math.ceil(totalFuelCost * 0.1);
       setPlatformFee(platformFee);
       const totalRideCost = totalFuelCost + platformFee;
-      setCostPerPerson(totalRideCost / totalPeople);
+      setPerKmRate(totalRideCost / distanceInKm); // Changed to perKmRate
     }
   }, [routeData, vehicleId, passengerCount, fuelPrice, isSubscribed]);
 
@@ -114,6 +121,16 @@ const RideFormContainer: React.FC = () => {
         icon: "error",
         title: "Oops...",
         text: "Please calculate a valid route before submitting.",
+      });
+      return;
+    }
+
+    const selectedVehicle = vehicles.find((v) => v._id === data.vehicleId);
+    if (data.passengerCount > selectedVehicle?.seatCapacity) {
+      Swal.fire({
+        icon: "error",
+        title: "Invalid Passenger Count",
+        text: `Passenger count (${data.passengerCount}) exceeds vehicle seat capacity (${selectedVehicle?.seatCapacity})`,
       });
       return;
     }
@@ -129,7 +146,7 @@ const RideFormContainer: React.FC = () => {
       fuelCost: (routeData.distance / 1000) * (Number(data.fuelPrice) / (vehicles.find(v => v._id === data.vehicleId)?.mileage || 1)),
       distance: Number(routeData.distance) / 1000,
       routeGeometry: JSON.stringify(routeData.geometry),
-      costPerPerson: costPerPerson || 0,
+      platformFee: platformFee || 0,
       driverId: data.driverId,
     };
 
@@ -187,7 +204,7 @@ const RideFormContainer: React.FC = () => {
               register={register}
               setValue={setValue}
               error={errors.startPoint?.message}
-              allowCurrentLocation={true} // Enable current location for start point
+              allowCurrentLocation={true}
             />
             <AddressSearch
               label="End Point"
@@ -196,15 +213,16 @@ const RideFormContainer: React.FC = () => {
               register={register}
               setValue={setValue}
               error={errors.endPoint?.message}
-              allowCurrentLocation={false} // Disable for end point
+              allowCurrentLocation={false}
             />
             <RideFormFields
               vehicles={vehicles}
               register={register}
               errors={errors}
               distanceInKm={distanceInKm}
-              costPerPerson={costPerPerson}
+              perKmRate={perKmRate} // Changed from costPerPerson
               platformFee={platformFee}
+              selectedVehicleId={vehicleId}
             />
             <button
               type="submit"

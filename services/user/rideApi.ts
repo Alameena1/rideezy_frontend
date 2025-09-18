@@ -91,41 +91,33 @@ export const rideApi = {
     }
   },
 
-  joinRide: async (
+joinRide: async (
   rideId: string,
   passengerId: string,
-  passengerName: string,
   pickupLocation: string,
-  dropoffLocation: string,
-  pickupPlaceName?: string,
-  dropoffPlaceName?: string
+  dropoffLocation: string
 ) => {
   try {
     console.log("[rideApi] Initiating joinRide with:", {
       rideId,
       passengerId,
-      passengerName,
       pickupLocation,
       dropoffLocation,
-      pickupPlaceName,
-      dropoffPlaceName,
     });
 
     const response = await api.post(
-      `/rides/${rideId}/join`,
-      {
-        passengerId,
-        passengerName,
-        pickupLocation,
-        dropoffLocation,
-        pickupPlaceName: pickupPlaceName || "Unknown",
-        dropoffPlaceName: dropoffPlaceName || "Unknown",
-      },
-      { withCredentials: true }
-    );
+  `/rides/join`,
+  {
+    rideId, // Include rideId in the request body
+    passengerId,
+    pickupLocation,
+    dropoffLocation,
+  },
+  { withCredentials: true }
+);
 
     console.log("[rideApi] Join ride response:", response.data);
-    return response.data;
+    return response;
   } catch (error: any) {
     console.error("[rideApi] Error joining ride:", error);
     throw new Error(error.response?.data?.message || "Failed to join ride");
