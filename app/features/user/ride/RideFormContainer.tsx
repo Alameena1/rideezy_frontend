@@ -220,7 +220,7 @@ const RideFormContainer: React.FC = () => {
               register={register}
               errors={errors}
               distanceInKm={distanceInKm}
-              perKmRate={perKmRate} // Changed from costPerPerson
+              perKmRate={perKmRate} 
               platformFee={platformFee}
               selectedVehicleId={vehicleId}
             />

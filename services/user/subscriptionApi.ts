@@ -1,9 +1,63 @@
 import { api } from "../api";
 
+export interface SubscriptionPlan {
+  _id: string;
+  name: string;
+  durationMonths: number;
+  price: number;
+  description: string;
+  maxStartingRides: number;
+  maxJoiningRides: number;
+  status: "Active" | "Blocked";
+  isDeleted: boolean;
+}
+
+export interface SubscriptionStatusResponse {
+  success: boolean;
+  isSubscribed: boolean;
+  subscription?: {
+    plan: {
+      _id: string;
+      name: string;
+      price: number;
+      durationMonths: number;
+      description: string;
+    };
+    originalPrice: number;
+    startDate: string;
+    endDate: string;
+  };
+}
+
+export interface OrderResponse {
+  message: string;
+  success: boolean;
+  order: {
+    id: string;
+    amount: number;
+    currency: string;
+  };
+}
+
+export interface SubscribeResponse {
+  success: boolean;
+  message?: string;
+  user: any;
+}
+
+export interface ErrorResponse {
+  success: boolean;
+  message: string;
+  errors?: Array<{
+    path: string[];
+    message: string;
+  }>;
+}
+
 export const subscriptionApi = {
-  getSubscriptionPlans: async () => {
+  getSubscriptionPlans: async (): Promise<{ success: boolean; data: SubscriptionPlan[] }> => {
     try {
-      const response = await api.get("/subscriptions/plans");
+      const response = await api.get("/subscriptions/plans"); 
       return response.data;
     } catch (error: any) {
       console.error("Failed to fetch subscription plans:", error.response?.status, error.response?.data);
@@ -11,9 +65,9 @@ export const subscriptionApi = {
     }
   },
 
-  checkSubscription: async (userId: string) => {
+  checkSubscription: async (userId: string): Promise<SubscriptionStatusResponse> => {
     try {
-      const response = await api.get(`/subscriptions/check/${userId}`);
+      const response = await api.get(`/subscriptions/check/${userId}`); 
       return response.data;
     } catch (error: any) {
       console.error(`Failed to check subscription for user ${userId}:`, error.response?.status, error.response?.data);
@@ -21,12 +75,19 @@ export const subscriptionApi = {
     }
   },
 
-  createOrder: async (planId: string) => {
+  createOrder: async (planId: string): Promise<OrderResponse> => {
     try {
       const response = await api.post("/subscriptions/create-order", { planId });
       return response.data;
     } catch (error: any) {
       console.error("Failed to create Razorpay order:", error.response?.status, error.response?.data);
+      
+      // Handle Zod validation errors from backend
+      if (error.response?.data?.errors) {
+        const validationError = error.response.data as ErrorResponse;
+        throw new Error(validationError.message || "Validation failed");
+      }
+      
       throw error;
     }
   },
@@ -37,28 +98,41 @@ export const subscriptionApi = {
     paymentId: string;
     orderId: string;
     signature: string;
-  }) => {
+  }): Promise<SubscribeResponse> => {
     try {
-      const response = await api.post("/subscriptions/verify", data);
-      console.log("yyyyyyyyyyy");
+      const response = await api.post("/subscriptions/verify", data); 
       return response.data;
     } catch (error: any) {
       console.error("Failed to verify and subscribe:", error.response?.status, error.response?.data);
+      
+      // Handle Zod validation errors from backend
+      if (error.response?.data?.errors) {
+        const validationError = error.response.data as ErrorResponse;
+        throw new Error(validationError.message || "Validation failed");
+      }
+      
       throw error;
     }
   },
 
-  subscribeWithWallet: async (data: { userId: string; planId: string }) => {
+  subscribeWithWallet: async (data: { userId: string; planId: string }): Promise<SubscribeResponse> => {
     try {
-      const response = await api.post("/subscriptions/subscribe-wallet", data);
+      const response = await api.post("/subscriptions/subscribe-wallet", data); 
       return response.data;
     } catch (error: any) {
       console.error("Failed to subscribe with wallet:", error.response?.status, error.response?.data);
+      
+      // Handle Zod validation errors from backend
+      if (error.response?.data?.errors) {
+        const validationError = error.response.data as ErrorResponse;
+        throw new Error(validationError.message || "Validation failed");
+      }
+      
       throw error;
     }
   },
 
-  getSubscriptionStatus: async () => {
+  getSubscriptionStatus: async (): Promise<{ success: boolean; isSubscribed: boolean }> => {
     try {
       const response = await api.get("/subscriptions/status", {
         withCredentials: true,

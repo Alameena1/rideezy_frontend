@@ -274,17 +274,11 @@ export default function Profile() {
             <h1 className="text-2xl font-semibold">Welcome, {userData.fullName || "User"}</h1>
             <p className="text-sm text-gray-500">{currentDate}</p>
           </div>
-          <button className="text-xl">🔔</button>
         </div>
         <div className="mb-8 rounded-lg bg-gradient-to-r from-blue-100 via-white to-yellow-100 p-6"></div>
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <img
-              src={userData.image}
-              alt="User profile"
-              className="h-16 w-16 rounded-full object-cover"
-              referrerPolicy="no-referrer"
-            />
+          
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-xl font-semibold">{userData.fullName || "User"}</h2>
@@ -330,8 +324,8 @@ export default function Profile() {
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center">
-              <span className="font-semibold text-lg">4.5</span>
-              <span className="text-yellow-400 ml-1">⭐</span>
+              {/* <span className="font-semibold text-lg">4.5</span>
+              <span className="text-yellow-400 ml-1">⭐</span> */}
             </div>
             <button
               className="bg-blue-500 text-white px-4 py-1 rounded-md text-sm"
@@ -479,6 +473,7 @@ export default function Profile() {
               onChange={handleInputChange}
               className="w-full rounded-md border border-gray-300 py-2 px-3 text-gray-500"
               disabled={!isEditing}
+              readOnly
             />
           </div>
           <div>

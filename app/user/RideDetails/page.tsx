@@ -640,29 +640,29 @@ export default function RideDetails() {
         }
 
         const shouldPause = ride.pickupPoints.some((pickup) => {
-          const [pickupLat, pickupLng] = pickup.location.split(",").map(Number);
-          const pickupCoord: [number, number] = [pickupLat, pickupLng];
-          const distance = calculateHaversineDistance(coordinates[currentIndex], pickupCoord);
-          console.log("[RideDetails] Checking pause for pickup:", {
-            rideId,
-            passengerId: pickup.passengerId,
-            distance: distance * 1000,
-            pickupAction: pickupActions[ride._id]?.[pickup.passengerId],
-          });
-          return !isNaN(pickupLat) && !isNaN(pickupLng) && distance < 0.1 && !(pickupActions[ride._id]?.[pickup.passengerId] || false);
-        }) || ride.dropoffPoints.some((dropoff) => {
-          const [dropoffLat, dropoffLng] = dropoff.location.split(",").map(Number);
-          const dropoffCoord: [number, number] = [dropoffLat, dropoffLng];
-          const distance = calculateHaversineDistance(coordinates[currentIndex], dropoffCoord);
-          console.log("[RideDetails] Checking pause for dropoff:", {
-            rideId,
-            passengerId: dropoff.passengerId,
-            distance: distance * 1000,
-            pickupAction: pickupActions[ride._id]?.[dropoff.passengerId],
-            dropoffAction: dropoffActions[ride._id]?.[dropoff.passengerId],
-          });
-          return !isNaN(dropoffLat) && !isNaN(dropoffLng) && distance < 0.1 && (pickupActions[ride._id]?.[dropoff.passengerId] || false) && !(dropoffActions[ride._id]?.[dropoff.passengerId] || false);
-        });
+  const [pickupLat, pickupLng] = pickup.location.split(",").map(Number);
+  const pickupCoord: [number, number] = [pickupLat, pickupLng];
+  const distance = calculateHaversineDistance(coordinates[currentIndex], pickupCoord);
+  console.log("[RideDetails] Checking pause for pickup:", {
+    rideId,
+    passengerId: pickup.passengerId,
+    distance: distance * 1000,
+    pickupAction: pickupActions[ride._id]?.[pickup.passengerId],
+  });
+  return !isNaN(pickupLat) && !isNaN(pickupLng) && distance < 0.1 && !(pickupActions[ride._id]?.[pickup.passengerId] || false);
+}) || ride.dropoffPoints.some((dropoff) => {
+  const [dropoffLat, dropoffLng] = dropoff.location.split(",").map(Number);
+  const dropoffCoord: [number, number] = [dropoffLat, dropoffLng];
+  const distance = calculateHaversineDistance(coordinates[currentIndex], dropoffCoord);
+  console.log("[RideDetails] Checking pause for dropoff:", {
+    rideId,
+    passengerId: dropoff.passengerId,
+    distance: distance * 1000,
+    pickupAction: pickupActions[ride._id]?.[dropoff.passengerId],
+    dropoffAction: dropoffActions[ride._id]?.[dropoff.passengerId],
+  });
+  return !isNaN(dropoffLat) && !isNaN(dropoffLng) && distance < 0.1 && (pickupActions[ride._id]?.[dropoff.passengerId] || false) && !(dropoffActions[ride._id]?.[dropoff.passengerId] || false);
+});
 
         setSimulationPaused((prev) => ({ ...prev, [rideId]: shouldPause }));
 
@@ -693,7 +693,7 @@ export default function RideDetails() {
             const [dropoffLat, dropoffLng] = dropoff.location.split(",").map(Number);
             const dropoffCoord: [number, number] = [dropoffLat, dropoffLng];
             const distance = calculateHaversineDistance(coordinates[currentIndex], dropoffCoord);
-            const shouldAddToPaused = !isNaN(dropoffLat) && !isNaN(pickupLng) && distance < 0.1 && (pickupActions[ride._id]?.[dropoff.passengerId] || false) && !(dropoffActions[ride._id]?.[dropoff.passengerId] || false) && !newPausedPassengerIds.includes(dropoff.passengerId);
+            const shouldAddToPaused = !isNaN(dropoffLat) && !isNaN(dropoffLng) && distance < 0.1 && (pickupActions[ride._id]?.[dropoff.passengerId] || false) && !(dropoffActions[ride._id]?.[dropoff.passengerId] || false) && !newPausedPassengerIds.includes(dropoff.passengerId);
             console.log("[RideDetails] Checking dropoff pause for passenger:", {
               rideId,
               passengerId: dropoff.passengerId,
@@ -709,7 +709,6 @@ export default function RideDetails() {
               console.log("[RideDetails] Added passenger to pausedPassengerIds for dropoff:", dropoff.passengerId);
             }
           });
-
           console.log("[RideDetails] Before updating pausedPassengerIds:", {
             rideId,
             currentPaused: pausedPassengerIds[rideId],

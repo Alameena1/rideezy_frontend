@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import useAuth from "@/app/hooks/useAuth";
-import { apiService } from "@/services/api";
+import { subscriptionApi, SubscriptionPlan, SubscriptionStatusResponse } from "@/services/user/subscriptionApi"; 
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,14 +12,6 @@ import Swal from "sweetalert2";
 import CurrentPlanCard from "../../features/user/subscription/CurrentPlanCard";
 import AvailablePlansSection from "../../features/user/subscription/AvailablePlansSection";
 import { useRazorpay } from "../../features/user/subscription/useRazorpay";
-
-interface SubscriptionPlan {
-  _id: string;
-  name: string;
-  durationMonths: number;
-  price: number;
-  description: string;
-}
 
 interface CurrentSubscription {
   plan: SubscriptionPlan;
@@ -46,9 +38,9 @@ export default function Subscriptions() {
 
   const { handleSubscribe, paymentLoading } = useRazorpay({
     userId: userId || "",
-    onSuccess: (subscriptionResponse) => {
-      if (subscriptionResponse.isSubscribed) {
-        setCurrentSubscription(subscriptionResponse.subscription);
+    onSuccess: (subscriptionResponse: SubscriptionStatusResponse) => { // Added type
+      if (subscriptionResponse.isSubscribed && subscriptionResponse.subscription) {
+        setCurrentSubscription(subscriptionResponse.subscription as CurrentSubscription);
       }
     },
     onError: (errorMessage) => setError(errorMessage),
@@ -68,16 +60,26 @@ export default function Subscriptions() {
     const fetchPlansAndSubscription = async () => {
       setIsLoading(true);
       try {
-        const plansResponse = await apiService.subscription.getSubscriptionPlans();
+        const plansResponse = await subscriptionApi.getSubscriptionPlans();
         setAvailablePlans(plansResponse.data || []);
 
-        const subscriptionResponse = await apiService.subscription.checkSubscription(userId);
-        if (subscriptionResponse.isSubscribed) {
-          setCurrentSubscription(subscriptionResponse.subscription);
+        const subscriptionResponse = await subscriptionApi.checkSubscription(userId);
+        if (subscriptionResponse.isSubscribed && subscriptionResponse.subscription) {
+          setCurrentSubscription(subscriptionResponse.subscription as CurrentSubscription);
         }
       } catch (err: any) {
         console.error("Error fetching data:", err);
-        setError(err.response?.data?.message || "Failed to load subscription data. Please try again.");
+        
+        // Handle validation errors from backend
+        if (err.response?.data?.errors) {
+          const validationErrors = err.response.data.errors;
+          const errorMessages = validationErrors.map((error: any) => 
+            `${error.path.join('.')}: ${error.message}`
+          ).join(', ');
+          setError(`Validation error: ${errorMessages}`);
+        } else {
+          setError(err.response?.data?.message || err.message || "Failed to load subscription data. Please try again.");
+        }
       } finally {
         setIsLoading(false);
       }
@@ -108,6 +110,7 @@ export default function Subscriptions() {
       </MainLayout>
     );
   }
+
   return (
     <MainLayout activeItem="Subscriptions">
       <div className="mx-auto max-w-5xl p-6">
