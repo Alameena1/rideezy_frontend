@@ -28,7 +28,7 @@ export interface Ride {
 }
 
 export const rideApi = {
-
+  // INITIATE RIDE ENDPOINTS
   startRide: async (data: {
     date: string;
     time: string;
@@ -43,7 +43,7 @@ export const rideApi = {
     platformFee?: number;
   }) => {
     try {
-      const response = await api.post("/rides/start", data);
+      const response = await api.post("/initiate-rides/start", data);
       return response.data;
     } catch (error: any) {
       console.error("[rideApi] Error starting ride:", error.response?.data || error.message);
@@ -53,7 +53,7 @@ export const rideApi = {
 
   getRides: async () => {
     try {
-      const response = await api.get("/rides/rides", {
+      const response = await api.get("/initiate-rides/rides", {
         withCredentials: true,
       });
       return response.data;
@@ -63,9 +63,49 @@ export const rideApi = {
     }
   },
 
+  editRide: async (rideId: string, driverId: string, dto: EditRideDto) => {
+    try {
+      const response = await api.put(`/initiate-rides/${rideId}`, dto, {
+        withCredentials: true,
+        headers: { "Driver-Id": driverId },
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error("[rideApi] Error editing ride:", error.response?.data || error.message);
+      throw new Error(error.response?.data?.message || "Failed to edit ride");
+    }
+  },
+
+  cancelRide: async (rideId: string) => {
+    try {
+      const response = await api.delete(`/initiate-rides/${rideId}`, {
+        withCredentials: true,
+      });
+      return response.data;
+    } catch (error: any) {
+      console.error("[rideApi] Error cancelling ride:", error.response?.data || error.message);
+      throw new Error(error.response?.data?.message || "Failed to cancel ride");
+    }
+  },
+
+  startTracking: async (rideId: string, driverId: string) => {
+    try {
+      const response = await api.put(`/initiate-rides/${rideId}/start-tracking`, {}, {
+        withCredentials: true,
+        headers: { "Driver-Id": driverId },
+      });
+      console.log("[rideApi] Start tracking response:", response);
+      return response.data;
+    } catch (error: any) {
+      console.error("[rideApi] Error starting tracking:", error.response?.data || error.message);
+      throw new Error(error.response?.data?.message || "Failed to start tracking");
+    }
+  },
+
+  // JOIN RIDE ENDPOINTS
   getJoinedRides: async () => {
     try {
-      const response = await api.get("/rides/joined", {
+      const response = await api.get("/join-rides/joined", {
         withCredentials: true,
       });
       console.log("[rideApi] Get joined rides response:", response);
@@ -81,7 +121,7 @@ export const rideApi = {
 
   findNearestRides: async (data: { userLocation: string; destination: string }) => {
     try {
-      const response = await api.post("/rides/nearest", data, {
+      const response = await api.post("/join-rides/nearest", data, {
         withCredentials: true,
       });
       return response.data.data as Ride[];
@@ -91,73 +131,72 @@ export const rideApi = {
     }
   },
 
-joinRide: async (
-  rideId: string,
-  passengerId: string,
-  pickupLocation: string,
-  dropoffLocation: string
-) => {
-  try {
-    console.log("[rideApi] Initiating joinRide with:", {
-      rideId,
-      passengerId,
-      pickupLocation,
-      dropoffLocation,
-    });
-
-    const response = await api.post(
-  `/rides/join`,
-  {
-    rideId, // Include rideId in the request body
-    passengerId,
-    pickupLocation,
-    dropoffLocation,
-  },
-  { withCredentials: true }
-);
-
-    console.log("[rideApi] Join ride response:", response.data);
-    return response;
-  } catch (error: any) {
-    console.error("[rideApi] Error joining ride:", error);
-    throw new Error(error.response?.data?.message || "Failed to join ride");
-  }
-},
-
-handleJoinRequest: async (rideId: string, driverId: string, passengerId: string, action: "accept" | "reject") => {
-  try {
-    // Fetch rides to find the ride with the given rideId
-    const ridesResponse = await apiService.ride.getRides();
-    const ride = ridesResponse.data.find((r: Ride) => r.rideId === rideId);
-
-    if (!ride) {
-      throw new Error(`Ride with rideId ${rideId} not found`);
-    }
-console.log("place name", ride)
-    const response = await api.put(
-      `/rides/${ride._id}/requests/${passengerId}`,
-      {
-        driverId,
-        action,
-        pickupPlaceName: ride.pendingRequests?.find((p: { passengerId: string; }) => p.passengerId === passengerId)?.pickupPlaceName || 'Unknown',
-        dropoffPlaceName: ride.pendingRequests?.find((p: { passengerId: string; }) => p.passengerId === passengerId)?.dropoffPlaceName || 'Unknown'
-      },
-      {
-        withCredentials: true,
-        headers: { "Driver-Id": driverId },
-      }
-    );
-
-    return response.data;
-  } catch (error: any) {
-    console.error("[rideApi] Error handling join request:", error);
-    throw new Error(error.response?.data?.message || `Failed to ${action} join request`);
-  }
-},
-
-  createRidePaymentOrder : async (rideId: string) => {
+  joinRide: async (
+    rideId: string,
+    passengerId: string,
+    pickupLocation: string,
+    dropoffLocation: string
+  ) => {
     try {
-      const response = await api.post("/rides/create-ride-order", { rideId }, {
+      console.log("[rideApi] Initiating joinRide with:", {
+        rideId,
+        passengerId,
+        pickupLocation,
+        dropoffLocation,
+      });
+
+      const response = await api.post(
+        `/join-rides/join`,
+        {
+          rideId,
+          passengerId,
+          pickupLocation,
+          dropoffLocation,
+        },
+        { withCredentials: true }
+      );
+
+      console.log("[rideApi] Join ride response:", response.data);
+      return response;
+    } catch (error: any) {
+      console.error("[rideApi] Error joining ride:", error);
+      throw new Error(error.response?.data?.message || "Failed to join ride");
+    }
+  },
+
+  handleJoinRequest: async (rideId: string, driverId: string, passengerId: string, action: "accept" | "reject") => {
+    try {
+      const ridesResponse = await apiService.ride.getRides();
+      const ride = ridesResponse.data.find((r: Ride) => r.rideId === rideId);
+
+      if (!ride) {
+        throw new Error(`Ride with rideId ${rideId} not found`);
+      }
+
+      const response = await api.put(
+        `/join-rides/${ride._id}/requests/${passengerId}`,
+        {
+          driverId,
+          action,
+          pickupPlaceName: ride.pendingRequests?.find((p: { passengerId: string; }) => p.passengerId === passengerId)?.pickupPlaceName || 'Unknown',
+          dropoffPlaceName: ride.pendingRequests?.find((p: { passengerId: string; }) => p.passengerId === passengerId)?.dropoffPlaceName || 'Unknown'
+        },
+        {
+          withCredentials: true,
+          headers: { "Driver-Id": driverId },
+        }
+      );
+
+      return response.data;
+    } catch (error: any) {
+      console.error("[rideApi] Error handling join request:", error);
+      throw new Error(error.response?.data?.message || `Failed to ${action} join request`);
+    }
+  },
+
+  createRidePaymentOrder: async (rideId: string) => {
+    try {
+      const response = await api.post("/join-rides/create-ride-order", { rideId }, {
         withCredentials: true,
       });
       return response.data;
@@ -176,7 +215,7 @@ console.log("place name", ride)
     signature: string;
   }) => {
     try {
-      const response = await api.post("/rides/verify-and-join", data, {
+      const response = await api.post("/join-rides/verify-and-join", data, {
         withCredentials: true,
       });
       return response.data.data as Ride;
@@ -186,48 +225,9 @@ console.log("place name", ride)
     }
   },
 
-  editRide: async (rideId: string, driverId: string, dto: EditRideDto) => {
-    try {
-      const response = await api.put(`/rides/${rideId}`, dto, {
-        withCredentials: true,
-        headers: { "Driver-Id": driverId },
-      });
-      return response.data;
-    } catch (error: any) {
-      console.error("[rideApi] Error editing ride:", error.response?.data || error.message);
-      throw new Error(error.response?.data?.message || "Failed to edit ride");
-    }
-  },
-
-  startTracking: async (rideId: string, driverId: string) => {
-    try {
-      const response = await api.put(`/rides/${rideId}/start-tracking`, {}, {
-        withCredentials: true,
-        headers: { "Driver-Id": driverId },
-      });
-      console.log("[rideApi] Start tracking response:", response);
-      return response.data;
-    } catch (error: any) {
-      console.error("[rideApi] Error starting tracking:", error.response?.data || error.message);
-      throw new Error(error.response?.data?.message || "Failed to start tracking");
-    }
-  },
-
-  cancelRide: async (rideId: string) => {
-    try {
-      const response = await api.delete(`/rides/${rideId}`, {
-        withCredentials: true,
-      });
-      return response.data;
-    } catch (error: any) {
-      console.error("[rideApi] Error cancelling ride:", error.response?.data || error.message);
-      throw new Error(error.response?.data?.message || "Failed to cancel ride");
-    }
-  },
-
   cancelJoinedRide: async (rideId: string) => {
     try {
-      const response = await api.delete(`/rides/joined/${rideId}`, {
+      const response = await api.delete(`/join-rides/joined/${rideId}`, {
         withCredentials: true,
       });
       return response.data;
@@ -237,30 +237,27 @@ console.log("place name", ride)
     }
   },
 
-  updateRide: async (id: string, updates: { currentPosition?: [number, number], passengerId: string; action: "picked" | "dropped" }, driverId: string) => {
-    try {
-      console.log("[rideApi] Sending updateRide request:", {
-        url: `/rides/${id}/update`,
-        updates,
-        driverId,
-      });
-      const response = await api.put(`/rides/${id}/update`, updates, {
-        withCredentials: true,
-        headers: { "Driver-Id": driverId }, 
-      });
-      console.log("[rideApi] Update ride response:", response.data);
-      return response.data.data as Ride;
-    } catch (error: any) {
-      console.error("[rideApi] Error updating ride:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-      });
-      throw new Error(error.response?.data?.message || "Failed to update ride");
-    }
-  },
+ updateRide: async (id: string, updates: { currentPosition?: [number, number], passengerId: string; action: "picked" | "dropped" }, driverId: string) => {
+  try {
+    console.log("[rideApi] Sending updateRide request:", {
+      url: `/initiate-rides/${id}/update`,
+      updates,
+      driverId,
+    });
+    // Remove the nesting - send updates directly
+    const response = await api.put(`/initiate-rides/${id}/update`, updates, {
+      withCredentials: true,
+      headers: { "Driver-Id": driverId }, 
+    });
+    console.log("[rideApi] Update ride response:", response.data);
+    return response.data.data as Ride;
+  } catch (error: any) {
+    console.error("[rideApi] Error updating ride:", {
+      message: error.message,
+      response: error.response?.data,
+      status: error.response?.status,
+    });
+    throw new Error(error.response?.data?.message || "Failed to update ride");
+  }
+},
 };
-
-function reverseGeocode(lat: any, lng: any): any {
-  throw new Error("Function not implemented.");
-}

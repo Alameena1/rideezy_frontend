@@ -38,7 +38,7 @@ interface Ride {
   routeGeometry: string;
   paymentStatus: "Paid" | "Pending";
   currentPosition?: [number, number] | null;
-  requestStatus?: "pending" | "accepted" | "rejected"; // New field for request status
+  requestStatus?: "pending" | "accepted" | "rejected";
 }
 
 interface TrackingData {
@@ -113,7 +113,7 @@ export default function JoinedRideDetails() {
     }
   }, [rides]);
 
- const fetchJoinedRides = async () => {
+  const fetchJoinedRides = async () => {
     setIsLoading(true);
     try {
       const joinedRidesData = await apiService.ride.getJoinedRides();
@@ -142,7 +142,7 @@ export default function JoinedRideDetails() {
         status: ride.status || "Pending",
         routeGeometry: ride.routeGeometry || "",
         paymentStatus: ride.paymentStatus || "Pending",
-        requestStatus: ride.requestStatus || (ride.passengers.some((p: any) => p.passengerId === userId) ? "accepted" : "pending"), // Correctly set requestStatus
+        requestStatus: ride.requestStatus || (ride.passengers.some((p: any) => p.passengerId === userId) ? "accepted" : "pending"),
       }));
 
       setRides(mappedRides);
@@ -397,7 +397,7 @@ export default function JoinedRideDetails() {
       return;
     }
 
-    const stepDuration = 1000; // 1 second per step
+    const stepDuration = 1000;
     if (!lastIndex.current[rideId]) {
       lastIndex.current[rideId] = findNearestIndex(coordinates, startPosition);
       if (lastIndex.current[rideId] === -1) lastIndex.current[rideId] = 0;
@@ -459,11 +459,11 @@ export default function JoinedRideDetails() {
             mapRefs.current[rideId]!.panTo(currentPosition);
             console.log("[JoinedRideDetails] Simulation paused at:", currentPosition, "for ride", rideId);
           }
-          return; // Do not increment currentIndex during pause
+          return;
         }
 
         currentIndex++;
-        lastIndex.current[rideId] = currentIndex; // Persist the current index
+        lastIndex.current[rideId] = currentIndex;
         if (currentIndex >= coordinates.length) {
           clearInterval(animationIntervals.current[rideId]!);
           animationIntervals.current[rideId] = null;
@@ -516,7 +516,7 @@ export default function JoinedRideDetails() {
       return Infinity;
     }
     const toRad = (x: number) => (x * Math.PI) / 180;
-    const R = 6371; // Earth's radius in kilometers
+    const R = 6371;
     const [lat1, lon1] = coord1;
     const [lat2, lon2] = coord2;
 
@@ -526,7 +526,7 @@ export default function JoinedRideDetails() {
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
       Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c; // Distance in kilometers
+    return R * c;
   };
 
   const toggleCollapsible = (rideId: string) => {
@@ -542,7 +542,7 @@ export default function JoinedRideDetails() {
     }
   };
 
- const handleCancelRide = async (rideId: string) => {
+  const handleCancelRide = async (rideId: string) => {
     const result = await Swal.fire({
       title: "Are you sure?",
       text: "Do you really want to cancel this ride? This action cannot be undone!",
@@ -605,7 +605,7 @@ export default function JoinedRideDetails() {
             ) : (
               <div className="grid gap-6">
                 {rides.map((ride) => {
-                  const seatsLeft = ride.passengerCount - ride.passengers.length; // Updated to use correct seat calculation
+                  const seatsLeft = ride.passengerCount - ride.passengers.length;
                   const userPickup = ride.pickupPoints.find((p) => p.passengerId === userId);
                   const userDropoff = ride.dropoffPoints.find((p) => p.passengerId === userId);
                   const isUserPassenger = ride.passengers.some((p) => p.passengerId === userId);

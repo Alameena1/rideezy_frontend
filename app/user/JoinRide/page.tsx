@@ -1,8 +1,9 @@
 "use client";
 
-import type React from "react";
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { apiService } from "../../../services/api";
+import { useRouter } from "next/navigation";
+import useAuth from "@/app/hooks/useAuth";
+import { apiService } from "@/services/api";
 import "leaflet/dist/leaflet.css";
 import Swal from "sweetalert2";
 import { useForm } from "react-hook-form";
@@ -16,10 +17,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { MapPin, Clock, Route, IndianRupee, Search, Navigation, MessageCircle, RefreshCw } from "lucide-react";
 import { format } from "date-fns";
 import axios from "axios";
-import useAuth from "@/app/hooks/useAuth";
 import { useRidePayment } from "../../features/user/ride/useRidePayment";
 import MainLayout from "@/app/comp/MainLayout";
-import { useRouter } from "next/navigation";
 
 const MapComponent = dynamic(() => import("../../../app/comp/MapComponent"), {
   ssr: false,
@@ -196,8 +195,7 @@ const JoinRidePage: React.FC = () => {
         return 0;
       }
       
-      // Haversine formula to calculate distance between two points
-      const R = 6371; // Earth's radius in kilometers
+      const R = 6371;
       const dLat = (lat2 - lat1) * Math.PI / 180;
       const dLng = (lng2 - lng1) * Math.PI / 180;
       const a = 
@@ -240,7 +238,6 @@ const JoinRidePage: React.FC = () => {
           destinationName,
         });
 
-        // First try to get the distance from the backend
         let backendDistance: number | null = null;
         let pendingRequestId: string | null = null;
         
@@ -249,9 +246,7 @@ const JoinRidePage: React.FC = () => {
             ride.rideId,
             user?._id || "",
             userLocation,
-            destination,
-            userLocationName,
-            destinationName
+            destination
           );
           
           console.log("[JoinRidePage] joinRide response:", response);
@@ -269,24 +264,21 @@ const JoinRidePage: React.FC = () => {
           }
         } catch (apiError: any) {
           console.warn("[JoinRidePage] API call failed, using fallback calculation:", apiError.message);
-          // Continue with fallback calculation
         }
 
-        // If backend didn't provide distance, calculate it locally
         let finalDistance = backendDistance;
         if (finalDistance === null || finalDistance === undefined) {
           console.log("[JoinRidePage] Calculating distance locally");
           finalDistance = calculateDistanceBetweenPoints(userLocation, destination);
           
-          // If local calculation fails, use a percentage of the total ride distance
           if (finalDistance <= 0) {
-            finalDistance = ride.distanceKm * 0.7; // 70% of total distance as estimate
+            finalDistance = ride.distanceKm * 0.7;
             console.log("[JoinRidePage] Using estimated distance:", finalDistance);
           }
         }
 
-        const perKmRate = ride.perKmRate ?? 6.37; // Fallback perKmRate
-        const cost = Math.max(finalDistance * perKmRate, 20); // Minimum fare of ₹20
+        const perKmRate = ride.perKmRate ?? 6.37;
+        const cost = Math.max(finalDistance * perKmRate, 20);
         
         console.log(
           `[JoinRidePage] Final calculation: ₹${cost} (distanceKm: ${finalDistance}, perKmRate: ${perKmRate})`
@@ -296,7 +288,6 @@ const JoinRidePage: React.FC = () => {
         setPassengerCost(cost);
         setIsJoinRideSuccessful(true);
         
-        // Store the ride and passenger info for payment
         localStorage.setItem('pendingRideRequest', JSON.stringify({
           rideId: ride.rideId,
           passengerId: user?._id,
@@ -314,7 +305,6 @@ const JoinRidePage: React.FC = () => {
           rideId: ride.rideId,
         });
         
-        // Fallback calculation if everything fails
         const perKmRate = ride.perKmRate ?? 6.37;
         const estimatedDistance = ride.distanceKm * 0.7;
         const cost = Math.max(estimatedDistance * perKmRate, 20);
@@ -606,7 +596,6 @@ const JoinRidePage: React.FC = () => {
                             endPlaceName: ride.endPoint,
                           };
                         
-                        // Calculate display cost
                         let displayCost = ride.perKmRate ? Math.max(ride.distanceKm * ride.perKmRate, 20) : 20;
                         if (selectedRide?._id === ride._id) {
                           displayCost = passengerCost !== null ? passengerCost : displayCost;

@@ -725,18 +725,37 @@ export default function RideDetails() {
         }
 
         currentIndex++;
-        if (currentIndex >= coordinates.length) {
-          clearInterval(animationIntervals.current[rideId]!);
-          animationIntervals.current[rideId] = null;
-          await apiService.tracking.stopTracking(ride._id);
-          const updatedRides = rides.map((r) => (r._id === rideId ? { ...r, status: "Completed" } : r));
-          setRides(updatedRides);
-          await apiService.ride.updateRide(ride._id, { status: "Completed" }, ride.driverId);
-          cleanupMap(rideId);
-          console.log("[RideDetails] Simulation completed for", rideId);
-          isUpdating = false;
-          return;
-        }
+        // In the simulation completion section (around line 731)
+// In the simulation completion section
+if (currentIndex >= coordinates.length) {
+  clearInterval(animationIntervals.current[rideId]!);
+  animationIntervals.current[rideId] = null;
+  
+  try {
+    await apiService.tracking.stopTracking(ride._id);
+  } catch (error: any) {
+    if (error.response?.status === 400 && error.response?.data?.message === 'Ride not found') {
+      console.log('[RideDetails] Ride already removed from tracking');
+    } else {
+      throw error;
+    }
+  }
+
+  const updatedRides = rides.map((r) => (r._id === rideId ? { ...r, status: "Completed" } : r));
+  setRides(updatedRides);
+  
+  try {
+    await apiService.ride.updateRide(ride._id, { status: "Completed" }, ride.driverId);
+  } catch (error: any) {
+    console.error('[RideDetails] Error updating ride status:', error);
+    // Even if this fails, we'll update the local state
+  }
+  
+  cleanupMap(rideId);
+  console.log("[RideDetails] Simulation completed for", rideId);
+  isUpdating = false;
+  return;
+}
 
         const currentPosition = coordinates[currentIndex];
         vehicleMarkerRefs.current[rideId]!.setLatLng(currentPosition);
@@ -919,27 +938,43 @@ export default function RideDetails() {
     }
   };
 
-  const stopRide = async (rideId: string) => {
-    try {
-      const ride = rides.find((r) => r._id === rideId);
-      if (!ride || !ride.rideId) throw new Error("Ride or rideId not found");
+ const stopRide = async (rideId: string) => {
+  try {
+    const ride = rides.find((r) => r._id === rideId);
+    if (!ride || !ride.rideId) throw new Error("Ride or rideId not found");
 
+    try {
       await apiService.tracking.stopTracking(ride._id);
-      if (animationIntervals.current[rideId]) {
-        clearInterval(animationIntervals.current[rideId]!);
-        animationIntervals.current[rideId] = null;
+    } catch (error: any) {
+      if (error.response?.status === 400 && error.response?.data?.message === 'Ride not found') {
+        console.log('[RideDetails] Ride already removed from tracking');
+      } else {
+        throw error;
       }
-      const updatedRides = rides.map((r) =>
-        r._id === rideId ? { ...r, status: "Completed" as const } : r
-      );
-      setRides(updatedRides);
-      setSimulationPaused((prev) => ({ ...prev, [rideId]: false }));
+    }
+
+    if (animationIntervals.current[rideId]) {
+      clearInterval(animationIntervals.current[rideId]!);
+      animationIntervals.current[rideId] = null;
+    }
+    
+    const updatedRides = rides.map((r) =>
+      r._id === rideId ? { ...r, status: "Completed" as const } : r
+    );
+    setRides(updatedRides);
+    setSimulationPaused((prev) => ({ ...prev, [rideId]: false }));
+    
+    try {
       await apiService.ride.updateRide(ride._id, { status: "Completed" }, ride.driverId);
     } catch (error: any) {
-      console.error("[RideDetails] Error stopping ride:", error.message);
-      setError(`Failed to stop ride: ${error.message}`);
+      console.error('[RideDetails] Error updating ride status:', error);
+      // Even if this fails, we'll update the local state
     }
-  };
+  } catch (error: any) {
+    console.error("[RideDetails] Error stopping ride:", error.message);
+    setError(`Failed to stop ride: ${error.message}`);
+  }
+};
 
   const resumeSimulation = async (rideId: string) => {
     try {
