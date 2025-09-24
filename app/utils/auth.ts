@@ -84,7 +84,7 @@ export const refreshToken = async (): Promise<string> => {
 };
 
 export const getValidToken = async (): Promise<string> => {
-  const token = getToken() || Cookies.get("adminAuthToken"); // Check adminAuthToken first
+  const token = getToken() || Cookies.get("adminAuthToken"); 
   if (!token) {
     throw new Error("No token available");
   }

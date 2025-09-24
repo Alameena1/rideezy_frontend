@@ -1,16 +1,18 @@
-import { adminApi } from "./adminApi";
 import axios from "axios";
+import { adminApi } from "./adminApi";
 
 export interface Ride {
-  dropoffPoints: any;
   _id: string;
-  rideID: string;
-  driverID: string;
-  vehicleID: string;
+  rideId: string;
+  driverId: string;
+  driverName: string;
+  vehicleId: string;
   date: string;
   time: string;
   startPoint: string;
+  startPlaceName: string;
   endPoint: string;
+  endPlaceName: string;
   distanceKm: number;
   fuelPrice: number;
   passengerCount: number;
@@ -19,8 +21,9 @@ export interface Ride {
   totalPeople: number;
   status: string;
   createdAt: string;
-  passengers: string[];
-  pickupPoints: { passengerId: string; location: string }[];
+  passengers: { passengerId: string; passengerName: string; pickedUp?: boolean; droppedOff?: boolean }[];
+  pickupPoints: { passengerId: string; location: string; placeName: string }[];
+  dropoffPoints: { passengerId: string; location: string; placeName: string }[];
   routeGeometry: string;
 }
 
@@ -29,11 +32,22 @@ export interface User {
   name: string;
 }
 
+interface PaginationQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
+  status?: "Active" | "Completed" | "Cancelled" | "Blocked";
+  dateFrom?: string;
+  dateTo?: string;
+}
+
 export const adminRideApi = {
-  getRides: async (): Promise<Ride[]> => {
+  getRides: async (query: PaginationQuery = {}): Promise<{ success: boolean; data: Ride[]; pagination: any }> => {
     try {
-      const response = await adminApi.get("/rides");
-      return response.data;
+      const response = await adminApi.get("/rides", { params: query });
+      return response.data; // Expecting { success: boolean, data: Ride[], pagination: { currentPage, totalPages, totalItems, hasNext, hasPrev } }
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.message || "Failed to fetch rides");

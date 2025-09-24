@@ -2,7 +2,24 @@
 
 import { useState, useEffect } from "react";
 import { apiService } from "@/services/api";
-import { BackendUser } from "@/app/types";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 
 interface User {
   _id: string;
@@ -16,57 +33,86 @@ interface User {
   govtIdStatus: string;
 }
 
+interface PaginatedResponse {
+  success: boolean;
+  data: User[];
+  pagination: {
+    currentPage: number;
+    totalPages: number;
+    totalItems: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+}
+
 export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [search, setSearch] = useState("");
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
+  const [hasPrev, setHasPrev] = useState(false);
+
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+      const response: PaginatedResponse = await apiService.admin.user.getUsers({
+        page,
+        limit,
+        search,
+        sortBy: "createdAt",
+        sortOrder: "desc",
+      });
+      const mappedUsers: User[] = response.data.map((user: any) => ({
+        _id: user._id.toString(),
+        name: user.fullName || "Unknown",
+        email: user.email || "N/A",
+        phone: user.phone || "N/A",
+        totalRides: user.totalRides || "0/0",
+        registrationDate: user.createdAt
+          ? new Date(user.createdAt).toLocaleDateString()
+          : "N/A",
+        status: user.status || "Active",
+        subscribed: user.subscription?.isSubscribed || false,
+        govtIdStatus: user.govId?.verificationStatus || "Pending",
+      }));
+      setUsers(mappedUsers);
+      setTotalPages(response.pagination.totalPages);
+      setTotalItems(response.pagination.totalItems);
+      setHasNext(response.pagination.hasNext);
+      setHasPrev(response.pagination.hasPrev);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to fetch users";
+      console.error("Fetch users failed:", err);
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        setLoading(true);
-        const fetchedUsers = await apiService.admin.user.getUsers();
-        console.log("Fetched users:", fetchedUsers);
-
-        const mappedUsers: User[] = fetchedUsers.map((user: BackendUser) => ({
-          _id: user._id.toString(), 
-          name: user.fullName || "Unknown",
-          email: user.email || "N/A",
-          phone: user.phoneNumber || "N/A",
-          totalRides: "0/0",
-          registrationDate: user.createdAt
-            ? new Date(user.createdAt).toLocaleDateString()
-            : "N/A",
-          status: user.status || "Active",
-          subscribed: false,
-          govtIdStatus: "Pending",
-        }));
-
-        setUsers(mappedUsers);
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : "Failed to fetch users";
-        console.error("Fetch users failed:", err);
-        setError(errorMessage);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchUsers();
-  }, []);
+  }, [page, limit, search]);
 
   const handleToggleStatus = async (user: User) => {
     try {
       const newStatus = user.status === "Active" ? "Blocked" : "Active";
       await apiService.admin.user.toggleUserStatus(user._id, newStatus);
-      setUsers(users.map((u) =>
-        u.email === user.email ? { ...u, status: newStatus } : u
-      ));
+      setUsers(users.map((u) => (u._id === user._id ? { ...u, status: newStatus } : u)));
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to update user status";
       console.error("Toggle status failed:", err);
       setError(errorMessage);
     }
+  };
+
+  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearch(e.target.value);
+    setPage(1); // Reset to first page on search
   };
 
   const renderStatus = (status: string) => {
@@ -75,16 +121,13 @@ export default function UserManagement() {
   };
 
   const renderGovtIdStatus = (status: string) => {
-    if (status === "Verified") {
-      return <span className="text-blue-500">{status}</span>;
-    } else if (status === "Pending") {
-      return <span className="text-orange-500">{status}</span>;
-    }
-    return <span>{status}</span>;
+    const color =
+      status === "Verified" ? "text-blue-500" : status === "Pending" ? "text-orange-500" : "text-red-500";
+    return <span className={color}>{status}</span>;
   };
 
   return (
-    <div className="bg-gray-900 text-white p-6">
+    <div className="bg-gray-900 text-white p-6 min-h-screen">
       <h2 className="text-2xl font-semibold mb-6">User Management</h2>
 
       {error && (
@@ -93,59 +136,93 @@ export default function UserManagement() {
         </div>
       )}
 
+      <div className="mb-4">
+        <Input
+          placeholder="Search users by name or email..."
+          value={search}
+          onChange={handleSearch}
+          className="max-w-md bg-gray-800 text-white border-gray-600"
+        />
+      </div>
+
       {loading ? (
         <div className="text-center text-gray-400">Loading users...</div>
       ) : users.length === 0 ? (
         <div className="text-center text-gray-400">No users found.</div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="bg-gray-800 text-left">
-                <th className="p-3 border-b border-gray-700">#</th>
-                <th className="p-3 border-b border-gray-700">NAME</th>
-                <th className="p-3 border-b border-gray-700">Email</th>
-                <th className="p-3 border-b border-gray-700">Phone</th>
-                <th className="p-3 border-b border-gray-700">
-                  Total Rides<br />(offered/joined)
-                </th>
-                <th className="p-3 border-b border-gray-700">
-                  Date of<br />Registration
-                </th>
-                <th className="p-3 border-b border-gray-700">Status</th>
-                <th className="p-3 border-b border-gray-700">Subscribed</th>
-                <th className="p-3 border-b border-gray-700">Govt ID Status</th>
-                <th className="p-3 border-b border-gray-700">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-gray-800 hover:bg-gray-800">
+                <TableHead className="text-gray-200">#</TableHead>
+                <TableHead className="text-gray-200">Name</TableHead>
+                <TableHead className="text-gray-200">Email</TableHead>
+                <TableHead className="text-gray-200">Phone</TableHead>
+                <TableHead className="text-gray-200">Total Rides (offered/joined)</TableHead>
+                <TableHead className="text-gray-200">Registration Date</TableHead>
+                <TableHead className="text-gray-200">Status</TableHead>
+                <TableHead className="text-gray-200">Subscribed</TableHead>
+                <TableHead className="text-gray-200">Govt ID Status</TableHead>
+                <TableHead className="text-gray-200">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {users.map((user, index) => (
-                <tr key={index} className="border-b border-gray-800 hover:bg-gray-800">
-                  <td className="p-3">{index + 1}</td>
-                  <td className="p-3">{user.name}</td>
-                  <td className="p-3">{user.email}</td>
-                  <td className="p-3">{user.phone}</td>
-                  <td className="p-3">{user.totalRides}</td>
-                  <td className="p-3">{user.registrationDate}</td>
-                  <td className="p-3">{renderStatus(user.status)}</td>
-                  <td className="p-3">{user.subscribed ? "True" : "False"}</td>
-                  <td className="p-3">{renderGovtIdStatus(user.govtIdStatus)}</td>
-                  <td className="p-3">
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={() => handleToggleStatus(user)}
-                        className="bg-gray-700 text-white rounded p-2 hover:bg-gray-600"
-                      >
-                        {user.status === "Active" ? "Block" : "Activate"}
-                      </button>
-                      
-                    </div>
-                  </td>
-                </tr>
+                <TableRow key={user._id} className="border-gray-700 hover:bg-gray-800">
+                  <TableCell>{index + 1}</TableCell>
+                  <TableCell>{user.name}</TableCell>
+                  <TableCell>{user.email}</TableCell>
+                  <TableCell>{user.phone}</TableCell>
+                  <TableCell>{user.totalRides}</TableCell>
+                  <TableCell>{user.registrationDate}</TableCell>
+                  <TableCell>{renderStatus(user.status)}</TableCell>
+                  <TableCell>{user.subscribed ? "True" : "False"}</TableCell>
+                  <TableCell>{renderGovtIdStatus(user.govtIdStatus)}</TableCell>
+                  <TableCell>
+                    <Button
+                      onClick={() => handleToggleStatus(user)}
+                      variant={user.status === "Active" ? "destructive" : "default"}
+                      size="sm"
+                    >
+                      {user.status === "Active" ? "Block" : "Activate"}
+                    </Button>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+          <div className="mt-4">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    onClick={() => hasPrev && setPage(page - 1)}
+                    className={hasPrev ? "" : "pointer-events-none opacity-50"}
+                  />
+                </PaginationItem>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                  <PaginationItem key={p}>
+                    <PaginationLink
+                      onClick={() => setPage(p)}
+                      isActive={p === page}
+                    >
+                      {p}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
+                <PaginationItem>
+                  <PaginationNext
+                    onClick={() => hasNext && setPage(page + 1)}
+                    className={hasNext ? "" : "pointer-events-none opacity-50"}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+            <p className="text-sm text-gray-400 mt-2">
+              Showing {users.length} of {totalItems} users
+            </p>
+          </div>
+        </>
       )}
     </div>
   );

@@ -1,9 +1,29 @@
+
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { apiService } from "@/services/api";
 import * as L from "leaflet";
 import "leaflet/dist/leaflet.css";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import { format } from "date-fns";
 
 interface Ride {
   _id: string;
@@ -44,12 +64,26 @@ interface PassengerDetails {
 
 interface TrackingData {
   success: boolean;
-  data: {
-    currentPosition: [number, number] | null;
-    status: "Started" | "Paused" | "Completed";
-    pickupActions: { passengerId: string; location: string; status: "Pending" | "Completed" }[];
-    dropoffActions: { passengerId: string; location: string; status: "Pending" | "Completed" }[];
-  } | [number, number];
+  data:
+    | {
+        currentPosition: [number, number] | null;
+        status: "Started" | "Paused" | "Completed";
+        pickupActions: { passengerId: string; location: string; status: "Pending" | "Completed" }[];
+        dropoffActions: { passengerId: string; location: string; status: "Pending" | "Completed" }[];
+      }
+    | [number, number];
+}
+
+interface PaginatedResponse {
+  success: boolean;
+  data: Ride[];
+  pagination: {
+    currentPage: number;
+    totalPages: number;
+    totalItems: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
 }
 
 export default function RideManagement() {
@@ -61,6 +95,13 @@ export default function RideManagement() {
   const [expandedRide, setExpandedRide] = useState<string | null>(null);
   const [leafletLoaded, setLeafletLoaded] = useState<typeof L | null>(null);
   const [mapErrors, setMapErrors] = useState<{ [rideId: string]: string }>({});
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+  const [search, setSearch] = useState("");
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const [hasNext, setHasNext] = useState(false);
+  const [hasPrev, setHasPrev] = useState(false);
 
   const mapRefs = useRef<{ [key: string]: L.Map | null }>({});
   const routeLayers = useRef<{ [key: string]: L.Polyline | null }>({});
@@ -88,76 +129,79 @@ export default function RideManagement() {
     }
   }, []);
 
-  // Fetch rides
+  const fetchRides = async () => {
+    try {
+      setLoading(true);
+      const response: PaginatedResponse = await apiService.admin.ride.getRides({
+        page,
+        limit,
+        search,
+        sortBy: "createdAt",
+        sortOrder: "desc",
+      });
+      const mappedRides: Ride[] = response.data.map((ride: any) => ({
+        _id: ride._id.toString(),
+        rideId: ride.rideId || "N/A",
+        driverId: ride.driverId || "N/A",
+        driverName: ride.driverName || "N/A",
+        vehicleId: ride.vehicleId?.licensePlate || ride.vehicleId?._id?.toString() || "N/A",
+        date: ride.date ? format(new Date(ride.date), "yyyy-MM-dd") : "N/A",
+        time: ride.time || "N/A",
+        startPoint: ride.startPoint || "N/A",
+        startPlaceName: ride.startPlaceName || ride.startPoint,
+        endPoint: ride.endPoint || "N/A",
+        endPlaceName: ride.endPlaceName || ride.endPoint,
+        distanceKm: ride.distanceKm || 0,
+        fuelPrice: ride.fuelPrice || 0,
+        passengerCount: ride.passengerCount || 0,
+        totalFuelCost: ride.totalFuelCost || 0,
+        costPerPerson: ride.costPerPerson || 0,
+        totalPeople: ride.totalPeople || 0,
+        status: ride.status || "Pending",
+        createdAt: ride.createdAt ? format(new Date(ride.createdAt), "yyyy-MM-dd") : "N/A",
+        passengers: ride.passengers || [],
+        pickupPoints: ride.pickupPoints || [],
+        dropoffPoints: ride.dropoffPoints || [],
+        routeGeometry: ride.routeGeometry || "",
+      }));
+      setRides(mappedRides);
+      setTotalPages(response.pagination.totalPages);
+      setTotalItems(response.pagination.totalItems);
+      setHasNext(response.pagination.hasNext);
+      setHasPrev(response.pagination.hasPrev);
+
+      const newPassengerDetails = mappedRides.reduce((acc, ride) => {
+        acc[ride._id] = ride.passengers.map((passenger) => {
+          const pickup = ride.pickupPoints.find((p) => p.passengerId === passenger.passengerId);
+          const dropoff = ride.dropoffPoints.find((p) => p.passengerId === passenger.passengerId);
+          return {
+            id: passenger.passengerId,
+            name: passenger.passengerName,
+            pickupLocation: pickup ? pickup.location : "N/A",
+            pickupPlaceName: pickup ? pickup.placeName : "N/A",
+            dropoffLocation: dropoff ? dropoff.location : "N/A",
+            dropoffPlaceName: dropoff ? dropoff.placeName : "N/A",
+            pickedUp: passenger.pickedUp || false,
+            droppedOff: passenger.droppedOff || false,
+          };
+        });
+        return acc;
+      }, {} as { [rideId: string]: PassengerDetails[] });
+
+      setPassengerDetails(newPassengerDetails);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to fetch rides";
+      console.error("[RideManagement] Fetch rides failed:", err);
+      setError(errorMessage);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchRides = async () => {
-      try {
-        setLoading(true);
-        const fetchedRides = await apiService.admin.ride.getRides();
-        console.log("[RideManagement] Fetched rides:", fetchedRides);
-
-        const mappedRides: Ride[] = fetchedRides.map((ride: any) => ({
-          _id: ride._id.toString(),
-          rideId: ride.rideId || "N/A",
-          driverId: ride.driverId || "N/A",
-          driverName: ride.driverName || "N/A",
-          vehicleId: ride.vehicleId || "N/A",
-          date: ride.date || "N/A",
-          time: ride.time || "N/A",
-          startPoint: ride.startPoint || "N/A",
-          startPlaceName: ride.startPlaceName || ride.startPoint,
-          endPoint: ride.endPoint || "N/A",
-          endPlaceName: ride.endPlaceName || ride.endPoint,
-          distanceKm: ride.distanceKm || 0,
-          fuelPrice: ride.fuelPrice || 0,
-          passengerCount: ride.passengerCount || 0,
-          totalFuelCost: ride.totalFuelCost || 0,
-          costPerPerson: ride.costPerPerson || 0,
-          totalPeople: ride.totalPeople || 0,
-          status: ride.status || "Pending",
-          createdAt: ride.createdAt
-            ? new Date(ride.createdAt).toLocaleDateString()
-            : "N/A",
-          passengers: ride.passengers || [],
-          pickupPoints: ride.pickupPoints || [],
-          dropoffPoints: ride.dropoffPoints || [],
-          routeGeometry: ride.routeGeometry || "",
-        }));
-
-        setRides(mappedRides);
-
-        const newPassengerDetails = mappedRides.reduce((acc, ride) => {
-          acc[ride._id] = ride.passengers.map((passenger) => {
-            const pickup = ride.pickupPoints.find(p => p.passengerId === passenger.passengerId);
-            const dropoff = ride.dropoffPoints.find(p => p.passengerId === passenger.passengerId);
-            return {
-              id: passenger.passengerId,
-              name: passenger.passengerName,
-              pickupLocation: pickup ? pickup.location : "N/A",
-              pickupPlaceName: pickup ? pickup.placeName : "N/A",
-              dropoffLocation: dropoff ? dropoff.location : "N/A",
-              dropoffPlaceName: dropoff ? dropoff.placeName : "N/A",
-              pickedUp: passenger.pickedUp || false,
-              droppedOff: passenger.droppedOff || false,
-            };
-          });
-          return acc;
-        }, {} as { [rideId: string]: PassengerDetails[] });
-
-        setPassengerDetails(newPassengerDetails);
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : "Failed to fetch rides";
-        console.error("[RideManagement] Fetch rides failed:", err);
-        setError(errorMessage);
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchRides();
-  }, []);
+  }, [page, limit, search]);
 
-  // Fetch tracking data and start simulation
   const fetchTrackingAndStartSimulation = async (rideId: string, retries = 0, maxRetries = 3) => {
     try {
       const ride = rides.find((r) => r._id === rideId);
@@ -176,9 +220,10 @@ export default function RideManagement() {
 
       if (trackingData.success && trackingData.data) {
         if (Array.isArray(trackingData.data)) {
-          currentPosition = trackingData.data.length === 2 && trackingData.data.every((n: number) => !isNaN(n))
-            ? [trackingData.data[0], trackingData.data[1]] as [number, number]
-            : null;
+          currentPosition =
+            trackingData.data.length === 2 && trackingData.data.every((n: number) => !isNaN(n))
+              ? [trackingData.data[0], trackingData.data[1]]
+              : null;
           if (
             lastTrackingData.current[rideId] &&
             lastTrackingData.current[rideId]?.[0] === currentPosition?.[0] &&
@@ -188,9 +233,10 @@ export default function RideManagement() {
           }
           lastTrackingData.current[rideId] = currentPosition;
         } else {
-          currentPosition = Array.isArray(trackingData.data.currentPosition) && trackingData.data.currentPosition.length === 2
-            ? [trackingData.data.currentPosition[0], trackingData.data.currentPosition[1]] as [number, number]
-            : null;
+          currentPosition =
+            Array.isArray(trackingData.data.currentPosition) && trackingData.data.currentPosition.length === 2
+              ? [trackingData.data.currentPosition[0], trackingData.data.currentPosition[1]]
+              : null;
           trackingStatus = trackingData.data.status || "Started";
           pickupActions = trackingData.data.pickupActions || [];
           dropoffActions = trackingData.data.dropoffActions || [];
@@ -203,29 +249,32 @@ export default function RideManagement() {
         [rideId]: { success: trackingData.success, data: { currentPosition, status: trackingStatus, pickupActions, dropoffActions } },
       }));
 
-      setRides((prev) => prev.map((r) => {
-        if (r._id !== rideId) return r;
-        return {
-          ...r,
-          status: trackingStatus,
-          passengers: r.passengers.map((p) => ({
-            ...p,
-            pickedUp: pickupActions.find((a) => a.passengerId === p.passengerId)?.status === "Completed",
-            droppedOff: dropoffActions.find((a) => a.passengerId === p.passengerId)?.status === "Completed",
-          })),
-        };
-      }));
+      setRides((prev) =>
+        prev.map((r) =>
+          r._id !== rideId
+            ? r
+            : {
+                ...r,
+                status: trackingStatus,
+                passengers: r.passengers.map((p) => ({
+                  ...p,
+                  pickedUp: pickupActions.find((a) => a.passengerId === p.passengerId)?.status === "Completed",
+                  droppedOff: dropoffActions.find((a) => a.passengerId === p.passengerId)?.status === "Completed",
+                })),
+              }
+        )
+      );
 
       setPassengerDetails((prev) => ({
         ...prev,
-        [rideId]: prev[rideId]?.map((p) => ({
-          ...p,
-          pickedUp: pickupActions.find((a) => a.passengerId === p.id)?.status === "Completed",
-          droppedOff: dropoffActions.find((a) => a.passengerId === p.id)?.status === "Completed",
-        })) || [],
+        [rideId]:
+          prev[rideId]?.map((p) => ({
+            ...p,
+            pickedUp: pickupActions.find((a) => a.passengerId === p.id)?.status === "Completed",
+            droppedOff: dropoffActions.find((a) => a.passengerId === p.id)?.status === "Completed",
+          })) || [],
       }));
 
-      // Skip map initialization if routeGeometry is missing or invalid
       if (!ride.routeGeometry) {
         setMapErrors((prev) => ({
           ...prev,
@@ -288,7 +337,6 @@ export default function RideManagement() {
     }
   };
 
-  // Start simulation
   const startSimulation = (
     rideId: string,
     coordinates: [number, number][],
@@ -336,9 +384,10 @@ export default function RideManagement() {
 
         if (trackingData.success && trackingData.data) {
           if (Array.isArray(trackingData.data)) {
-            currentPosition = trackingData.data.length === 2 && trackingData.data.every((n: number) => !isNaN(n))
-              ? [trackingData.data[0], trackingData.data[1]] as [number, number]
-              : null;
+            currentPosition =
+              trackingData.data.length === 2 && trackingData.data.every((n: number) => !isNaN(n))
+                ? [trackingData.data[0], trackingData.data[1]]
+                : null;
             if (
               lastTrackingData.current[rideId] &&
               lastTrackingData.current[rideId]?.[0] === currentPosition?.[0] &&
@@ -348,9 +397,10 @@ export default function RideManagement() {
             }
             lastTrackingData.current[rideId] = currentPosition;
           } else {
-            currentPosition = Array.isArray(trackingData.data.currentPosition) && trackingData.data.currentPosition.length === 2
-              ? [trackingData.data.currentPosition[0], trackingData.data.currentPosition[1]] as [number, number]
-              : null;
+            currentPosition =
+              Array.isArray(trackingData.data.currentPosition) && trackingData.data.currentPosition.length === 2
+                ? [trackingData.data.currentPosition[0], trackingData.data.currentPosition[1]]
+                : null;
             status = trackingData.data.status || "Started";
             updatedPickupActions = trackingData.data.pickupActions || [];
             updatedDropoffActions = trackingData.data.dropoffActions || [];
@@ -360,7 +410,10 @@ export default function RideManagement() {
 
         setTrackingData((prev) => ({
           ...prev,
-          [rideId]: { success: trackingData.success, data: { currentPosition, status, pickupActions: updatedPickupActions, dropoffActions: updatedDropoffActions } },
+          [rideId]: {
+            success: trackingData.success,
+            data: { currentPosition, status, pickupActions: updatedPickupActions, dropoffActions: updatedDropoffActions },
+          },
         }));
 
         if (status === "Completed") {
@@ -371,7 +424,11 @@ export default function RideManagement() {
           return;
         }
 
-        if (status === "Paused" || updatedPickupActions.some((a) => a.status === "Pending") || updatedDropoffActions.some((a) => a.status === "Pending")) {
+        if (
+          status === "Paused" ||
+          updatedPickupActions.some((a) => a.status === "Pending") ||
+          updatedDropoffActions.some((a) => a.status === "Pending")
+        ) {
           if (currentPosition && driverMarkerRefs.current[rideId]) {
             driverMarkerRefs.current[rideId]!.setLatLng(currentPosition);
             lastPositions.current[rideId] = currentPosition;
@@ -397,27 +454,34 @@ export default function RideManagement() {
         mapRefs.current[rideId]!.panTo(newPosition);
         console.log(`[RideManagement] Simulation moved to: ${newPosition} for ride ${rideId}`);
 
-        setRides((prev) => prev.map((r) => (r._id === rideId ? {
-          ...r,
-          status,
-          passengers: r.passengers.map((p) => ({
-            ...p,
-            pickedUp: updatedPickupActions.find((a) => a.passengerId === p.passengerId)?.status === "Completed",
-            droppedOff: updatedDropoffActions.find((a) => a.passengerId === p.passengerId)?.status === "Completed",
-          })),
-        } : r)));
+        setRides((prev) =>
+          prev.map((r) =>
+            r._id === rideId
+              ? {
+                  ...r,
+                  status,
+                  passengers: r.passengers.map((p) => ({
+                    ...p,
+                    pickedUp: updatedPickupActions.find((a) => a.passengerId === p.passengerId)?.status === "Completed",
+                    droppedOff: updatedDropoffActions.find((a) => a.passengerId === p.passengerId)?.status === "Completed",
+                  })),
+                }
+              : r
+          )
+        );
 
         setPassengerDetails((prev) => ({
           ...prev,
-          [rideId]: prev[rideId]?.map((p) => ({
-            ...p,
-            pickedUp: updatedPickupActions.find((a) => a.passengerId === p.id)?.status === "Completed",
-            droppedOff: updatedDropoffActions.find((a) => a.passengerId === p.id)?.status === "Completed",
-          })) || [],
+          [rideId]:
+            prev[rideId]?.map((p) => ({
+              ...p,
+              pickedUp: updatedPickupActions.find((a) => a.passengerId === p.id)?.status === "Completed",
+              droppedOff: updatedDropoffActions.find((a) => a.passengerId === p.id)?.status === "Completed",
+            })) || [],
         }));
       } catch (error) {
         console.error(`[RideManagement] Simulation error for ${rideId}:`, error);
-        setError(`Simulation error for ride ${rideId}: ${error.message}`);
+        setError(`Simulation error for ride ${rideId}: ${(error as Error).message}`);
         clearInterval(animationIntervals.current[rideId]!);
         animationIntervals.current[rideId] = null;
       }
@@ -457,7 +521,6 @@ export default function RideManagement() {
     return R * c;
   };
 
-  // Poll for tracking data
   useEffect(() => {
     rides.forEach((ride) => {
       if (["Started", "Paused"].includes(ride.status) && !trackingIntervals.current[ride._id]) {
@@ -474,12 +537,23 @@ export default function RideManagement() {
     };
   }, [rides]);
 
+  useEffect(() => {
+    if (expandedRide) {
+      const ride = rides.find((r) => r._id === expandedRide);
+      if (ride && ["Started", "Paused"].includes(ride.status)) {
+        const mapContainer = mapContainerRefs.current[expandedRide];
+        if (mapContainer && !mapRefs.current[expandedRide]) {
+          initializeMap(ride, mapContainer);
+        }
+        fetchTrackingAndStartSimulation(expandedRide);
+      }
+    }
+  }, [expandedRide, rides, leafletLoaded]);
+
   const handleCancelRide = async (ride: Ride) => {
     try {
       await apiService.admin.ride.cancelRide(ride._id);
-      setRides(rides.map((r) =>
-        r._id === ride._id ? { ...r, status: "Canceled" } : r
-      ));
+      setRides(rides.map((r) => (r._id === ride._id ? { ...r, status: "Canceled" } : r)));
       setTrackingData((prev) => {
         const { [ride._id]: _, ...rest } = prev;
         return rest;
@@ -506,9 +580,7 @@ export default function RideManagement() {
   const handleBlockRide = async (ride: Ride) => {
     try {
       await apiService.admin.ride.blockRide(ride._id);
-      setRides(rides.map((r) =>
-        r._id === ride._id ? { ...r, status: "Blocked" } : r
-      ));
+      setRides(rides.map((r) => (r._id === ride._id ? { ...r, status: "Blocked" } : r)));
       setTrackingData((prev) => {
         const { [ride._id]: _, ...rest } = prev;
         return rest;
@@ -532,138 +604,142 @@ export default function RideManagement() {
     }
   };
 
+  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearch(e.target.value);
+    setPage(1); // Reset to first page on search
+  };
+
   const toggleDetails = (rideId: string) => {
     if (expandedRide === rideId) {
       cleanupMap(rideId);
       setExpandedRide(null);
     } else {
       setExpandedRide(rideId);
-      const ride = rides.find((r) => r._id === rideId);
-      if (ride && ["Started", "Paused"].includes(ride.status)) {
-        fetchTrackingAndStartSimulation(rideId);
-      }
     }
   };
 
-  const initializeMap = useCallback((ride: Ride, mapContainer: HTMLDivElement) => {
-    if (!leafletLoaded || !leafletLoaded.map) {
-      console.error(`[RideManagement] Cannot initialize map for ride ${ride._id}: Leaflet not loaded`);
-      setMapErrors((prev) => ({
-        ...prev,
-        [ride._id]: "Route map unavailable: Map library not loaded",
-      }));
-      return;
-    }
+  const initializeMap = useCallback(
+    (ride: Ride, mapContainer: HTMLDivElement) => {
+      if (!leafletLoaded || !leafletLoaded.map) {
+        console.error(`[RideManagement] Cannot initialize map for ride ${ride._id}: Leaflet not loaded`);
+        setMapErrors((prev) => ({
+          ...prev,
+          [ride._id]: "Route map unavailable: Map library not loaded",
+        }));
+        return;
+      }
 
-    if (mapRefs.current[ride._id]) {
-      console.log(`[RideManagement] Map already initialized for ride ${ride._id}`);
-      return;
-    }
+      if (mapRefs.current[ride._id]) {
+        console.log(`[RideManagement] Map already initialized for ride ${ride._id}`);
+        return;
+      }
 
-    console.log(`[RideManagement] Initializing map for ride ${ride._id}`);
-    const map = leafletLoaded.map(mapContainer, { zoomControl: true }).setView([0, 0], 8);
-    leafletLoaded.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: "© OpenStreetMap contributors",
-    }).addTo(map);
-    mapRefs.current[ride._id] = map;
+      console.log(`[RideManagement] Initializing map for ride ${ride._id}`);
+      const map = leafletLoaded.map(mapContainer, { zoomControl: true }).setView([0, 0], 8);
+      leafletLoaded.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        attribution: "© OpenStreetMap contributors",
+      }).addTo(map);
+      mapRefs.current[ride._id] = map;
 
-    try {
-      const routeData = JSON.parse(ride.routeGeometry);
-      if (routeData.type === "LineString" && routeData.coordinates) {
-        const coordinates = routeData.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]);
-        routeLayers.current[ride._id] = leafletLoaded.polyline(coordinates, { color: "#3b9ddd", weight: 5 }).addTo(map);
+      try {
+        const routeData = JSON.parse(ride.routeGeometry);
+        if (routeData.type === "LineString" && routeData.coordinates) {
+          const coordinates = routeData.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]);
+          routeLayers.current[ride._id] = leafletLoaded.polyline(coordinates, { color: "#3b9ddd", weight: 5 }).addTo(map);
 
-        const [startLat, startLng] = coordinates[0];
-        const [endLat, endLng] = coordinates[coordinates.length - 1];
-        startMarkerRefs.current[ride._id] = leafletLoaded.marker([startLat, startLng], {
-          icon: leafletLoaded.icon({
-            iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png",
-            iconSize: [25, 41],
-            iconAnchor: [12, 41],
-          }),
-        }).addTo(map).bindPopup(`Start: ${ride.startPlaceName}`);
-
-        endMarkerRefs.current[ride._id] = leafletLoaded.marker([endLat, endLng], {
-          icon: leafletLoaded.icon({
-            iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
-            iconSize: [25, 41],
-            iconAnchor: [12, 41],
-          }),
-        }).addTo(map).bindPopup(`End: ${ride.endPlaceName}`);
-
-        pickupMarkerRefs.current[ride._id] = ride.passengers.map((passenger, index) => {
-          const pickup = ride.pickupPoints.find(p => p.passengerId === passenger.passengerId);
-          if (!pickup) return null;
-
-          const [lat, lng] = pickup.location.split(",").map(Number);
-          if (isNaN(lat) || isNaN(lng)) {
-            console.error(`[RideManagement] Invalid pickup location for passenger ${passenger.passengerId}: ${pickup.location}`);
-            return null;
-          }
-
-          return leafletLoaded.marker([lat, lng], {
+          const [startLat, startLng] = coordinates[0];
+          const [endLat, endLng] = coordinates[coordinates.length - 1];
+          startMarkerRefs.current[ride._id] = leafletLoaded.marker([startLat, startLng], {
             icon: leafletLoaded.icon({
-              iconUrl: passenger.pickedUp
-                ? "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png"
-                : "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-grey.png",
+              iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png",
               iconSize: [25, 41],
               iconAnchor: [12, 41],
             }),
-          }).addTo(map).bindPopup(`Passenger ${index + 1} (${passenger.passengerName}) - Pickup: ${pickup.placeName}${passenger.pickedUp ? " (Picked Up)" : ""}`);
-        }).filter((marker): marker is L.Marker => marker !== null);
+          }).addTo(map).bindPopup(`Start: ${ride.startPlaceName}`);
 
-        dropoffMarkerRefs.current[ride._id] = ride.passengers.map((passenger, index) => {
-          const dropoff = ride.dropoffPoints.find(p => p.passengerId === passenger.passengerId);
-          if (!dropoff) return null;
-
-          const [lat, lng] = dropoff.location.split(",").map(Number);
-          if (isNaN(lat) || isNaN(lng)) {
-            console.error(`[RideManagement] Invalid drop-off location for passenger ${passenger.passengerId}: ${dropoff.location}`);
-            return null;
-          }
-
-          return leafletLoaded.marker([lat, lng], {
+          endMarkerRefs.current[ride._id] = leafletLoaded.marker([endLat, endLng], {
             icon: leafletLoaded.icon({
-              iconUrl: passenger.droppedOff
-                ? "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-orange.png"
-                : "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-grey.png",
+              iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
               iconSize: [25, 41],
               iconAnchor: [12, 41],
             }),
-          }).addTo(map).bindPopup(`Passenger ${index + 1} (${passenger.passengerName}) - Drop-off: ${dropoff.placeName}${passenger.droppedOff ? " (Dropped Off)" : ""}`);
-        }).filter((marker): marker is L.Marker => marker !== null);
+          }).addTo(map).bindPopup(`End: ${ride.endPlaceName}`);
 
-        const tracking = trackingData[ride._id];
-        if (tracking && tracking.data.currentPosition) {
-          const [lat, lng] = tracking.data.currentPosition;
-          if (!isNaN(lat) && !isNaN(lng)) {
-            driverMarkerRefs.current[ride._id] = leafletLoaded.marker([lat, lng], {
+          pickupMarkerRefs.current[ride._id] = ride.passengers.map((passenger, index) => {
+            const pickup = ride.pickupPoints.find((p) => p.passengerId === passenger.passengerId);
+            if (!pickup) return null;
+
+            const [lat, lng] = pickup.location.split(",").map(Number);
+            if (isNaN(lat) || isNaN(lng)) {
+              console.error(`[RideManagement] Invalid pickup location for passenger ${passenger.passengerId}: ${pickup.location}`);
+              return null;
+            }
+
+            return leafletLoaded.marker([lat, lng], {
               icon: leafletLoaded.icon({
-                iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-violet.png",
+                iconUrl: passenger.pickedUp
+                  ? "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png"
+                  : "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-grey.png",
                 iconSize: [25, 41],
                 iconAnchor: [12, 41],
               }),
-            }).addTo(map).bindPopup(`Driver: ${ride.driverName} (${tracking.data.status})`);
-          }
-        }
+            }).addTo(map).bindPopup(`Passenger ${index + 1} (${passenger.passengerName}) - Pickup: ${pickup.placeName}${passenger.pickedUp ? " (Picked Up)" : ""}`);
+          }).filter((marker): marker is L.Marker => marker !== null);
 
-        map.fitBounds(leafletLoaded.latLngBounds(coordinates), { padding: [50, 50] });
-        map.invalidateSize();
-      } else {
-        console.error(`[RideManagement] Invalid route geometry for ride ${ride._id}:`, routeData);
+          dropoffMarkerRefs.current[ride._id] = ride.passengers.map((passenger, index) => {
+            const dropoff = ride.dropoffPoints.find((p) => p.passengerId === passenger.passengerId);
+            if (!dropoff) return null;
+
+            const [lat, lng] = dropoff.location.split(",").map(Number);
+            if (isNaN(lat) || isNaN(lng)) {
+              console.error(`[RideManagement] Invalid drop-off location for passenger ${passenger.passengerId}: ${dropoff.location}`);
+              return null;
+            }
+
+            return leafletLoaded.marker([lat, lng], {
+              icon: leafletLoaded.icon({
+                iconUrl: passenger.droppedOff
+                  ? "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-orange.png"
+                  : "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-grey.png",
+                iconSize: [25, 41],
+                iconAnchor: [12, 41],
+              }),
+            }).addTo(map).bindPopup(`Passenger ${index + 1} (${passenger.passengerName}) - Drop-off: ${dropoff.placeName}${passenger.droppedOff ? " (Dropped Off)" : ""}`);
+          }).filter((marker): marker is L.Marker => marker !== null);
+
+          const tracking = trackingData[ride._id];
+          if (tracking && tracking.data.currentPosition) {
+            const [lat, lng] = tracking.data.currentPosition;
+            if (!isNaN(lat) && !isNaN(lng)) {
+              driverMarkerRefs.current[ride._id] = leafletLoaded.marker([lat, lng], {
+                icon: leafletLoaded.icon({
+                  iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-violet.png",
+                  iconSize: [25, 41],
+                  iconAnchor: [12, 41],
+                }),
+              }).addTo(map).bindPopup(`Driver: ${ride.driverName} (${tracking.data.status})`);
+            }
+          }
+
+          map.fitBounds(leafletLoaded.latLngBounds(coordinates), { padding: [50, 50] });
+          map.invalidateSize();
+        } else {
+          console.error(`[RideManagement] Invalid route geometry for ride ${ride._id}:`, routeData);
+          setMapErrors((prev) => ({
+            ...prev,
+            [ride._id]: "Route map unavailable due to invalid route data",
+          }));
+        }
+      } catch (error) {
+        console.error(`[RideManagement] Error parsing route geometry for ride ${ride._id}:`, error);
         setMapErrors((prev) => ({
           ...prev,
           [ride._id]: "Route map unavailable due to invalid route data",
         }));
       }
-    } catch (error) {
-      console.error(`[RideManagement] Error parsing route geometry for ride ${ride._id}:`, error);
-      setMapErrors((prev) => ({
-        ...prev,
-        [ride._id]: "Route map unavailable due to invalid route data",
-      }));
-    }
-  }, [leafletLoaded, trackingData]);
+    },
+    [leafletLoaded, trackingData]
+  );
 
   const cleanupMap = useCallback((rideId: string) => {
     if (mapRefs.current[rideId]) {
@@ -673,9 +749,9 @@ export default function RideManagement() {
     routeLayers.current[rideId] = null;
     startMarkerRefs.current[rideId] = null;
     endMarkerRefs.current[rideId] = null;
-    pickupMarkerRefs.current[rideId]?.forEach(marker => marker.remove());
+    pickupMarkerRefs.current[rideId]?.forEach((marker) => marker.remove());
     pickupMarkerRefs.current[rideId] = [];
-    dropoffMarkerRefs.current[rideId]?.forEach(marker => marker.remove());
+    dropoffMarkerRefs.current[rideId]?.forEach((marker) => marker.remove());
     dropoffMarkerRefs.current[rideId] = [];
     if (driverMarkerRefs.current[rideId]) {
       driverMarkerRefs.current[rideId]?.remove();
@@ -702,11 +778,18 @@ export default function RideManagement() {
   const renderStatus = (ride: Ride) => {
     const tracking = trackingData[ride._id];
     const status = tracking ? (Array.isArray(tracking.data) ? ride.status : tracking.data.status) : ride.status;
-    const color = status === "Pending" ? "text-orange-500" : 
-                 status === "Canceled" ? "text-red-500" : 
-                 status === "Blocked" ? "text-yellow-500" : 
-                 status === "Started" ? "text-green-500" : 
-                 status === "Paused" ? "text-blue-500" : "text-green-500";
+    const color =
+      status === "Pending"
+        ? "text-orange-500"
+        : status === "Canceled"
+        ? "text-red-500"
+        : status === "Blocked"
+        ? "text-yellow-500"
+        : status === "Started"
+        ? "text-green-500"
+        : status === "Paused"
+        ? "text-blue-500"
+        : "text-green-500";
     return <span className={color}>{status}</span>;
   };
 
@@ -724,66 +807,78 @@ export default function RideManagement() {
       <h2 className="text-2xl font-semibold mb-6">Ride Management</h2>
 
       {error && (
-        <div className="p-3 bg-red-900/50 text-red-300 rounded-md border border-red-800 mb-4">
-          {error}
-        </div>
+        <div className="p-3 bg-red-900/50 text-red-300 rounded-md border border-red-800 mb-4">{error}</div>
       )}
+
+      <div className="mb-4">
+        <Input
+          placeholder="Search rides by driver name or location..."
+          value={search}
+          onChange={handleSearch}
+          className="max-w-md bg-gray-800 text-white border-gray-600"
+          suppressHydrationWarning={true}
+        />
+      </div>
 
       {loading ? (
         <div className="text-center text-gray-400">Loading rides...</div>
       ) : rides.length === 0 ? (
         <div className="text-center text-gray-400">No rides found.</div>
       ) : (
-        <div className="overflow-x-auto rounded-lg shadow-lg">
-          <table className="w-full border-collapse bg-gray-800 text-gray-200">
-            <thead>
-              <tr className="bg-gray-700 text-left text-sm uppercase tracking-wider">
-                <th className="p-4 border-b border-gray-600 font-medium">#</th>
-                <th className="p-4 border-b border-gray-600 font-medium">Ride ID</th>
-                <th className="p-4 border-b border-gray-600 font-medium">Driver Name</th>
-                <th className="p-4 border-b border-gray-600 font-medium">Date</th>
-                <th className="p-4 border-b border-gray-600 font-medium">Start Location</th>
-                <th className="p-4 border-b border-gray-600 font-medium">End Location</th>
-                <th className="p-4 border-b border-gray-600 font-medium">Status</th>
-                <th className="p-4 border-b border-gray-600 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+        <>
+          <Table>
+            <TableHeader>
+              <TableRow className="bg-gray-800 hover:bg-gray-800">
+                <TableHead className="text-gray-200">#</TableHead>
+                <TableHead className="text-gray-200">Ride ID</TableHead>
+                <TableHead className="text-gray-200">Driver Name</TableHead>
+                <TableHead className="text-gray-200">Date</TableHead>
+                <TableHead className="text-gray-200">Start Location</TableHead>
+                <TableHead className="text-gray-200">End Location</TableHead>
+                <TableHead className="text-gray-200">Status</TableHead>
+                <TableHead className="text-gray-200">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {rides.map((ride, index) => {
                 const isExpanded = expandedRide === ride._id;
                 const passengersForRide = passengerDetails[ride._id] || [];
 
                 return (
                   <>
-                    <tr key={ride._id} className="border-b border-gray-700 hover:bg-gray-750 transition-colors">
-                      <td className="p-4">{index + 1}</td>
-                      <td className="p-4 font-mono text-sm">{truncateId(ride.rideId)}</td>
-                      <td className="p-4">{ride.driverName}</td>
-                      <td className="p-4">{ride.date}</td>
-                      <td className="p-4">{ride.startPlaceName}</td>
-                      <td className="p-4">{ride.endPlaceName}</td>
-                      <td className="p-4">{renderStatus(ride)}</td>
-                      <td className="p-4">
+                    <TableRow key={ride._id} className="border-gray-700 hover:bg-gray-800">
+                      <TableCell>{index + 1}</TableCell>
+                      <TableCell className="font-mono text-sm">{truncateId(ride.rideId)}</TableCell>
+                      <TableCell>{ride.driverName}</TableCell>
+                      <TableCell>{ride.date}</TableCell>
+                      <TableCell>{ride.startPlaceName}</TableCell>
+                      <TableCell>{ride.endPlaceName}</TableCell>
+                      <TableCell>{renderStatus(ride)}</TableCell>
+                      <TableCell>
                         <div className="flex space-x-2">
                           {ride.status === "Pending" && (
                             <>
-                              <button
+                              <Button
                                 onClick={() => handleCancelRide(ride)}
-                                className="bg-red-700 text-white rounded px-3 py-1 hover:bg-red-600 transition-colors text-sm"
+                                variant="destructive"
+                                size="sm"
                               >
                                 Cancel Ride
-                              </button>
-                              <button
+                              </Button>
+                              <Button
                                 onClick={() => handleBlockRide(ride)}
-                                className="bg-yellow-700 text-white rounded px-3 py-1 hover:bg-yellow-600 transition-colors text-sm"
+                                variant="outline"
+                                size="sm"
+                                className="border-yellow-600 text-yellow-600 hover:bg-yellow-600 hover:text-white"
                               >
                                 Block Ride
-                              </button>
+                              </Button>
                             </>
                           )}
-                          <button
+                          <Button
                             onClick={() => toggleDetails(ride._id)}
-                            className="bg-gray-600 text-white rounded px-3 py-1 hover:bg-gray-500 transition-colors text-sm"
+                            variant="outline"
+                            size="sm"
                           >
                             <svg
                               xmlns="http://www.w3.org/2000/svg"
@@ -793,13 +888,13 @@ export default function RideManagement() {
                             >
                               <path d="M6 10a2 2 0 11-4 0 2 2 0 014 0zM12 10a2 2 0 11-4 0 2 2 0 014 0zM16 12a2 2 0 100-4 2 2 0 000 4z" />
                             </svg>
-                          </button>
+                          </Button>
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                     {isExpanded && (
-                      <tr className="bg-gray-750">
-                        <td colSpan={8} className="p-4">
+                      <TableRow key={`${ride._id}-details`} className="bg-gray-750">
+                        <TableCell colSpan={8} className="p-4">
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
                               <h4 className="text-lg font-semibold mb-3 text-gray-200">Ride Details</h4>
@@ -810,13 +905,25 @@ export default function RideManagement() {
                                 <li><span className="font-medium">Vehicle ID:</span> {truncateId(ride.vehicleId)}</li>
                                 <li><span className="font-medium">Date:</span> {ride.date}</li>
                                 <li><span className="font-medium">Time:</span> {ride.time}</li>
-                                <li><span className="font-medium">Start Location:</span> {ride.startPlaceName} ({ride.startPoint})</li>
-                                <li><span className="font-medium">End Location:</span> {ride.endPlaceName} ({ride.endPoint})</li>
+                                <li>
+                                  <span className="font-medium">Start Location:</span> {ride.startPlaceName} (
+                                  {ride.startPoint})
+                                </li>
+                                <li>
+                                  <span className="font-medium">End Location:</span> {ride.endPlaceName} (
+                                  {ride.endPoint})
+                                </li>
                                 <li><span className="font-medium">Distance:</span> {formatNumber(ride.distanceKm)} km</li>
                                 <li><span className="font-medium">Fuel Price:</span> {formatNumber(ride.fuelPrice)}</li>
                                 <li><span className="font-medium">Passenger Count:</span> {ride.passengerCount}</li>
-                                <li><span className="font-medium">Total Fuel Cost:</span> {formatNumber(ride.totalFuelCost)}</li>
-                                <li><span className="font-medium">Cost Per Person:</span> {formatNumber(ride.costPerPerson)}</li>
+                                <li>
+                                  <span className="font-medium">Total Fuel Cost:</span>{" "}
+                                  {formatNumber(ride.totalFuelCost)}
+                                </li>
+                                <li>
+                                  <span className="font-medium">Cost Per Person:</span>{" "}
+                                  {formatNumber(ride.costPerPerson)}
+                                </li>
                                 <li><span className="font-medium">Total People:</span> {ride.totalPeople}</li>
                                 <li><span className="font-medium">Status:</span> {renderStatus(ride)}</li>
                                 <li><span className="font-medium">Created At:</span> {ride.createdAt}</li>
@@ -824,13 +931,18 @@ export default function RideManagement() {
                               <h4 className="text-lg font-semibold mt-4 mb-3 text-gray-200">Passenger Details</h4>
                               {passengersForRide.length > 0 ? (
                                 <ul className="list-disc pl-5 space-y-2 text-sm text-gray-300">
-                                  {passengersForRide.map((passenger, idx) => (
-                                    <li key={idx}>
-                                      <span className="font-medium">Passenger {idx + 1}:</span> {passenger.name} (ID: {truncateId(passenger.id)}) <br />
-                                      <span className="font-medium">Pickup Location:</span> {passenger.pickupPlaceName} ({passenger.pickupLocation}) <br />
-                                      <span className="font-medium">Picked Up:</span> {passenger.pickedUp ? "Yes" : "No"} <br />
-                                      <span className="font-medium">Drop-off Location:</span> {passenger.dropoffPlaceName} ({passenger.dropoffLocation}) <br />
-                                      <span className="font-medium">Dropped Off:</span> {passenger.droppedOff ? "Yes" : "No"}
+                                  {passengersForRide.map((passenger) => (
+                                    <li key={passenger.id} className="ml-4">
+                                      <span className="font-medium">Passenger:</span> {passenger.name} (ID:{" "}
+                                      {truncateId(passenger.id)}) <br />
+                                      <span className="font-medium">Pickup Location:</span>{" "}
+                                      {passenger.pickupPlaceName} ({passenger.pickupLocation}) <br />
+                                      <span className="font-medium">Picked Up:</span>{" "}
+                                      {passenger.pickedUp ? "Yes" : "No"} <br />
+                                      <span className="font-medium">Drop-off Location:</span>{" "}
+                                      {passenger.dropoffPlaceName} ({passenger.dropoffLocation}) <br />
+                                      <span className="font-medium">Dropped Off:</span>{" "}
+                                      {passenger.droppedOff ? "Yes" : "No"}
                                     </li>
                                   ))}
                                 </ul>
@@ -855,15 +967,43 @@ export default function RideManagement() {
                               )}
                             </div>
                           </div>
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     )}
                   </>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
+          <div className="mt-4">
+            <Pagination>
+              <PaginationContent>
+                <PaginationItem>
+                  <PaginationPrevious
+                    onClick={() => hasPrev && setPage(page - 1)}
+                    className={hasPrev ? "" : "pointer-events-none opacity-50"}
+                  />
+                </PaginationItem>
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
+                  <PaginationItem key={p}>
+                    <PaginationLink onClick={() => setPage(p)} isActive={p === page}>
+                      {p}
+                    </PaginationLink>
+                  </PaginationItem>
+                ))}
+                <PaginationItem>
+                  <PaginationNext
+                    onClick={() => hasNext && setPage(page + 1)}
+                    className={hasNext ? "" : "pointer-events-none opacity-50"}
+                  />
+                </PaginationItem>
+              </PaginationContent>
+            </Pagination>
+            <p className="text-sm text-gray-400 mt-2">
+              Showing {rides.length} of {totalItems} rides
+            </p>
+          </div>
+        </>
       )}
     </div>
   );

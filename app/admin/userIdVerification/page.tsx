@@ -26,35 +26,37 @@ export default function UserIdVerification() {
   const [showRejectionModal, setShowRejectionModal] = useState(false);
 
   useEffect(() => {
-    const fetchUsers = async () => {
-      try {
-        setLoading(true);
-        const fetchedUsers = await apiService.admin.user.getUsers();
-        console.log("Fetched users data:", fetchedUsers);
-        if (Array.isArray(fetchedUsers)) {
-         
-          const usersWithGovId = fetchedUsers.filter((user: User) => user.govId && user.govId.idNumber);
-          setUsers(usersWithGovId);
-        } else {
-          console.error("Unexpected response format:", fetchedUsers);
-          setUsers([]);
-        }
-      } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : "Failed to fetch users";
-        console.error("Fetch users failed:", err);
-        setError(errorMessage);
+  const fetchUsers = async () => {
+    try {
+      setLoading(true);
+      const response = await apiService.admin.user.getUsers();
+      console.log("Fetched users response:", response);
+      
+      // Check if response is an object with a 'data' property that is an array
+      if (response && Array.isArray(response.data)) {
+        const usersWithGovId = response.data.filter((user: User) => user.govId && user.govId.idNumber);
+        console.log("Users with Gov ID:", usersWithGovId);
+        setUsers(usersWithGovId);
+      } else {
+        console.error("Unexpected response format:", response);
         setUsers([]);
-      } finally {
-        setLoading(false);
       }
-    };
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Failed to fetch users";
+      console.error("Fetch users failed:", err);
+      setError(errorMessage);
+      setUsers([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    fetchUsers();
-  }, []);
+  fetchUsers();
+}, []);
 
   const handleApproveUser = async (userId: string) => {
     try {
-      await apiService.admin.vehicle.verifyGovId(userId, "Verified");
+      await apiService.admin.user.verifyGovId(userId, "Verified");
       
       setUsers(users.map((user) =>
         user._id === userId ? { ...user, govId: { ...user.govId, verificationStatus: "Verified" } } : user
@@ -79,7 +81,7 @@ export default function UserIdVerification() {
     }
 
     try {
-      await apiService.admin.vehicle.verifyGovId(selectedUser, "Rejected", rejectionNote);
+      await apiService.admin.user.verifyGovId(selectedUser, "Rejected", rejectionNote);
       setUsers(users.map((user) =>
         user._id === selectedUser ? { ...user, govId: { ...user.govId, verificationStatus: "Rejected", rejectionNote } } : user
       ));
