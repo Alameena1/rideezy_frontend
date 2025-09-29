@@ -9,7 +9,7 @@ import { MessageCircle, Loader2 } from "lucide-react";
 import { useSearchParams, useRouter } from "next/navigation";
 import useAuth from "@/app/hooks/useAuth";
 import MainLayout from "@/app/comp/MainLayout";
-import apiService from "@/services/api";
+import { clientApiService } from "@/services/client-api"; // Fixed import
 import { useChat } from "../../hooks/useChat";
 import { useSocketStore } from "../../stores/socketStore";
 
@@ -46,10 +46,16 @@ const Chat: React.FC = () => {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const userId = user?._id;
 
-  const { messages, setMessages, error: chatError, isConnected, typingUsers, handleTyping, sendMessage, setError: setChatError } = useChat(
-    conversationId || '',
-    userId || ''
-  );
+  const { 
+    messages, 
+    setMessages, 
+    error: chatError, 
+    isConnected, 
+    typingUsers, 
+    handleTyping, 
+    sendMessage, 
+    setError: setChatError 
+  } = useChat(conversationId || '', userId || '');
 
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -64,6 +70,14 @@ const Chat: React.FC = () => {
 
   const { error: socketError, socket } = useSocketStore();
 
+  // Set up API interceptors for authenticated requests
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const { clientApi } = require('@/services/client-api');
+      clientApi.useTokenInterceptor();
+    }
+  }, []);
+
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated || !userId) {
@@ -74,28 +88,45 @@ const Chat: React.FC = () => {
 
     const fetchData = async () => {
       setIsLoading(true);
+      setError(null);
       try {
         let convId = conversationId;
 
-        const convsResponse = await apiService.chat.getUserConversations(userId);
+        // Fetch user conversations
+        const convsResponse = await clientApiService.chat.getUserConversations(userId);
         if (!convsResponse.success) {
           setError(convsResponse.message || "Failed to fetch user conversations.");
           setIsLoading(false);
           return;
         }
+        
         const convs = convsResponse.conversations as Conversation[];
         const uniqueConvs = Array.from(new Map(convs.map(c => [c._id, c])).values());
+        
         // Fetch last message for each conversation to populate lastMessage and lastMessageTime
         const updatedConvs = await Promise.all(uniqueConvs.map(async (conv) => {
-          const msgResponse = await apiService.chat.getMessages(conv._id);
-          if (msgResponse.success && msgResponse.messages.length > 0) {
-            const lastMsg = msgResponse.messages.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
-            return { ...conv, lastMessage: lastMsg.content, lastMessageTime: lastMsg.createdAt };
+          try {
+            const msgResponse = await clientApiService.chat.getMessages(conv._id);
+            if (msgResponse.success && msgResponse.messages && msgResponse.messages.length > 0) {
+              const lastMsg = msgResponse.messages.sort((a: Message, b: Message) => 
+                new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+              )[0];
+              return { 
+                ...conv, 
+                lastMessage: lastMsg.content, 
+                lastMessageTime: lastMsg.createdAt 
+              };
+            }
+            return conv;
+          } catch (error) {
+            console.error(`Error fetching messages for conversation ${conv._id}:`, error);
+            return conv;
           }
-          return conv;
         }));
+        
         setConversations(updatedConvs);
 
+        // Handle ride conversation creation
         if (rideId && driverId && !conversationId) {
           const existingConversation = updatedConvs.find(
             (conv: Conversation) =>
@@ -103,19 +134,27 @@ const Chat: React.FC = () => {
               conv.participants.some((p) => p._id === userId) &&
               conv.participants.some((p) => p._id === driverId)
           );
+          
           if (existingConversation) {
             convId = existingConversation._id;
             router.replace(`/user/chat?conversationId=${convId}`);
           }
         }
 
+        // Create new ride conversation if needed
         if (rideId && driverId && !convId) {
-          const response = await apiService.chat.getOrCreateRideConversation({ rideId, driverId, userId });
+          const response = await clientApiService.chat.getOrCreateRideConversation({ 
+            rideId, 
+            driverId, 
+            userId 
+          });
+          
           if (!response.success) {
             setError(response.message || "Failed to start conversation with driver.");
             setIsLoading(false);
             return;
           }
+          
           convId = response.conversation?._id || response.conversation;
           setConversation(response.conversation);
           const newConvs = [...updatedConvs.filter(c => c._id !== convId), response.conversation];
@@ -135,7 +174,8 @@ const Chat: React.FC = () => {
           return;
         }
 
-        const convResponse = await apiService.chat.getConversation(convId);
+        // Fetch conversation details
+        const convResponse = await clientApiService.chat.getConversation(convId);
         if (!convResponse.success) {
           setError(convResponse.message || "Failed to fetch conversation.");
           if (convResponse.status === 401) {
@@ -144,8 +184,10 @@ const Chat: React.FC = () => {
           setIsLoading(false);
           return;
         }
+        
         setConversation(convResponse.conversation);
       } catch (err) {
+        console.error("Error fetching chat data:", err);
         setError("Failed to load chat data: " + (err instanceof Error ? err.message : "Unknown error"));
       } finally {
         setIsLoading(false);
@@ -162,22 +204,35 @@ const Chat: React.FC = () => {
           if (prev.some((m) => m._id === message._id)) return prev;
           return [...prev, message];
         });
+        
         setConversations((prev) => {
           const updatedConversations = prev.map((conv) =>
             conv._id === message.conversationId
-              ? { ...conv, lastMessage: message.content, lastMessageTime: message.createdAt }
+              ? { 
+                  ...conv, 
+                  lastMessage: message.content, 
+                  lastMessageTime: message.createdAt 
+                }
               : conv
           );
-          const uniqueUpdated = Array.from(new Map(updatedConversations.map((c) => [c._id, c])).values());
+          
+          const uniqueUpdated = Array.from(
+            new Map(updatedConversations.map((c) => [c._id, c])).values()
+          );
+          
           return uniqueUpdated.sort((a, b) =>
             (b.lastMessageTime ? new Date(b.lastMessageTime).getTime() : new Date(b.createdAt).getTime()) -
             (a.lastMessageTime ? new Date(a.lastMessageTime).getTime() : new Date(a.createdAt).getTime())
           );
         });
+        
         if (message.conversationId !== conversationId) {
           setConversations((prev) =>
             prev.map((conv) =>
-              conv._id === message.conversationId ? { ...conv, unreadCount: (conv.unreadCount || 0) + 1 } : conv
+              conv._id === message.conversationId ? { 
+                ...conv, 
+                unreadCount: (conv.unreadCount || 0) + 1 
+              } : conv
             )
           );
         }
@@ -203,6 +258,7 @@ const Chat: React.FC = () => {
         });
       }
     }
+    
     if (conversationId && conversationId !== prevConversationId) {
       setConversations((prev) =>
         prev.map((conv) =>
@@ -211,15 +267,17 @@ const Chat: React.FC = () => {
       );
       setPrevConversationId(conversationId);
     }
-  }, [messages, conversationId]);
+  }, [messages, conversationId, prevConversationId]);
 
   const handleTypingWrapper = useCallback(() => {
     if (!isTyping) {
       setIsTyping(true);
       handleTyping();
+      
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
+      
       typingTimeoutRef.current = setTimeout(() => {
         setIsTyping(false);
       }, 3000);
@@ -232,6 +290,11 @@ const Chat: React.FC = () => {
     }
 
     const convId = conversationId || conversation?._id || '';
+    if (!convId) {
+      setError("No conversation selected");
+      return;
+    }
+
     const optimisticMessage: Message = {
       _id: `optimistic-${convId}-${Date.now()}`,
       conversationId: convId,
@@ -240,14 +303,34 @@ const Chat: React.FC = () => {
       timestamp: new Date().toISOString(),
       createdAt: new Date(),
     };
+    
     setMessages((prev) => [...prev, optimisticMessage]);
 
-    const success = await sendMessage(messageInput);
-    if (success) {
-      setMessageInput("");
-      setIsTyping(false);
-    } else {
+    try {
+      const success = await sendMessage(messageInput);
+      if (success) {
+        setMessageInput("");
+        setIsTyping(false);
+        
+        // Update conversations with new last message
+        setConversations((prev) =>
+          prev.map((conv) =>
+            conv._id === convId
+              ? {
+                  ...conv,
+                  lastMessage: messageInput,
+                  lastMessageTime: new Date().toISOString(),
+                }
+              : conv
+          )
+        );
+      } else {
+        setMessages((prev) => prev.filter((m) => m._id !== optimisticMessage._id));
+        setError("Failed to send message");
+      }
+    } catch (error) {
       setMessages((prev) => prev.filter((m) => m._id !== optimisticMessage._id));
+      setError("Failed to send message: " + (error instanceof Error ? error.message : "Unknown error"));
     }
   };
 
@@ -266,9 +349,13 @@ const Chat: React.FC = () => {
     return diffDays > 0 ? `${diffDays}d ago` : diffHours > 0 ? `${diffHours}h ago` : "Just now";
   };
 
+  // Combine errors from different sources
+  const displayError = error || chatError || socketError;
+
   return (
     <MainLayout activeItem="Chat">
       <div className="container mx-auto p-4 flex flex-col md:flex-row h-[calc(100vh-150px)] min-h-[600px]">
+        {/* Conversations List */}
         <div className="w-full md:w-1/3 bg-gray-100 p-4 rounded-l-lg shadow-md overflow-hidden flex flex-col mb-4 md:mb-0 md:mr-4">
           <h2 className="text-lg font-semibold mb-4">Chats</h2>
           {isLoading ? (
@@ -325,6 +412,7 @@ const Chat: React.FC = () => {
           )}
         </div>
 
+        {/* Chat Messages */}
         <div className="w-full md:w-2/3 flex flex-col h-full">
           <Card className="flex flex-col h-full">
             <CardHeader className="border-b p-4 flex justify-between items-center">
@@ -337,13 +425,16 @@ const Chat: React.FC = () => {
               )}
             </CardHeader>
             <CardContent className="flex-1 flex flex-col p-0 overflow-hidden">
-              {error && (
+              {displayError && (
                 <div className="bg-red-100 text-red-500 p-2 flex items-center justify-between">
-                  <span>{error}</span>
+                  <span>{displayError}</span>
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setError(null)}
+                    onClick={() => {
+                      setError(null);
+                      setChatError(null);
+                    }}
                     className="text-red-500 hover:bg-red-200"
                   >
                     Clear
@@ -351,7 +442,11 @@ const Chat: React.FC = () => {
                 </div>
               )}
 
-              <ScrollArea ref={scrollRef} className="flex-1 p-4 overflow-y-auto" style={{ maxHeight: "calc(100vh - 300px)" }}>
+              <ScrollArea 
+                ref={scrollRef} 
+                className="flex-1 p-4 overflow-y-auto" 
+                style={{ maxHeight: "calc(100vh - 300px)" }}
+              >
                 {isLoading ? (
                   <div className="flex items-center justify-center h-full">
                     <Loader2 className="h-6 w-6 animate-spin text-gray-500" />
@@ -387,6 +482,7 @@ const Chat: React.FC = () => {
                 )}
               </ScrollArea>
 
+              {/* Message Input */}
               <div className="border-t p-4">
                 <div className="flex gap-2">
                   <Input

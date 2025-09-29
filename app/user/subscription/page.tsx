@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import useAuth from "@/app/hooks/useAuth";
-import { subscriptionApi, SubscriptionPlan, SubscriptionStatusResponse } from "@/services/user/subscriptionApi"; 
+import { clientApiService } from "@/services/client-api"; // Updated import
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,6 +12,20 @@ import Swal from "sweetalert2";
 import CurrentPlanCard from "../../features/user/subscription/CurrentPlanCard";
 import AvailablePlansSection from "../../features/user/subscription/AvailablePlansSection";
 import { useRazorpay } from "../../features/user/subscription/useRazorpay";
+
+// Define types locally or import from client-api.ts if available
+interface SubscriptionPlan {
+  _id: string;
+  name: string;
+  price: number;
+  duration: number; // in days
+  features: string[];
+}
+
+interface SubscriptionStatusResponse {
+  isSubscribed: boolean;
+  subscription: CurrentSubscription | null;
+}
 
 interface CurrentSubscription {
   plan: SubscriptionPlan;
@@ -38,7 +52,7 @@ export default function Subscriptions() {
 
   const { handleSubscribe, paymentLoading } = useRazorpay({
     userId: userId || "",
-    onSuccess: (subscriptionResponse: SubscriptionStatusResponse) => { // Added type
+    onSuccess: (subscriptionResponse: SubscriptionStatusResponse) => {
       if (subscriptionResponse.isSubscribed && subscriptionResponse.subscription) {
         setCurrentSubscription(subscriptionResponse.subscription as CurrentSubscription);
       }
@@ -60,10 +74,10 @@ export default function Subscriptions() {
     const fetchPlansAndSubscription = async () => {
       setIsLoading(true);
       try {
-        const plansResponse = await subscriptionApi.getSubscriptionPlans();
+        const plansResponse = await clientApiService.subscription.getSubscriptionPlans(); // Updated to clientApiService
         setAvailablePlans(plansResponse.data || []);
 
-        const subscriptionResponse = await subscriptionApi.checkSubscription(userId);
+        const subscriptionResponse = await clientApiService.subscription.checkSubscription(userId); // Updated to clientApiService
         if (subscriptionResponse.isSubscribed && subscriptionResponse.subscription) {
           setCurrentSubscription(subscriptionResponse.subscription as CurrentSubscription);
         }

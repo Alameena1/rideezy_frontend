@@ -1,12 +1,36 @@
+"use client";
+
 import { useState } from "react";
 import Swal from "sweetalert2";
-import { subscriptionApi } from "@/services/user/subscriptionApi";
-import { walletApi } from "@/services/user/walletApi";
-import { SubscribeResponse, SubscriptionStatusResponse, OrderResponse } from "@/services/user/subscriptionApi";
+import { clientApiService } from "@/services/client-api"; // Updated import
+
+interface SubscribeResponse {
+  data: any;
+  success: boolean;
+  message?: string;
+}
+
+interface SubscriptionStatusResponse {
+  data: SubscriptionStatusResponse;
+  success: boolean;
+  isSubscribed: boolean;
+  message?: string;
+}
+
+interface OrderResponse {
+  data: any;
+  success: boolean;
+  order: {
+    id: string;
+    amount: number;
+    currency: string;
+  };
+  message?: string;
+}
 
 interface RazorpayOptions {
   userId: string;
-  onSuccess: (response: SubscriptionStatusResponse) => void; // Updated type
+  onSuccess: (response: SubscriptionStatusResponse) => void;
   onError: (error: string) => void;
 }
 
@@ -80,11 +104,11 @@ export const useRazorpay = ({ userId, onSuccess, onError }: RazorpayOptions) => 
     // Fetch wallet balance
     let walletBalance = 0;
     try {
-      const walletResponse = await walletApi.getWallet(userId);
-      walletBalance = walletResponse.balance || 0;
+      const walletResponse = await clientApiService.wallet.getWallet(userId); // Updated to clientApiService
+      walletBalance = walletResponse.data?.balance || 0;
     } catch (error: any) {
       console.error("Failed to fetch wallet balance:", error);
-      onError("Failed to fetch wallet balance. Please try again.");
+      onError(error.response?.data?.message || "Failed to fetch wallet balance. Please try again.");
       return;
     }
 
@@ -106,34 +130,34 @@ export const useRazorpay = ({ userId, onSuccess, onError }: RazorpayOptions) => 
         // Wallet payment
         setPaymentLoading(true);
         try {
-          const response: SubscribeResponse = await subscriptionApi.subscribeWithWallet({ 
-            userId, 
-            planId: plan._id 
-          });
-          
-          if (response.success) {
+          const response: SubscribeResponse = await clientApiService.subscription.subscribeWithWallet({
+            userId,
+            planId: plan._id,
+          }); // Updated to clientApiService
+
+          if (response.data?.success) {
             Swal.fire({
               icon: "success",
               title: "Subscription Successful",
-              text: response.message || "You have successfully subscribed using your wallet!",
+              text: response.data?.message || "You have successfully subscribed using your wallet!",
               confirmButtonColor: "#2563EB",
             });
-            
+
             // After successful subscription, check the subscription status
             try {
-              const statusResponse: SubscriptionStatusResponse = await subscriptionApi.checkSubscription(userId);
-              onSuccess(statusResponse);
+              const statusResponse: SubscriptionStatusResponse = await clientApiService.subscription.checkSubscription(userId); // Updated to clientApiService
+              onSuccess(statusResponse.data);
             } catch (statusError: any) {
               console.error("Failed to fetch subscription status after wallet payment:", statusError);
               // Still call onSuccess with basic info since subscription was successful
               onSuccess({
                 success: true,
                 isSubscribed: true,
-                message: response.message
+                message: response.data?.message,
               } as SubscriptionStatusResponse);
             }
           } else {
-            throw new Error(response.message || "Failed to subscribe with wallet");
+            throw new Error(response.data?.message || "Failed to subscribe with wallet");
           }
         } catch (error: any) {
           const errorMessage = error.response?.data?.message || error.message || "Failed to subscribe with wallet. Please try again.";
@@ -151,52 +175,52 @@ export const useRazorpay = ({ userId, onSuccess, onError }: RazorpayOptions) => 
         // Razorpay payment
         setPaymentLoading(true);
         try {
-          const orderResponse: OrderResponse = await subscriptionApi.createOrder(plan._id);
-          
-          if (!orderResponse.success) {
-            throw new Error(orderResponse.message || "Failed to create order");
+          const orderResponse: OrderResponse = await clientApiService.subscription.createOrder(plan._id); // Updated to clientApiService
+
+          if (!orderResponse.data?.success) {
+            throw new Error(orderResponse.data?.message || "Failed to create order");
           }
 
           const options = {
             key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_0o5iV9J7s9C6i9",
-            amount: orderResponse.order.amount,
-            currency: orderResponse.order.currency,
+            amount: orderResponse.data.order.amount,
+            currency: orderResponse.data.order.currency,
             name: "Subscription Payment",
             description: `Subscription for ${plan.name}`,
-            order_id: orderResponse.order.id,
+            order_id: orderResponse.data.order.id,
             handler: async function (response: any) {
               try {
-                const verifyResponse: SubscribeResponse = await subscriptionApi.verifyAndSubscribe({
+                const verifyResponse: SubscribeResponse = await clientApiService.subscription.verifyAndSubscribe({
                   userId,
                   planId: plan._id,
                   paymentId: response.razorpay_payment_id,
                   orderId: response.razorpay_order_id,
                   signature: response.razorpay_signature,
-                });
-                
-                if (verifyResponse.success) {
+                }); // Updated to clientApiService
+
+                if (verifyResponse.data?.success) {
                   Swal.fire({
                     icon: "success",
                     title: "Subscription Successful",
-                    text: verifyResponse.message || "You have successfully subscribed!",
+                    text: verifyResponse.data?.message || "You have successfully subscribed!",
                     confirmButtonColor: "#2563EB",
                   });
-                  
+
                   // After successful subscription, check the subscription status
                   try {
-                    const statusResponse: SubscriptionStatusResponse = await subscriptionApi.checkSubscription(userId);
-                    onSuccess(statusResponse);
+                    const statusResponse: SubscriptionStatusResponse = await clientApiService.subscription.checkSubscription(userId); // Updated to clientApiService
+                    onSuccess(statusResponse.data);
                   } catch (statusError: any) {
                     console.error("Failed to fetch subscription status after Razorpay payment:", statusError);
                     // Still call onSuccess with basic info since subscription was successful
                     onSuccess({
                       success: true,
                       isSubscribed: true,
-                      message: verifyResponse.message
+                      message: verifyResponse.data?.message,
                     } as SubscriptionStatusResponse);
                   }
                 } else {
-                  throw new Error(verifyResponse.message || "Payment verification failed");
+                  throw new Error(verifyResponse.data?.message || "Payment verification failed");
                 }
               } catch (error: any) {
                 const errorMessage = error.response?.data?.message || error.message || "Payment verification failed. Please try again.";
@@ -219,11 +243,11 @@ export const useRazorpay = ({ userId, onSuccess, onError }: RazorpayOptions) => 
               color: "#2563EB",
             },
             modal: {
-              ondismiss: function() {
-                console.log('Checkout form closed by user');
+              ondismiss: function () {
+                console.log("Checkout form closed by user");
                 setPaymentLoading(false);
-              }
-            }
+              },
+            },
           };
 
           // Check if Razorpay is available
@@ -243,7 +267,7 @@ export const useRazorpay = ({ userId, onSuccess, onError }: RazorpayOptions) => 
             onError(errorMessage);
             setPaymentLoading(false);
           });
-          
+
           rzp.open();
         } catch (error: any) {
           const errorMessage = error.response?.data?.message || error.message || "Failed to create payment order. Please try again.";

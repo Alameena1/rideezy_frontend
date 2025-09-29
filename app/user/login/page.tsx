@@ -1,16 +1,17 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import axios from "axios";
-import { signIn } from "next-auth/react";
-import { apiService } from "@/services/api";
+import { signIn, useSession } from "next-auth/react";
+import { clientApiService, useApiInterceptors } from "@/services/client-api";
 import Cookies from "js-cookie";
 
 export default function LoginPage() {
+  const { data: session, status } = useSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -23,13 +24,24 @@ export default function LoginPage() {
   });
   const [loading, setLoading] = useState(false);
 
-  // Check if user is already logged in
+  // Apply API interceptors
+  useApiInterceptors();
+
   useEffect(() => {
-    const userToken = Cookies.get("accessToken");
-    if (userToken) {
-      router.push("/"); // Redirect to homepage instead of dashboard
+    if (status === "authenticated") {
+      console.log("LoginPage: User authenticated, redirecting to /");
+      router.push("/");
     }
-  }, [router]);
+    if (searchParams) {
+      const error = searchParams.get("error");
+      if (error) {
+        setErrors((prev) => ({
+          ...prev,
+          general: error === "AuthenticationFailed" ? "Authentication failed. Please try again." : decodeURIComponent(error),
+        }));
+      }
+    }
+  }, [status, router, searchParams]);
 
   const validateEmail = (email: string) => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -42,7 +54,6 @@ export default function LoginPage() {
       ...prev,
       [name]: type === "checkbox" ? checked : value,
     }));
-
     setErrors((prev) => ({ ...prev, [name]: "", general: "" }));
   };
 
@@ -69,53 +80,56 @@ export default function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!validateForm()) return;
-
     setLoading(true);
     try {
-      const data = await apiService.auth.login({
+      // Call the backend API to verify credentials
+      const response = await clientApiService.auth.login({
+        email: formData.email,
+        password: formData.password,
+      });
+      console.log("Login response:", response);
+      if (!response.success) {
+        throw new Error(response.message || "Login failed");
+      }
+
+      // Store tokens in cookies
+      Cookies.set("accessToken", response.accessToken, {
+        expires: formData.rememberMe ? 7 : 1, // 7 days if rememberMe, else 1 day
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+      });
+      Cookies.set("refreshToken", response.refreshToken, {
+        expires: 7, // 7 days for refresh token
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+      });
+
+      // Call signIn to set next-auth session
+      const result = await signIn("credentials", {
+        redirect: false,
         email: formData.email,
         password: formData.password,
       });
 
-      // Store tokens in cookies
-      Cookies.set("accessToken", data.accessToken, { expires: 1, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/" });
-      if (data.refreshToken) {
-        Cookies.set("refreshToken", data.refreshToken, { expires: 7, secure: process.env.NODE_ENV === "production", sameSite: "strict", path: "/" });
+      if (result?.error) {
+        console.error("Next-auth signIn error:", result.error);
+        setErrors({ ...errors, general: "Invalid email or password" });
+      } else {
+        console.log("Login success, redirecting to /");
+        router.push("/");
       }
-
-      router.push("/"); // Redirect to homepage after login
-    } catch (error) {
-      console.error("Login Failed:", error);
-
-      let errorMessage = "An unexpected error occurred";
-
-      if (axios.isAxiosError(error)) {
-        if (error.response?.status === 401) {
-          errorMessage = "Invalid email or password";
-        } else if (error.response?.status === 429) {
-          errorMessage = "Too many login attempts. Please try again later.";
-        } else if (error.response?.status === 403 && error.response?.data?.message === "Your account has been blocked. Contact support.") {
-          errorMessage = error.response.data.message;
-        } else if (error.response?.status === 500) {
-          errorMessage = "Server error. Please try again later.";
-        } else if (error.response?.data?.message) {
-          errorMessage = error.response.data.message;
-        }
-      }
-
-      setErrors((prev) => ({
-        ...prev,
-        general: errorMessage,
-      }));
+    } catch (error: any) {
+      console.error("Login error:", error.message);
+      setErrors({ ...errors, general: error.message || "Login failed" });
     } finally {
       setLoading(false);
     }
   };
 
   const handleSignIn = () => {
-    signIn("google");
+    console.log("Initiating Google sign-in");
+    signIn("google", { callbackUrl: "/" });
   };
 
   const handleForgotPassword = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -124,18 +138,28 @@ export default function LoginPage() {
     router.push("/user/forgot-password");
   };
 
-  if (Cookies.get("accessToken")) {
-    return null; // Prevent rendering if already logged in
+  if (status === "authenticated") {
+    return null;
   }
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="w-full max-w-4xl bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col md:flex-row">
         <div className="w-full md:w-1/2 p-8 md:p-10 order-2 md:order-1">
           <div className="flex items-center justify-center md:justify-start mb-8">
             <div className="bg-blue-600 text-white p-2 rounded-lg mr-3">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M13 10V3L4 14h7v7l9-11h-7z"
+                />
               </svg>
             </div>
             <h1 className="text-2xl font-bold text-gray-800">Rideezy</h1>
@@ -152,7 +176,10 @@ export default function LoginPage() {
 
           <form onSubmit={handleSubmit} className="space-y-5">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+              <label
+                htmlFor="email"
+                className="block text-sm font-medium text-gray-700 mb-1"
+              >
                 Email Address
               </label>
               <input
@@ -162,15 +189,23 @@ export default function LoginPage() {
                 value={formData.email}
                 onChange={handleChange}
                 disabled={loading}
-                className={`w-full px-4 py-3 rounded-lg border ${errors.email ? "border-red-300 bg-red-50" : "border-gray-300"} text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50`}
+                className={`w-full px-4 py-3 rounded-lg border ${
+                  errors.email ? "border-red-300 bg-red-50" : "border-gray-300"
+                } text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50`}
                 placeholder="your.email@example.com"
+                autoComplete="email"
               />
-              {errors.email && <p className="mt-1 text-sm text-red-600">{errors.email}</p>}
+              {errors.email && (
+                <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+              )}
             </div>
 
             <div>
               <div className="flex justify-between items-center mb-1">
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                <label
+                  htmlFor="password"
+                  className="block text-sm font-medium text-gray-700"
+                >
                   Password
                 </label>
                 <button
@@ -189,10 +224,15 @@ export default function LoginPage() {
                 value={formData.password}
                 onChange={handleChange}
                 disabled={loading}
-                className={`w-full px-4 py-3 rounded-lg border ${errors.password ? "border-red-300 bg-red-50" : "border-gray-300"} text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50`}
+                className={`w-full px-4 py-3 rounded-lg border ${
+                  errors.password ? "border-red-300 bg-red-50" : "border-gray-300"
+                } text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50`}
                 placeholder="Enter your password"
+                autoComplete="current-password"
               />
-              {errors.password && <p className="mt-1 text-sm text-red-600">{errors.password}</p>}
+              {errors.password && (
+                <p className="mt-1 text-sm text-red-600">{errors.password}</p>
+              )}
             </div>
 
             <div className="flex items-center">
@@ -205,7 +245,10 @@ export default function LoginPage() {
                 disabled={loading}
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
               />
-              <label htmlFor="rememberMe" className="ml-2 block text-sm text-gray-700">
+              <label
+                htmlFor="rememberMe"
+                className="ml-2 block text-sm text-gray-700"
+              >
                 Remember me
               </label>
             </div>
@@ -237,7 +280,9 @@ export default function LoginPage() {
                   width={20}
                   height={20}
                 />
-                <span className="text-gray-700 font-medium">Continue with Google</span>
+                <span className="text-gray-700 font-medium">
+                  Continue with Google
+                </span>
               </button>
 
               <p className="text-center text-gray-600">
@@ -255,7 +300,9 @@ export default function LoginPage() {
           <div className="relative z-10 h-full flex flex-col justify-between">
             <div>
               <h2 className="text-3xl font-bold text-white mb-6">Welcome Back!</h2>
-              <p className="text-blue-100 mb-8">Log in to continue your ride-sharing journey and connect with fellow travelers.</p>
+              <p className="text-blue-100 mb-8">
+                Log in to continue your ride-sharing journey and connect with fellow travelers.
+              </p>
 
               <div className="space-y-4">
                 {[
@@ -266,8 +313,16 @@ export default function LoginPage() {
                 ].map((feature, index) => (
                   <div key={index} className="flex items-center">
                     <div className="w-6 h-6 rounded-full bg-blue-400 bg-opacity-30 flex items-center justify-center mr-3">
-                      <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd"></path>
+                      <svg
+                        className="w-4 h-4 text-white"
+                        fill="currentColor"
+                        viewBox="0 0 20 20"
+                      >
+                        <path
+                          fillRule="evenodd"
+                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
+                          clipRule="evenodd"
+                        />
                       </svg>
                     </div>
                     <span className="text-white text-sm">{feature}</span>
@@ -278,8 +333,12 @@ export default function LoginPage() {
 
             <div className="mt-auto">
               <div className="bg-white/10 rounded-lg p-4 backdrop-blur-sm">
-                <p className="text-white italic text-sm">I find the most reliable carpool buddies through this app. It's changed how I commute forever!</p>
-                <p className="text-blue-200 text-sm mt-2">— Michael T., Active Member</p>
+                <p className="text-white italic text-sm">
+                  I find the most reliable carpool buddies through this app. It's changed how I commute forever!
+                </p>
+                <p className="text-blue-200 text-sm mt-2">
+                  — Michael T., Active Member
+                </p>
               </div>
             </div>
           </div>

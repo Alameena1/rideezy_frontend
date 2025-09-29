@@ -1,5 +1,5 @@
 import axios from "axios";
-import { api } from "../api";
+import { serverApiInstance } from "../api";
 
 const geoApi = {
   searchAddress: async (query: string): Promise<any[]> => {
@@ -41,7 +41,7 @@ const geoApi = {
     try {
       const [startLat, startLng] = startPoint.split(',').map(Number);
       const [endLat, endLng] = endPoint.split(',').map(Number);
-      const response = await api.post("/route", {
+      const response = await serverApiInstance.post("/route", {
         startPoint: `${startLng},${startLat}`,
         endPoint: `${endLng},${endLat}`
       });

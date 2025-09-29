@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import useAuth from "@/app/hooks/useAuth";
-import { apiService } from "@/services/api";
+import { clientApiService } from "@/services/client-api"; // Updated import
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -168,7 +168,7 @@ export default function RideDetails() {
   const fetchRides = async () => {
     setIsLoading(true);
     try {
-      const ridesData = await apiService.ride.getRides();
+      const ridesData = await clientApiService.ride.getRides(); // Updated to clientApiService
       if (!Array.isArray(ridesData.data)) {
         setError("Invalid rides data format");
         return;
@@ -391,7 +391,7 @@ export default function RideDetails() {
   const handleEditRide = async () => {
     if (!selectedRide || !user?.driverId) return;
     try {
-      await apiService.ride.editRide(selectedRide.rideId!, user.driverId, {
+      await clientApiService.ride.editRide(selectedRide.rideId!, user.driverId, { // Updated to clientApiService
         date: editDate || undefined,
         time: editTime || undefined,
       });
@@ -409,7 +409,7 @@ export default function RideDetails() {
   const handleCancelRide = async (rideId: string) => {
     if (confirm("Are you sure you want to cancel this ride?")) {
       try {
-        await apiService.ride.cancelRide(rideId);
+        await clientApiService.ride.cancelRide(rideId); // Updated to clientApiService
         await fetchRides();
       } catch (error: any) {
         console.error("[RideDetails] Error cancelling ride:", error);
@@ -436,7 +436,7 @@ export default function RideDetails() {
 
       let trackingStatus = null;
       try {
-        const trackingResponse = await apiService.tracking.getTrackingStatus(ride._id);
+        const trackingResponse = await clientApiService.tracking.getTrackingStatus(ride._id); // Updated to clientApiService
         trackingStatus = trackingResponse.data?.status;
         console.log("[RideDetails] Existing tracking status:", trackingStatus);
       } catch (statusError: any) {
@@ -465,12 +465,12 @@ export default function RideDetails() {
 
       if (trackingStatus === null) {
         console.log("[RideDetails] Initializing tracking with driverId:", driverId, "position:", initialPosition);
-        const startTrackingResponse = await apiService.tracking.startTracking(ride._id, driverId, initialPosition);
+        const startTrackingResponse = await clientApiService.tracking.startTracking(ride._id, driverId, initialPosition); // Updated to clientApiService
         console.log("[RideDetails] Start tracking response:", startTrackingResponse.data);
-        await apiService.tracking.updateTrackingPosition(ride._id, initialPosition);
+        await clientApiService.tracking.updateTrackingPosition(ride._id, initialPosition); // Updated to clientApiService
       }
 
-      await apiService.ride.updateRide(ride._id, { status: "Started" }, driverId);
+      await clientApiService.ride.updateRide(ride._id, { status: "Started" }, driverId); // Updated to clientApiService
 
       const updatedRide: Ride = { ...ride, currentPosition: initialPosition, status: "Started" };
       const updatedRides: Ride[] = rides.map((r) => (r._id === rideId ? updatedRide : r));
@@ -532,13 +532,13 @@ export default function RideDetails() {
         console.log("[RideDetails] Ride already Started, skipping startTracking");
       } else {
         try {
-          await apiService.ride.startTracking(ride.rideId!, ride.driverId);
+          await clientApiService.ride.startTracking(ride.rideId!, ride.driverId); // Updated to clientApiService
         } catch (updateError: any) {
           console.warn("[RideDetails] Failed to start tracking, proceeding with local state:", updateError.message);
         }
       }
 
-      const trackingPosition = await apiService.tracking.getTrackingPosition(rideId);
+      const trackingPosition = await clientApiService.tracking.getTrackingPosition(rideId); // Updated to clientApiService
       console.log("[RideDetails] Tracking position fetched:", trackingPosition);
 
       let currentPosition: [number, number] | null = null;
@@ -640,29 +640,29 @@ export default function RideDetails() {
         }
 
         const shouldPause = ride.pickupPoints.some((pickup) => {
-  const [pickupLat, pickupLng] = pickup.location.split(",").map(Number);
-  const pickupCoord: [number, number] = [pickupLat, pickupLng];
-  const distance = calculateHaversineDistance(coordinates[currentIndex], pickupCoord);
-  console.log("[RideDetails] Checking pause for pickup:", {
-    rideId,
-    passengerId: pickup.passengerId,
-    distance: distance * 1000,
-    pickupAction: pickupActions[ride._id]?.[pickup.passengerId],
-  });
-  return !isNaN(pickupLat) && !isNaN(pickupLng) && distance < 0.1 && !(pickupActions[ride._id]?.[pickup.passengerId] || false);
-}) || ride.dropoffPoints.some((dropoff) => {
-  const [dropoffLat, dropoffLng] = dropoff.location.split(",").map(Number);
-  const dropoffCoord: [number, number] = [dropoffLat, dropoffLng];
-  const distance = calculateHaversineDistance(coordinates[currentIndex], dropoffCoord);
-  console.log("[RideDetails] Checking pause for dropoff:", {
-    rideId,
-    passengerId: dropoff.passengerId,
-    distance: distance * 1000,
-    pickupAction: pickupActions[ride._id]?.[dropoff.passengerId],
-    dropoffAction: dropoffActions[ride._id]?.[dropoff.passengerId],
-  });
-  return !isNaN(dropoffLat) && !isNaN(dropoffLng) && distance < 0.1 && (pickupActions[ride._id]?.[dropoff.passengerId] || false) && !(dropoffActions[ride._id]?.[dropoff.passengerId] || false);
-});
+          const [pickupLat, pickupLng] = pickup.location.split(",").map(Number);
+          const pickupCoord: [number, number] = [pickupLat, pickupLng];
+          const distance = calculateHaversineDistance(coordinates[currentIndex], pickupCoord);
+          console.log("[RideDetails] Checking pause for pickup:", {
+            rideId,
+            passengerId: pickup.passengerId,
+            distance: distance * 1000,
+            pickupAction: pickupActions[ride._id]?.[pickup.passengerId],
+          });
+          return !isNaN(pickupLat) && !isNaN(pickupLng) && distance < 0.1 && !(pickupActions[ride._id]?.[pickup.passengerId] || false);
+        }) || ride.dropoffPoints.some((dropoff) => {
+          const [dropoffLat, dropoffLng] = dropoff.location.split(",").map(Number);
+          const dropoffCoord: [number, number] = [dropoffLat, dropoffLng];
+          const distance = calculateHaversineDistance(coordinates[currentIndex], dropoffCoord);
+          console.log("[RideDetails] Checking pause for dropoff:", {
+            rideId,
+            passengerId: dropoff.passengerId,
+            distance: distance * 1000,
+            pickupAction: pickupActions[ride._id]?.[dropoff.passengerId],
+            dropoffAction: dropoffActions[ride._id]?.[dropoff.passengerId],
+          });
+          return !isNaN(pickupLat) && !isNaN(pickupLng) && distance < 0.1 && (pickupActions[ride._id]?.[dropoff.passengerId] || false) && !(dropoffActions[ride._id]?.[dropoff.passengerId] || false);
+        });
 
         setSimulationPaused((prev) => ({ ...prev, [rideId]: shouldPause }));
 
@@ -725,43 +725,41 @@ export default function RideDetails() {
         }
 
         currentIndex++;
-        // In the simulation completion section (around line 731)
-// In the simulation completion section
-if (currentIndex >= coordinates.length) {
-  clearInterval(animationIntervals.current[rideId]!);
-  animationIntervals.current[rideId] = null;
-  
-  try {
-    await apiService.tracking.stopTracking(ride._id);
-  } catch (error: any) {
-    if (error.response?.status === 400 && error.response?.data?.message === 'Ride not found') {
-      console.log('[RideDetails] Ride already removed from tracking');
-    } else {
-      throw error;
-    }
-  }
+        if (currentIndex >= coordinates.length) {
+          clearInterval(animationIntervals.current[rideId]!);
+          animationIntervals.current[rideId] = null;
+          
+          try {
+            await clientApiService.tracking.stopTracking(ride._id); // Updated to clientApiService
+          } catch (error: any) {
+            if (error.response?.status === 400 && error.response?.data?.message === 'Ride not found') {
+              console.log('[RideDetails] Ride already removed from tracking');
+            } else {
+              throw error;
+            }
+          }
 
-  const updatedRides = rides.map((r) => (r._id === rideId ? { ...r, status: "Completed" } : r));
-  setRides(updatedRides);
-  
-  try {
-    await apiService.ride.updateRide(ride._id, { status: "Completed" }, ride.driverId);
-  } catch (error: any) {
-    console.error('[RideDetails] Error updating ride status:', error);
-    // Even if this fails, we'll update the local state
-  }
-  
-  cleanupMap(rideId);
-  console.log("[RideDetails] Simulation completed for", rideId);
-  isUpdating = false;
-  return;
-}
+          const updatedRides = rides.map((r) => (r._id === rideId ? { ...r, status: "Completed" } : r));
+          setRides(updatedRides);
+          
+          try {
+            await clientApiService.ride.updateRide(ride._id, { status: "Completed" }, ride.driverId); // Updated to clientApiService
+          } catch (error: any) {
+            console.error('[RideDetails] Error updating ride status:', error);
+            // Even if this fails, we'll update the local state
+          }
+          
+          cleanupMap(rideId);
+          console.log("[RideDetails] Simulation completed for", rideId);
+          isUpdating = false;
+          return;
+        }
 
         const currentPosition = coordinates[currentIndex];
         vehicleMarkerRefs.current[rideId]!.setLatLng(currentPosition);
         lastPositions.current[rideId] = currentPosition;
         mapRefs.current[rideId]!.panTo(currentPosition);
-        await apiService.tracking.updateTrackingPosition(ride._id, currentPosition);
+        await clientApiService.tracking.updateTrackingPosition(ride._id, currentPosition); // Updated to clientApiService
       } catch (error: any) {
         console.error("[RideDetails] Simulation error for", rideId, ":", error);
         if (error.message.includes("Write conflict")) {
@@ -815,15 +813,15 @@ if (currentIndex >= coordinates.length) {
       const PICKUP_THRESHOLD = 0.1;
       if (distance > PICKUP_THRESHOLD) throw new Error(`Vehicle is ${(distance * 1000).toFixed(0)}m away from pickup point`);
 
-      await apiService.tracking.updateTrackingPosition(ride._id, frontendPosition);
-      const trackingResponse = await apiService.tracking.getTrackingPosition(ride._id);
+      await clientApiService.tracking.updateTrackingPosition(ride._id, frontendPosition); // Updated to clientApiService
+      const trackingResponse = await clientApiService.tracking.getTrackingPosition(ride._id); // Updated to clientApiService
       const backendPosition = trackingResponse.data as [number, number] | null;
       if (!backendPosition) throw new Error("Failed to retrieve backend position");
 
       const backendDistance = calculateHaversineDistance(backendPosition, pickupCoord);
       if (backendDistance > PICKUP_THRESHOLD) throw new Error(`Backend position is ${(backendDistance * 1000).toFixed(0)}m away from pickup point`);
 
-      await apiService.ride.updateRide(ride._id, { passengerId, action: "picked", currentPosition: backendPosition }, user.driverId);
+      await clientApiService.ride.updateRide(ride._id, { passengerId, action: "picked", currentPosition: backendPosition }, user.driverId); // Updated to clientApiService
       setPickupActions((prev) => ({ ...prev, [rideId]: { ...prev[rideId], [passengerId]: true } }));
       setPausedPassengerIds((prev) => ({ ...prev, [rideId]: prev[rideId]?.filter((id) => id !== passengerId) || [] }));
       setSimulationPaused((prev) => ({ ...prev, [rideId]: false }));
@@ -886,15 +884,15 @@ if (currentIndex >= coordinates.length) {
       const DROPOFF_THRESHOLD = 0.1;
       if (distance > DROPOFF_THRESHOLD) throw new Error(`Vehicle is ${(distance * 1000).toFixed(0)}m away from drop-off point`);
 
-      await apiService.tracking.updateTrackingPosition(ride._id, frontendPosition);
-      const trackingResponse = await apiService.tracking.getTrackingPosition(ride._id);
+      await clientApiService.tracking.updateTrackingPosition(ride._id, frontendPosition); // Updated to clientApiService
+      const trackingResponse = await clientApiService.tracking.getTrackingPosition(ride._id); // Updated to clientApiService
       const backendPosition = trackingResponse.data as [number, number] | null;
       if (!backendPosition) throw new Error("Failed to retrieve backend position");
 
       const backendDistance = calculateHaversineDistance(backendPosition, dropoffCoord);
       if (backendDistance > DROPOFF_THRESHOLD) throw new Error(`Backend position is ${(backendDistance * 1000).toFixed(0)}m away from drop-off point`);
 
-      await apiService.ride.updateRide(ride._id, { passengerId, action: "dropped", currentPosition: backendPosition }, user.driverId);
+      await clientApiService.ride.updateRide(ride._id, { passengerId, action: "dropped", currentPosition: backendPosition }, user.driverId); // Updated to clientApiService
       setDropoffActions((prev) => ({ ...prev, [rideId]: { ...prev[rideId], [passengerId]: true } }));
       setPausedPassengerIds((prev) => ({ ...prev, [rideId]: prev[rideId]?.filter((id) => id !== passengerId) || [] }));
       setSimulationPaused((prev) => ({ ...prev, [rideId]: false }));
@@ -938,43 +936,43 @@ if (currentIndex >= coordinates.length) {
     }
   };
 
- const stopRide = async (rideId: string) => {
-  try {
-    const ride = rides.find((r) => r._id === rideId);
-    if (!ride || !ride.rideId) throw new Error("Ride or rideId not found");
-
+  const stopRide = async (rideId: string) => {
     try {
-      await apiService.tracking.stopTracking(ride._id);
-    } catch (error: any) {
-      if (error.response?.status === 400 && error.response?.data?.message === 'Ride not found') {
-        console.log('[RideDetails] Ride already removed from tracking');
-      } else {
-        throw error;
+      const ride = rides.find((r) => r._id === rideId);
+      if (!ride || !ride.rideId) throw new Error("Ride or rideId not found");
+
+      try {
+        await clientApiService.tracking.stopTracking(ride._id); // Updated to clientApiService
+      } catch (error: any) {
+        if (error.response?.status === 400 && error.response?.data?.message === 'Ride not found') {
+          console.log('[RideDetails] Ride already removed from tracking');
+        } else {
+          throw error;
+        }
       }
-    }
 
-    if (animationIntervals.current[rideId]) {
-      clearInterval(animationIntervals.current[rideId]!);
-      animationIntervals.current[rideId] = null;
-    }
-    
-    const updatedRides = rides.map((r) =>
-      r._id === rideId ? { ...r, status: "Completed" as const } : r
-    );
-    setRides(updatedRides);
-    setSimulationPaused((prev) => ({ ...prev, [rideId]: false }));
-    
-    try {
-      await apiService.ride.updateRide(ride._id, { status: "Completed" }, ride.driverId);
+      if (animationIntervals.current[rideId]) {
+        clearInterval(animationIntervals.current[rideId]!);
+        animationIntervals.current[rideId] = null;
+      }
+      
+      const updatedRides = rides.map((r) =>
+        r._id === rideId ? { ...r, status: "Completed" as const } : r
+      );
+      setRides(updatedRides);
+      setSimulationPaused((prev) => ({ ...prev, [rideId]: false }));
+      
+      try {
+        await clientApiService.ride.updateRide(ride._id, { status: "Completed" }, ride.driverId); // Updated to clientApiService
+      } catch (error: any) {
+        console.error('[RideDetails] Error updating ride status:', error);
+        // Even if this fails, we'll update the local state
+      }
     } catch (error: any) {
-      console.error('[RideDetails] Error updating ride status:', error);
-      // Even if this fails, we'll update the local state
+      console.error("[RideDetails] Error stopping ride:", error.message);
+      setError(`Failed to stop ride: ${error.message}`);
     }
-  } catch (error: any) {
-    console.error("[RideDetails] Error stopping ride:", error.message);
-    setError(`Failed to stop ride: ${error.message}`);
-  }
-};
+  };
 
   const resumeSimulation = async (rideId: string) => {
     try {
@@ -982,7 +980,7 @@ if (currentIndex >= coordinates.length) {
       const ride = rides.find((r) => r._id === rideId);
       if (!ride || !ride.rideId) throw new Error("Ride or rideId not found");
 
-      const trackingResponse = await apiService.tracking.getTrackingPosition(ride._id);
+      const trackingResponse = await clientApiService.tracking.getTrackingPosition(ride._id); // Updated to clientApiService
       if (!trackingResponse.data || !Array.isArray(trackingResponse.data) || trackingResponse.data.length !== 2) {
         throw new Error("No current position found");
       }
@@ -1036,7 +1034,7 @@ if (currentIndex >= coordinates.length) {
   const handleJoinRequest = async (rideId: string, passengerId: string, action: "accept" | "reject") => {
     try {
       console.log("[RideDetails] Initiating handleJoinRequest with:", { rideId, driverId: user!.driverId, passengerId, action });
-      await apiService.ride.handleJoinRequest(rideId, user!.driverId, passengerId, action);
+      await clientApiService.ride.handleJoinRequest(rideId, user!.driverId, passengerId, action); // Updated to clientApiService
       await fetchRides();
     } catch (error: any) {
       console.error("[RideDetails] Error handling join request:", error.message);
@@ -1055,7 +1053,7 @@ if (currentIndex >= coordinates.length) {
           await fetchTrackingAndResume(ride._id);
         } else if (ride.status === "Started" && mapRefs.current[ride._id] && !vehicleMarkerRefs.current[ride._id]) {
           console.log("[RideDetails] Re-adding vehicle marker for started ride", ride._id);
-          const trackingResponse = await apiService.tracking.getTrackingPosition(ride._id);
+          const trackingResponse = await clientApiService.tracking.getTrackingPosition(ride._id); // Updated to clientApiService
           const currentPosition = trackingResponse.data as [number, number] | null;
           if (currentPosition) {
             vehicleMarkerRefs.current[ride._id] = leafletLoaded.marker(currentPosition, {

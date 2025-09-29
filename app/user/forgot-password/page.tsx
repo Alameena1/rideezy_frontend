@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "axios";
-import { apiService } from "@/services/api";
+import { clientApiService } from "@/services/client-api"; // Fixed import
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
@@ -34,7 +34,7 @@ export default function ForgotPasswordPage() {
 
     setLoading(true);
     try {
-      const response = await apiService.auth.forgotPassword({ email });
+      const response = await clientApiService.auth.forgotPassword({ email }); // Fixed API call
       setSuccess(response.message);
     } catch (error) {
       let errorMessage = "An unexpected error occurred";
@@ -44,6 +44,8 @@ export default function ForgotPasswordPage() {
         } else if (error.response?.data?.message) {
           errorMessage = error.response.data.message;
         }
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
       }
       setError(errorMessage);
     } finally {

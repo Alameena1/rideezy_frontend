@@ -1,5 +1,5 @@
 // services/user/trackingApi.ts
-import { api } from "../api";
+import { serverApiInstance } from "../api";
 
 export const trackingApi = {
   
@@ -7,7 +7,7 @@ export const trackingApi = {
 startTracking: async (rideId: string, driverId: string, initialPosition: [number, number]) => {
   console.log("[TrackingAPI] Starting tracking for rideId:", rideId, "driverId:", driverId, "initialPosition:", initialPosition);
   try {
-    const response = await api.post(`/tracking/${rideId}/start`, {
+    const response = await serverApiInstance.post(`/tracking/${rideId}/start`, {
       driverId,
       initialPosition,
     }, { withCredentials: true });
@@ -26,7 +26,7 @@ startTracking: async (rideId: string, driverId: string, initialPosition: [number
   updateTrackingPosition: async (rideId: string, position: [number, number]) => {
     console.log("[TrackingAPI] Updating tracking position for rideId:", rideId, "position:", position);
     try {
-      const response = await api.put(`/tracking/${rideId}/position`, { position }, { withCredentials: true });
+      const response = await serverApiInstance.put(`/tracking/${rideId}/position`, { position }, { withCredentials: true });
       console.log("[TrackingAPI] Update tracking position response:", response.data);
       return response.data;
     } catch (error: any) {
@@ -42,7 +42,7 @@ startTracking: async (rideId: string, driverId: string, initialPosition: [number
 getTrackingStatus: async (rideId: string) => {
     console.log("[TrackingAPI] Requesting tracking status for rideId:", rideId);
     try {
-      const response = await api.get(`/tracking/${rideId}/status`, { withCredentials: true });
+      const response = await serverApiInstance.get(`/tracking/${rideId}/status`, { withCredentials: true });
       console.log("[TrackingAPI] Get tracking status response:", response.data);
       return response.data;
     } catch (error: any) {
@@ -57,7 +57,7 @@ getTrackingStatus: async (rideId: string) => {
   getTrackingPosition: async (rideId: string) => {
     console.log("[TrackingAPI] Fetching tracking position for rideId:", rideId);
     try {
-      const response = await api.get(`/tracking/${rideId}/position`, { withCredentials: true });
+      const response = await serverApiInstance.get(`/tracking/${rideId}/position`, { withCredentials: true });
       console.log("[TrackingAPI] Get tracking position response:", response.data);
       return response.data;
     } catch (error: any) {
@@ -72,7 +72,7 @@ getTrackingStatus: async (rideId: string) => {
   stopTracking: async (rideId: string) => {
     console.log("[TrackingAPI] Stopping tracking for rideId:", rideId);
     try {
-      const response = await api.put(`/tracking/${rideId}/stop`, {}, { withCredentials: true });
+      const response = await serverApiInstance.put(`/tracking/${rideId}/stop`, {}, { withCredentials: true });
       console.log("[TrackingAPI] Stop tracking response:", response.data);
       return response.data;
     } catch (error: any) {

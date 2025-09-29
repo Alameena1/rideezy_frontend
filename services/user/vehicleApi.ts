@@ -1,4 +1,4 @@
-import { api } from "../api";
+import { serverApiInstance } from "../api";
 
 interface Vehicle {
   _id: string;
@@ -24,7 +24,7 @@ interface Vehicle {
 export const vehicleApi = {
   getVehicles: async (): Promise<Vehicle[]> => {
     try {
-      const response = await api.get("/vehicles");
+      const response = await serverApiInstance.get("/vehicles");
       const vehicles = response.data?.data || [];
       if (!Array.isArray(vehicles)) {
         return [];
@@ -46,7 +46,7 @@ export const vehicleApi = {
     documentImage: string;
     mileage: number;
   }) => {
-    const response = await api.post("/vehicles", vehicleData);
+    const response = await serverApiInstance.post("/vehicles", vehicleData);
     return response.data;
   },
 
@@ -63,13 +63,13 @@ export const vehicleApi = {
       mileage: number;
     }
   ) => {
-    const response = await api.put(`/vehicles/${vehicleId}`, vehicleData);
+    const response = await serverApiInstance.put(`/vehicles/${vehicleId}`, vehicleData);
     return response.data;
   },
 
   deleteVehicle: async (vehicleId: string) => {
     try {
-      const response = await api.delete(`/vehicles/${vehicleId}`);
+      const response = await serverApiInstance.delete(`/vehicles/${vehicleId}`);
       return response.data;
     } catch (error) {
       console.error("Failed to delete vehicle:", error);
@@ -91,7 +91,7 @@ export const vehicleApi = {
     }
   ) => {
     try {
-      const response = await api.post(`/vehicles/${vehicleId}/reapply`, vehicleData);
+      const response = await serverApiInstance.post(`/vehicles/${vehicleId}/reapply`, vehicleData);
       return response.data;
     } catch (error) {
       console.error("Failed to reapply vehicle:", error);

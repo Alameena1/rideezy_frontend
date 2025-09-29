@@ -1,9 +1,9 @@
-import { api } from "../api";
+import { serverApiInstance } from "../api";
 
 export const notificationApi = {
   getUserNotifications: async (userId: string) => {
     try {
-      const response = await api.get(`/notifications/${userId}`);
+      const response = await serverApiInstance.get(`/notifications/${userId}`);
       return {
         success: response.data.success,
         notifications: response.data.notifications || [],
@@ -16,7 +16,7 @@ export const notificationApi = {
 
   markAsRead: async (notificationId: string) => {
     try {
-      const response = await api.put(`/notifications/${notificationId}/read`);
+      const response = await serverApiInstance.put(`/notifications/${notificationId}/read`);
       return {
         success: response.data.success,
         notification: response.data.notification,

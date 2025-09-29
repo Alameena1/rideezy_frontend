@@ -1,4 +1,4 @@
-import { api } from "../api";
+import { serverApiInstance } from "../api";
 
 export interface SubscriptionPlan {
   _id: string;
@@ -57,7 +57,7 @@ export interface ErrorResponse {
 export const subscriptionApi = {
   getSubscriptionPlans: async (): Promise<{ success: boolean; data: SubscriptionPlan[] }> => {
     try {
-      const response = await api.get("/subscriptions/plans"); 
+      const response = await serverApiInstance.get("/subscriptions/plans"); 
       return response.data;
     } catch (error: any) {
       console.error("Failed to fetch subscription plans:", error.response?.status, error.response?.data);
@@ -67,7 +67,7 @@ export const subscriptionApi = {
 
   checkSubscription: async (userId: string): Promise<SubscriptionStatusResponse> => {
     try {
-      const response = await api.get(`/subscriptions/check/${userId}`); 
+      const response = await serverApiInstance.get(`/subscriptions/check/${userId}`); 
       return response.data;
     } catch (error: any) {
       console.error(`Failed to check subscription for user ${userId}:`, error.response?.status, error.response?.data);
@@ -77,7 +77,7 @@ export const subscriptionApi = {
 
   createOrder: async (planId: string): Promise<OrderResponse> => {
     try {
-      const response = await api.post("/subscriptions/create-order", { planId });
+      const response = await serverApiInstance.post("/subscriptions/create-order", { planId });
       return response.data;
     } catch (error: any) {
       console.error("Failed to create Razorpay order:", error.response?.status, error.response?.data);
@@ -100,7 +100,7 @@ export const subscriptionApi = {
     signature: string;
   }): Promise<SubscribeResponse> => {
     try {
-      const response = await api.post("/subscriptions/verify", data); 
+      const response = await serverApiInstance.post("/subscriptions/verify", data); 
       return response.data;
     } catch (error: any) {
       console.error("Failed to verify and subscribe:", error.response?.status, error.response?.data);
@@ -117,7 +117,7 @@ export const subscriptionApi = {
 
   subscribeWithWallet: async (data: { userId: string; planId: string }): Promise<SubscribeResponse> => {
     try {
-      const response = await api.post("/subscriptions/subscribe-wallet", data); 
+      const response = await serverApiInstance.post("/subscriptions/subscribe-wallet", data); 
       return response.data;
     } catch (error: any) {
       console.error("Failed to subscribe with wallet:", error.response?.status, error.response?.data);
@@ -134,7 +134,7 @@ export const subscriptionApi = {
 
   getSubscriptionStatus: async (): Promise<{ success: boolean; isSubscribed: boolean }> => {
     try {
-      const response = await api.get("/subscriptions/status", {
+      const response = await serverApiInstance.get("/subscriptions/status", {
         withCredentials: true,
       });
       return response.data;

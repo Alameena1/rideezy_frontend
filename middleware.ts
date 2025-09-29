@@ -1,109 +1,87 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { jwtDecode } from "jwt-decode";
 
-interface TokenPayload {
-  userId: string;
-  email?: string;
-  role: "user" | "admin";
-}
+const publicRoutes = [
+  "/admin/login",
+  "/user/login",
+  "/user/signup",
+  "/user/otp",
+  "/user/forgot-password",
+  "/user/reset-password",
+  "/",
+  "/about",
+  "/contact",
+];
 
-export function middleware(request: NextRequest) {
-  const pathname = request.nextUrl.pathname;
-  const isAdminRoute = pathname.startsWith("/admin");
-  const isUserRoute = pathname.startsWith("/user");
+const authRoutes = ["/user/login", "/user/signup", "/admin/login"];
 
-  console.log("Middleware:", { pathname, isAdminRoute, isUserRoute });
-
-  // Handle public routes (login, signup, etc.)
-  if (
-    pathname === "/admin/login" ||
-    pathname === "/user/login" ||
-    pathname === "/user/signup" ||
-    pathname === "/user/otp" ||
-    pathname === "/user/forgot-password" ||
-    pathname === "/user/reset-password"
-  ) {
-    const userToken = request.cookies.get("accessToken")?.value;
-    const adminToken = request.cookies.get("adminAuthToken")?.value;
-    console.log("Public page:", { pathname, userToken, adminToken });
-
-    // Redirect authenticated admins to admin dashboard
-    if (pathname === "/admin/login" && adminToken) {
-      
-      try {
-        const decoded: TokenPayload = jwtDecode(adminToken);
-        if (decoded.role === "admin") {
-          console.log("Admin already logged in, redirecting to admin dashboard");
-          return NextResponse.redirect(new URL("/admin/dashboard", request.url));
-        }
-      } catch (error) {
-        console.error("Error decoding admin token:", error);
-      }
-    }
-
-    // Redirect authenticated users to homepage if logged in
-    const referer = request.headers.get("referer") || "/";
-    if (
-      (pathname === "/user/login" || pathname === "/user/signup" || pathname === "/user/otp") &&
-      userToken
-    ) {
-      try {
-        const decoded: TokenPayload = jwtDecode(userToken);
-        if (decoded.role === "user") {
-          console.log("User already logged in, redirecting to referer or homepage");
-          return NextResponse.redirect(new URL(referer.split("/user/login")[0] || "/", request.url));
-        }
-      } catch (error) {
-        console.error("Error decoding user token:", error);
-      }
-    }
-
+export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl?.pathname ?? "";
+  
+  if (!pathname) {
+    console.error("Middleware: pathname is undefined or null", { 
+      url: request.url,
+      nextUrl: request.nextUrl 
+    });
     return NextResponse.next();
   }
 
-  // Protect user routes: redirect to login if no user token or incorrect role
-  const userToken = request.cookies.get("accessToken")?.value;
-  if (isUserRoute && !userToken && !pathname.includes("login") && !pathname.includes("signup") && !pathname.includes("otp") && !pathname.includes("forgot-password") && !pathname.includes("reset-password")) {
-    console.log("No user token, redirecting to user login");
-    return NextResponse.redirect(new URL("/user/login", request.url));
+  const isAdminRoute = pathname.startsWith("/admin") && !publicRoutes.includes(pathname);
+  const isUserRoute = pathname.startsWith("/user") && !publicRoutes.includes(pathname);
+  const isPublicRoute = publicRoutes.includes(pathname) ||
+    publicRoutes.some((route) => pathname.startsWith(route));
+  const isAuthRoute = authRoutes.includes(pathname);
+
+  console.log("Middleware:", {
+    pathname,
+    isAdminRoute,
+    isUserRoute,
+    isPublicRoute,
+    isAuthRoute,
+    cookies: Object.fromEntries(
+      request.cookies.getAll().map(cookie => [cookie.name, cookie.value])
+    ),
+  });
+
+  const sessionToken = request.cookies.get('next-auth.session-token')?.value || 
+                      request.cookies.get('__Secure-next-auth.session-token')?.value ||
+                      request.cookies.get('accessToken')?.value;
+
+  if (isPublicRoute && !isAuthRoute) {
+    console.log("Middleware: Allowing public route:", pathname);
+    return NextResponse.next();
   }
-  if (userToken && isUserRoute) {
-    try {
-      const decoded: TokenPayload = jwtDecode(userToken);
-      if (decoded.role !== "user") {
-        console.log("Invalid role for user route, redirecting to user login");
-        return NextResponse.redirect(new URL("/user/login", request.url));
-      }
-    } catch (error) {
-      console.error("Error decoding user token:", error);
-      return NextResponse.redirect(new URL("/user/login", request.url));
+
+  if (isAuthRoute && sessionToken) {
+    console.log("Middleware: Authenticated user trying to access auth route, redirecting", { pathname, sessionToken });
+    if (pathname === "/admin/login") {
+      return NextResponse.redirect(new URL("/admin/dashboard", request.url));
+    }
+    if (pathname === "/user/login" || pathname === "/user/signup") {
+      return NextResponse.redirect(new URL("/", request.url));
     }
   }
 
-  // Protect admin routes: redirect to admin login if no admin token or incorrect role
-  const adminToken = request.cookies.get("adminAuthToken")?.value;
-  console.log("Admin route check:", { isAdminRoute, adminToken, cookies: request.cookies.getAll() });
-  if (isAdminRoute && !adminToken && !pathname.includes("login")) {
-    console.log("No admin token, redirecting to admin login");
-    return NextResponse.redirect(new URL("/admin/login", request.url));
-  }
-  if (adminToken && isAdminRoute) {
-    try {
-      const decoded: TokenPayload = jwtDecode(adminToken);
-      if (decoded.role !== "admin") {
-        console.log("Invalid role for admin route, redirecting to admin login");
-        return NextResponse.redirect(new URL("/admin/login", request.url));
-      }
-    } catch (error) {
-      console.error("Error decoding admin token:", error);
+  if ((isUserRoute || isAdminRoute) && !sessionToken) {
+    console.log("Middleware: No session token, redirecting to login", { pathname });
+    if (isUserRoute) {
+      const loginUrl = new URL("/user/login", request.url);
+      loginUrl.searchParams.set("redirect", pathname);
+      return NextResponse.redirect(loginUrl);
+    } else if (isAdminRoute) {
       return NextResponse.redirect(new URL("/admin/login", request.url));
     }
   }
 
+  console.log("Middleware: Allowing request to proceed", { pathname });
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/user/:path*"],
+  matcher: [
+    "/admin/:path*",
+    "/user/:path*",
+    "/profile/:path*",
+    "/dashboard/:path*",
+  ],
 };

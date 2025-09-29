@@ -13,9 +13,9 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Bell } from "lucide-react";
-import { apiService } from "../../services/api";
+import { clientApiService } from "@/services/client-api";
 import useAuth from "../hooks/useAuth";
-import { useSocketStore } from "../../app/stores/socketStore";
+import { useSocketStore } from "../stores/socketStore";
 
 const Navbar = () => {
   const [isUserLoggedIn, setIsUserLoggedIn] = useState(false);
@@ -26,39 +26,20 @@ const Navbar = () => {
   const { socket, isConnected, connect } = useSocketStore();
 
   useEffect(() => {
-    const token = Cookies.get("accessToken");
-    setIsUserLoggedIn(!!token);
-    console.log("Cookie Token:", token);
-    console.log("User on mount:", user);
-
-    if (token && user?._id) {
-      fetchNotifications(user._id);
-      if (!isConnected) {
-        connect(user._id);
-      }
-    }
-  }, [user?._id, isConnected, connect]);
-
-  useEffect(() => {
-    console.log("useEffect triggered, status:", status, "session:", session, "user:", user);
     if (status === "authenticated" && session?.user?.id) {
       setIsUserLoggedIn(true);
-      console.log("Authenticated, userId from session:", session.user.id);
-      fetchNotifications(session.user.id || user?._id);
+      fetchNotifications(session.user.id);
       if (user?._id && !isConnected) {
         connect(user._id);
       }
     } else if (status === "unauthenticated") {
-      const token = Cookies.get("accessToken");
-      setIsUserLoggedIn(!!token);
-      console.log("Unauthenticated, Token:", token);
+      setIsUserLoggedIn(false);
     }
   }, [status, session, user?._id, isConnected, connect]);
 
   useEffect(() => {
     if (socket && user?._id) {
       const handleNewNotification = (notification: any) => {
-        console.log("Handler active, received notification:", notification);
         setUnreadNotifications((prev) => {
           const exists = prev.some((n) => n._id === notification._id);
           return exists ? prev : [...prev, { ...notification, _id: notification._id || Date.now().toString() }];
@@ -75,44 +56,42 @@ const Navbar = () => {
 
   const fetchNotifications = async (userId: string | undefined) => {
     if (!userId) {
-      console.error("No userId provided for fetching notifications");
+      console.warn("No userId provided for fetching notifications");
       return;
     }
-    console.log("Fetching notifications for userId:", userId);
-    if (!apiService.notification) {
-      console.error("notificationApi not initialized");
-      return;
-    }
+
     try {
-      const response = await apiService.notification.getUserNotifications(userId);
-      console.log("API Response:", response);
-      const { notifications } = response;
+      const response = await clientApiService.notification.getUserNotifications(userId);
+      console.log("Notifications response:", response);
+      const { notifications } = response.data || { notifications: [] };
       const unread = notifications.filter((n: any) => !n.isRead);
-      setUnreadNotifications((prev) => {
-        const isDifferent = JSON.stringify(prev) !== JSON.stringify(unread);
-        return isDifferent ? unread : prev;
-      });
-      console.log("Unread Notifications set to:", unread);
-    } catch (error) {
-      console.error("Failed to fetch notifications:", error);
+      setUnreadNotifications(unread);
+    } catch (error: any) {
+      console.error("Failed to fetch notifications:", error.response?.status, error.response?.data || error.message);
+      setUnreadNotifications([]);
     }
   };
 
-  const handleLogout = () => {
-    Cookies.remove("accessToken");
-    Cookies.remove("refreshToken");
-    setIsUserLoggedIn(false);
-    setUnreadNotifications([]);
-    if (session) {
-      signOut({ callbackUrl: "/user/login" });
-    } else {
+  const handleLogout = async () => {
+    try {
+      Cookies.remove("accessToken");
+      Cookies.remove("refreshToken");
+      setIsUserLoggedIn(false);
+      setUnreadNotifications([]);
+      if (session) {
+        await signOut({ callbackUrl: "/user/login" });
+      } else {
+        router.push("/user/login");
+      }
+    } catch (error) {
+      console.error("Logout failed:", error);
       router.push("/user/login");
     }
   };
 
   const markAsRead = async (notificationId: string) => {
     try {
-      await apiService.notification.markAsRead(notificationId);
+      await clientApiService.notification.markAsRead(notificationId);
       setUnreadNotifications(unreadNotifications.filter((n: any) => n._id !== notificationId));
     } catch (error) {
       console.error("Failed to mark notification as read:", error);
@@ -120,7 +99,6 @@ const Navbar = () => {
   };
 
   const isLoggedIn = isAuthenticated || isUserLoggedIn;
-  console.log("isLoggedIn:", isLoggedIn, "Unread Count:", unreadNotifications.length);
 
   return (
     <nav className="bg-gray-300 p-4 shadow-sm">

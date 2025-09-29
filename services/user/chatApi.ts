@@ -1,4 +1,5 @@
-import { api } from "../api";
+// services/client/chatApi.ts
+import { clientApi } from "../client-api";
 
 interface Message {
   _id: string;
@@ -19,7 +20,7 @@ export const chatApi = {
   getConversation: async (conversationId: string) => {
     try {
       console.log("Fetching conversation:", conversationId);
-      const response = await api.get(`/chat/conversations/${conversationId}`);
+      const response = await clientApi.api.get(`/chat/conversations/${conversationId}`);
       console.log("getConversation response:", response);
       return {
         success: response.data.success,
@@ -34,7 +35,7 @@ export const chatApi = {
   getMessages: async (conversationId: string) => {
     try {
       console.log("Fetching messages for conversation:", conversationId);
-      const response = await api.get(`/chat/conversations/${conversationId}/messages`);
+      const response = await clientApi.api.get(`/chat/conversations/${conversationId}/messages`);
       console.log("getMessages response:", response);
       return {
         success: response.data.success,
@@ -49,7 +50,7 @@ export const chatApi = {
   createConversation: async (participants: string[]) => {
     try {
       console.log("Creating conversation with participants:", participants);
-      const response = await api.post("/chat/conversations", { participants });
+      const response = await clientApi.api.post("/chat/conversations", { participants });
       console.log("createConversation response:", response);
       return {
         success: response.data.success,
@@ -63,7 +64,7 @@ export const chatApi = {
 
   sendMessage: async (conversationId: string, content: string) => {
     try {
-      const response = await api.post(`/chat/conversations/${conversationId}/messages`, { content });
+      const response = await clientApi.api.post(`/chat/conversations/${conversationId}/messages`, { content });
       return {
         success: response.data.success,
         message: response.data.message,
@@ -77,7 +78,7 @@ export const chatApi = {
   getUserConversations: async (userId: string) => {
     try {
       console.log("Fetching conversations for user:", userId);
-      const response = await api.get(`/chat/users/${userId}/conversations`);
+      const response = await clientApi.api.get(`/chat/users/${userId}/conversations`);
       console.log("getUserConversations response:", response.data);
       return {
         success: response.data.success,
@@ -92,7 +93,7 @@ export const chatApi = {
   getOrCreateRideConversation: async (data: { rideId: string; driverId: string; userId: string }) => {
     try {
       console.log("Getting or creating ride conversation:", data);
-      const response = await api.post("/chat/ride-conversation", data);
+      const response = await clientApi.api.post("/chat/ride-conversation", data);
       console.log("getOrCreateRideConversation response:", response);
       return {
         success: response.data.success,

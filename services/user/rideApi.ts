@@ -1,4 +1,4 @@
-import apiService, { api } from "../api";
+import apiService, { serverApiInstance } from "../api";
 import { EditRideDto } from "../../types/ride.types";
 
 export interface Ride {
@@ -43,7 +43,7 @@ export const rideApi = {
     platformFee?: number;
   }) => {
     try {
-      const response = await api.post("/initiate-rides/start", data);
+      const response = await serverApiInstance.post("/initiate-rides/start", data);
       return response.data;
     } catch (error: any) {
       console.error("[rideApi] Error starting ride:", error.response?.data || error.message);
@@ -53,7 +53,7 @@ export const rideApi = {
 
   getRides: async () => {
     try {
-      const response = await api.get("/initiate-rides/rides", {
+      const response = await serverApiInstance.get("/initiate-rides/rides", {
         withCredentials: true,
       });
       return response.data;
@@ -65,7 +65,7 @@ export const rideApi = {
 
   editRide: async (rideId: string, driverId: string, dto: EditRideDto) => {
     try {
-      const response = await api.put(`/initiate-rides/${rideId}`, dto, {
+      const response = await serverApiInstance.put(`/initiate-rides/${rideId}`, dto, {
         withCredentials: true,
         headers: { "Driver-Id": driverId },
       });
@@ -78,7 +78,7 @@ export const rideApi = {
 
   cancelRide: async (rideId: string) => {
     try {
-      const response = await api.delete(`/initiate-rides/${rideId}`, {
+      const response = await serverApiInstance.delete(`/initiate-rides/${rideId}`, {
         withCredentials: true,
       });
       return response.data;
@@ -90,7 +90,7 @@ export const rideApi = {
 
   startTracking: async (rideId: string, driverId: string) => {
     try {
-      const response = await api.put(`/initiate-rides/${rideId}/start-tracking`, {}, {
+      const response = await serverApiInstance.put(`/initiate-rides/${rideId}/start-tracking`, {}, {
         withCredentials: true,
         headers: { "Driver-Id": driverId },
       });
@@ -105,7 +105,7 @@ export const rideApi = {
   // JOIN RIDE ENDPOINTS
   getJoinedRides: async () => {
     try {
-      const response = await api.get("/join-rides/joined", {
+      const response = await serverApiInstance.get("/join-rides/joined", {
         withCredentials: true,
       });
       console.log("[rideApi] Get joined rides response:", response);
@@ -121,7 +121,7 @@ export const rideApi = {
 
   findNearestRides: async (data: { userLocation: string; destination: string }) => {
     try {
-      const response = await api.post("/join-rides/nearest", data, {
+      const response = await serverApiInstance.post("/join-rides/nearest", data, {
         withCredentials: true,
       });
       return response.data.data as Ride[];
@@ -145,7 +145,7 @@ export const rideApi = {
         dropoffLocation,
       });
 
-      const response = await api.post(
+      const response = await serverApiInstance.post(
         `/join-rides/join`,
         {
           rideId,
@@ -173,7 +173,7 @@ export const rideApi = {
         throw new Error(`Ride with rideId ${rideId} not found`);
       }
 
-      const response = await api.put(
+      const response = await serverApiInstance.put(
         `/join-rides/${ride._id}/requests/${passengerId}`,
         {
           driverId,
@@ -196,7 +196,7 @@ export const rideApi = {
 
   createRidePaymentOrder: async (rideId: string) => {
     try {
-      const response = await api.post("/join-rides/create-ride-order", { rideId }, {
+      const response = await serverApiInstance.post("/join-rides/create-ride-order", { rideId }, {
         withCredentials: true,
       });
       return response.data;
@@ -215,7 +215,7 @@ export const rideApi = {
     signature: string;
   }) => {
     try {
-      const response = await api.post("/join-rides/verify-and-join", data, {
+      const response = await serverApiInstance.post("/join-rides/verify-and-join", data, {
         withCredentials: true,
       });
       return response.data.data as Ride;
@@ -227,7 +227,7 @@ export const rideApi = {
 
   cancelJoinedRide: async (rideId: string) => {
     try {
-      const response = await api.delete(`/join-rides/joined/${rideId}`, {
+      const response = await serverApiInstance.delete(`/join-rides/joined/${rideId}`, {
         withCredentials: true,
       });
       return response.data;
@@ -245,7 +245,7 @@ export const rideApi = {
       driverId,
     });
     // Remove the nesting - send updates directly
-    const response = await api.put(`/initiate-rides/${id}/update`, updates, {
+    const response = await serverApiInstance.put(`/initiate-rides/${id}/update`, updates, {
       withCredentials: true,
       headers: { "Driver-Id": driverId }, 
     });

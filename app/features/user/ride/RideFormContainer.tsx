@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import Swal from "sweetalert2";
-import api, { apiService } from "@/services/api";
+import { clientApiService } from "@/services/client-api"; // Updated import
 import MapComponent from "./MapComponent";
 import AddressSearch from "./AddressSearch";
 import RideFormFields from "./RideFormFields";
@@ -36,7 +36,7 @@ interface Vehicle {
 const RideFormContainer: React.FC = () => {
   const [routeData, setRouteData] = useState<RouteData | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [perKmRate, setPerKmRate] = useState<number | null>(null); // Changed from costPerPerson
+  const [perKmRate, setPerKmRate] = useState<number | null>(null);
   const [platformFee, setPlatformFee] = useState<number | null>(null);
   const [distanceInKm, setDistanceInKm] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -72,22 +72,23 @@ const RideFormContainer: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const userData = await (api as any).user.getProfile();
+        const userData = await clientApiService.user.getProfile(); // Updated to clientApiService
         console.log("[RideFormContainer] Fetched user data:", userData);
-        const driverId = userData._id || userData.data?._id;
+        const driverId = userData.data?._id || userData._id;
         if (!driverId) {
           throw new Error("Failed to fetch driver ID. Please log in again.");
         }
         setValue("driverId", driverId);
 
-        const vehiclesData = await (api as any).vehicle.getVehicles();
+        const vehiclesData = await clientApiService.vehicle.getVehicles(); // Updated to clientApiService
         console.log("[RideFormContainer] Fetched vehicles:", vehiclesData);
-        setVehicles(vehiclesData);
-        if (vehiclesData.length > 0) setValue("vehicleId", vehiclesData[0]._id);
+        const vehicles = vehiclesData.data?.data || vehiclesData.data || [];
+        setVehicles(vehicles);
+        if (vehicles.length > 0) setValue("vehicleId", vehicles[0]._id);
 
-        const subscriptionData = await apiService.subscription.getSubscriptionStatus();
+        const subscriptionData = await clientApiService.subscription.getSubscriptionStatus(); // Updated to clientApiService
         console.log("[RideFormContainer] Subscription status:", subscriptionData);
-        setIsSubscribed(subscriptionData.isSubscribed || false);
+        setIsSubscribed(subscriptionData.data?.isSubscribed || false);
       } catch (error: any) {
         console.error("[RideFormContainer] Fetch error:", error);
         Swal.fire({
@@ -111,7 +112,7 @@ const RideFormContainer: React.FC = () => {
       const platformFee = isSubscribed ? 0 : Math.ceil(totalFuelCost * 0.1);
       setPlatformFee(platformFee);
       const totalRideCost = totalFuelCost + platformFee;
-      setPerKmRate(totalRideCost / distanceInKm); // Changed to perKmRate
+      setPerKmRate(totalRideCost / distanceInKm);
     }
   }, [routeData, vehicleId, passengerCount, fuelPrice, isSubscribed]);
 
@@ -154,7 +155,7 @@ const RideFormContainer: React.FC = () => {
 
     setIsLoading(true);
     try {
-      const response = await apiService.ride.startRide(rideData);
+      const response = await clientApiService.ride.startRide(rideData); // Updated to clientApiService
       console.log("[RideFormContainer] Start ride response:", response);
       Swal.fire({
         icon: "success",
@@ -220,7 +221,7 @@ const RideFormContainer: React.FC = () => {
               register={register}
               errors={errors}
               distanceInKm={distanceInKm}
-              perKmRate={perKmRate} 
+              perKmRate={perKmRate}
               platformFee={platformFee}
               selectedVehicleId={vehicleId}
             />

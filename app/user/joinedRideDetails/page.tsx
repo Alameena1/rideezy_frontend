@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import useAuth from "@/app/hooks/useAuth";
-import { apiService } from "@/services/api";
+import { clientApiService } from "@/services/client-api"; // Fixed import
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -81,6 +81,14 @@ export default function JoinedRideDetails() {
     year: "numeric",
   });
 
+  // Set up API interceptors for authenticated requests
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const { clientApi } = require('@/services/client-api');
+      clientApi.useTokenInterceptor();
+    }
+  }, []);
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       import("leaflet")
@@ -116,7 +124,7 @@ export default function JoinedRideDetails() {
   const fetchJoinedRides = async () => {
     setIsLoading(true);
     try {
-      const joinedRidesData = await apiService.ride.getJoinedRides();
+      const joinedRidesData = await clientApiService.ride.getJoinedRides(); // Fixed API call
       const fetchedRides = Array.isArray(joinedRidesData.data) ? joinedRidesData.data : [];
       console.log("[JoinedRideDetails] Fetched rides:", fetchedRides);
 
@@ -147,7 +155,7 @@ export default function JoinedRideDetails() {
 
       setRides(mappedRides);
       console.log("[JoinedRideDetails] Mapped rides set to state:", mappedRides);
-    } catch (error) {
+    } catch (error: any) {
       console.error("[JoinedRideDetails] Error fetching joined rides:", error);
       setError("Failed to fetch joined rides. Please try again.");
     } finally {
@@ -295,7 +303,7 @@ export default function JoinedRideDetails() {
         return;
       }
 
-      const trackingData = await apiService.tracking.getTrackingPosition(ride._id);
+      const trackingData = await clientApiService.tracking.getTrackingPosition(ride._id); // Fixed API call
       console.log("[JoinedRideDetails] Tracking data fetched for ride", rideId, ":", trackingData);
 
       let currentPosition: [number, number] | null = null;
@@ -414,7 +422,7 @@ export default function JoinedRideDetails() {
           return;
         }
 
-        const trackingData = await apiService.tracking.getTrackingPosition(ride._id);
+        const trackingData = await clientApiService.tracking.getTrackingPosition(ride._id); // Fixed API call
         let currentPosition: [number, number] | null = null;
         let status: "Started" | "Paused" | "Completed" = trackingStatus;
         let updatedPickupActions = pickupActions;
@@ -487,7 +495,7 @@ export default function JoinedRideDetails() {
             droppedOff: updatedDropoffActions.find((a) => a.passengerId === p.passengerId)?.status === "Completed",
           })),
         } : r)));
-      } catch (error) {
+      } catch (error: any) {
         console.error("[JoinedRideDetails] Simulation error for", rideId, ":", error);
         setError(`Simulation error for ride ${rideId}: ${error.message}`);
         clearInterval(animationIntervals.current[rideId]!);
@@ -556,7 +564,7 @@ export default function JoinedRideDetails() {
 
     if (result.isConfirmed) {
       try {
-        await apiService.ride.cancelJoinedRide(rideId);
+        await clientApiService.ride.cancelJoinedRide(rideId); // Fixed API call
         setRides((prev) =>
           prev.map((ride) =>
             ride.rideId === rideId ? { ...ride, status: "Cancelled", requestStatus: "rejected" } : ride

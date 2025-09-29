@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import useAuth from "@/app/hooks/useAuth";
-import { walletApi } from "@/services/user/walletApi";
+import { clientApiService } from "@/services/client-api"; // Fixed import
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -103,6 +103,14 @@ export default function Wallet() {
     onError: (errorMessage) => setError(errorMessage),
   });
 
+  // Set up API interceptors for authenticated requests
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const { clientApi } = require('@/services/client-api');
+      clientApi.useTokenInterceptor();
+    }
+  }, []);
+
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated) {
@@ -119,7 +127,7 @@ export default function Wallet() {
       setIsLoading(true);
       setError(null);
       try {
-        const response = await walletApi.getWallet(userId, currentPage, limit);
+        const response = await clientApiService.wallet.getWallet(userId, currentPage, limit); // Fixed API call
         
         if (response.success) {
           setWallet({

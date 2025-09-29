@@ -1,4 +1,5 @@
-import { api } from "../api";
+// services/user/userApi.ts
+import {  serverApiInstance } from "../api";
 
 interface UserProfile {
   fullName: string;
@@ -7,19 +8,24 @@ interface UserProfile {
   gender: string;
   country: string;
   state: string;
+  status?: "Active" | "Blocked"; // Add status for blocked user check
 }
 
 export const userApi = {
-  getProfile: async () => {
-    const response = await api.get("/user/profile");
+  getProfile: async (config: { headers?: { Authorization: string } } = {}) => {
+    const response = await serverApiInstance.get("/user/profile", config); // Client-side
     return response.data;
   },
-
+  getProfileServer: async (accessToken: string) => {
+    const response = await serverApiInstance.get("/user/profile", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    return response.data;
+  },
   updateProfile: async (updatedData: UserProfile) => {
-    const response = await api.put("/user/profile", updatedData);
-    return response.data;
+    const response = serverApiInstance.put("/user/profile", updatedData);
+    return (await response).data;
   },
-
   submitGovId: async (data: {
     govId: {
       idNumber: string;
@@ -27,13 +33,12 @@ export const userApi = {
       verificationStatus: "Pending" | "Verified" | "Rejected";
     };
   }) => {
-    const response = await api.put("/user/profile", data);
+    const response = await serverApiInstance.put("/user/profile", data);
     return response.data;
   },
-
   getUser: async (userId: string) => {
     try {
-      const response = await api.get(`/user/${userId}`);
+      const response = await serverApiInstance.get(`/user/${userId}`);
       return response.data;
     } catch (error) {
       console.error(`Failed to fetch user ${userId}:`, error);

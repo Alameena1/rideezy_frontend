@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import useAuth from "@/app/hooks/useAuth";
-import { apiService } from "@/services/api";
+import { clientApiService } from "@/services/client-api"; // Updated import
 import "leaflet/dist/leaflet.css";
 import Swal from "sweetalert2";
 import { useForm } from "react-hook-form";
@@ -242,7 +242,7 @@ const JoinRidePage: React.FC = () => {
         let pendingRequestId: string | null = null;
         
         try {
-          const response = await apiService.ride.joinRide(
+          const response = await clientApiService.ride.joinRide( // Updated to clientApiService
             ride.rideId,
             user?._id || "",
             userLocation,
@@ -341,7 +341,7 @@ const JoinRidePage: React.FC = () => {
     setError(null);
     
     try {
-      const response = await apiService.ride.findNearestRides({ userLocation, destination });
+      const response = await clientApiService.ride.findNearestRides({ userLocation, destination }); // Updated to clientApiService
       console.log("[JoinRidePage] Fetched rides:", response);
       setRides(response);
       setSelectedRide(null);

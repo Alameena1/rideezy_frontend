@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { apiService } from "../../../services/api";
+import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+import { clientApiService } from "@/services/client-api";
 import useAuth from "@/app/hooks/useAuth";
 import MainLayout from "@/app/comp/MainLayout";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -19,15 +21,14 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { FileText } from "lucide-react";
 import { Country, State, ICountry, IState } from "country-state-city";
-import { getValidToken } from "@/app/utils/auth";
+import Cookies from "js-cookie";
 
-// Frontend-specific schema for profile form
 const profileSchema = z
   .object({
     fullName: z
       .string()
       .min(5, { message: "Full name must be at least 5 characters" })
-      .max(50, { message: "Full name must be less than 50 characters" })
+      .max(15, { message: "Full name must be less than 15 characters" })
       .refine((v) => !v || v.split(/\s+/g).length < 10, {
         message: "Full name must have less than 10 words",
       })
@@ -73,7 +74,6 @@ const profileSchema = z
     }
   });
 
-// Schema for government ID form
 const govIdSchema = z.object({
   idNumber: z
     .string()
@@ -88,7 +88,9 @@ type ProfileFormValues = z.infer<typeof profileSchema>;
 type GovIdFormValues = z.infer<typeof govIdSchema>;
 
 export default function Profile() {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [showGovIdForm, setShowGovIdForm] = useState(false);
@@ -157,18 +159,21 @@ export default function Profile() {
   useEffect(() => {
     const fetchUserData = async () => {
       try {
-        const profileData = await apiService.user.getProfile();
-        if (profileData && profileData.data) {
+        const response = await clientApiService.user.getProfile();
+        const profileData = response.data;
+
+        // Check if profileData is a valid object with expected fields
+        if (profileData && typeof profileData === "object" && profileData._id) {
           profileForm.reset({
-            fullName: profileData.data.fullName || "",
-            email: profileData.data.email || "",
-            phoneNumber: profileData.data.phoneNumber || "",
-            gender: profileData.data.gender || "",
-            country: profileData.data.country || "",
-            state: profileData.data.state || "",
+            fullName: profileData.fullName || "",
+            email: profileData.email || "",
+            phoneNumber: profileData.phoneNumber || "",
+            gender: profileData.gender || "",
+            country: profileData.country || "",
+            state: profileData.state || "",
           });
           setGovIdData(
-            profileData.data.govId || {
+            profileData.govId || {
               idNumber: "",
               documentUrl: "",
               verificationStatus: "",
@@ -183,28 +188,27 @@ export default function Profile() {
         console.error("Error fetching user data:", error);
         if (error.response?.status === 401) {
           try {
-            await refreshToken();
-            const profileData = await apiService.user.getProfile();
-            profileForm.reset({
-              fullName: profileData.data.fullName || "",
-              email: profileData.data.email || "",
-              phoneNumber: profileData.data.phoneNumber || "",
-              gender: profileData.data.gender || "",
-              country: profileData.data.country || "",
-              state: profileData.data.state || "",
-            });
-            setGovIdData(
-              profileData.data.govId || {
-                idNumber: "",
-                documentUrl: "",
-                verificationStatus: "",
-                reason: "",
+            const refreshToken = Cookies.get("refreshToken");
+            if (refreshToken) {
+              const response = await clientApiService.auth.refreshToken({ refreshToken });
+              if (response.success && response.accessToken) {
+                Cookies.set("accessToken", response.accessToken, {
+                  expires: 1,
+                  secure: process.env.NODE_ENV === "production",
+                  sameSite: "strict",
+                });
+                // Retry fetching profile
+                await fetchUserData();
+              } else {
+                throw new Error("Invalid refresh token response");
               }
-            );
+            } else {
+              throw new Error("No refresh token found");
+            }
           } catch (refreshError) {
             console.error("Refresh token failed:", refreshError);
             setError("Session expired. Please log in again.");
-            window.location.href = "/user/login";
+            router.push("/user/login");
           }
         } else {
           setError("Failed to load profile data. Please try again.");
@@ -212,15 +216,18 @@ export default function Profile() {
       }
     };
 
-    if (isAuthenticated && !isLoading) {
+    if (isAuthenticated && !authLoading) {
       fetchUserData();
     }
-  }, [isAuthenticated, isLoading, profileForm]);
+  }, [isAuthenticated, authLoading, router]); // Removed profileForm from dependencies to prevent infinite loop
 
   const uploadFile = async (file: File): Promise<string> => {
     const formData = new FormData();
     formData.append("file", file);
-    const token = await getValidToken();
+    const token = Cookies.get("accessToken");
+    if (!token) {
+      throw new Error("No access token available for file upload");
+    }
     const response = await fetch("/api/upload", {
       method: "POST",
       headers: {
@@ -239,10 +246,10 @@ export default function Profile() {
     setError(null);
     setIsSubmittingGovId(true);
     try {
-      const token = await getValidToken();
+      const token = Cookies.get("accessToken");
       if (!token) {
         setError("Authentication required. Please log in.");
-        window.location.href = "/user/login";
+        router.push("/user/login");
         return;
       }
 
@@ -255,9 +262,9 @@ export default function Profile() {
         },
       };
 
-      const response = await apiService.user.submitGovId(payload);
-      if (!response.success) {
-        throw new Error(response.message || "Failed to submit government ID");
+      const response = await clientApiService.user.submitGovId(payload);
+      if (!response.data.success) {
+        throw new Error(response.data.message || "Failed to submit government ID");
       }
 
       setGovIdData({
@@ -291,37 +298,32 @@ export default function Profile() {
     }
   };
 
- const handleProfileSubmit = async (values: ProfileFormValues) => {
-  try {
-    // Only include fields that have values
-    const updatedProfile: any = {};
-    
-    if (values.fullName) updatedProfile.fullName = values.fullName;
-    if (values.email) updatedProfile.email = values.email;
-    if (values.phoneNumber) updatedProfile.phoneNumber = values.phoneNumber;
-    if (values.gender) updatedProfile.gender = values.gender;
-    if (values.country) updatedProfile.country = values.country;
-    if (values.state) updatedProfile.state = values.state;
-    
-    console.log("Sending profile update:", updatedProfile);
-    
-    const response = await apiService.user.updateProfile(updatedProfile);
-    console.log("Profile updated successfully:", response);
-    setIsEditing(false);
-    setError(null);
-  } catch (error: any) {
-    console.error("Error updating profile:", error);
-    // Log the specific validation errors
-    if (error.response?.data?.errors) {
-      console.error("Validation errors:", error.response.data.errors);
+  const handleProfileSubmit = async (values: ProfileFormValues) => {
+    try {
+      const updatedProfile: any = {};
+
+      if (values.fullName) updatedProfile.fullName = values.fullName;
+      if (values.email) updatedProfile.email = values.email;
+      if (values.phoneNumber) updatedProfile.phoneNumber = values.phoneNumber;
+      if (values.gender) updatedProfile.gender = values.gender;
+      if (values.country) updatedProfile.country = values.country;
+      if (values.state) updatedProfile.state = values.state;
+
+      console.log("Sending profile update:", updatedProfile);
+
+      const response = await clientApiService.user.updateProfile(updatedProfile);
+      console.log("Profile updated successfully:", response.data);
+      setIsEditing(false);
+      setError(null);
+    } catch (error: any) {
+      console.error("Error updating profile:", error);
+      const errorMessage =
+        error.response?.data?.message ||
+        error.message ||
+        "Failed to update profile. Please try again.";
+      setError(errorMessage);
     }
-    const errorMessage =
-      error.response?.data?.message ||
-      error.message ||
-      "Failed to update profile. Please try again.";
-    setError(errorMessage);
-  }
-};
+  };
 
   useEffect(() => {
     return () => {
@@ -329,7 +331,7 @@ export default function Profile() {
     };
   }, [documentImagePreview]);
 
-  if (isLoading) {
+  if (authLoading || status === "loading") {
     return (
       <MainLayout activeItem="Profile">
         <div className="flex items-center justify-center h-full">
@@ -340,14 +342,10 @@ export default function Profile() {
   }
 
   if (!isAuthenticated) {
-    console.log("Redirecting to login due to unauthenticated state");
-    setTimeout(() => {
-      window.location.href = "/user/login";
-    }, 1000);
     return (
       <MainLayout activeItem="Profile">
         <div className="flex items-center justify-center h-full">
-          <div>Redirecting to login...</div>
+          <div>Redirecting...</div>
         </div>
       </MainLayout>
     );
@@ -369,7 +367,7 @@ export default function Profile() {
             <p className="text-sm text-gray-500">{currentDate}</p>
           </div>
         </div>
-        <div className="mb-8 rounded-lg bg-gradient-to-r from-blue-100 via-white to-yellow-100 p-6"></div>
+
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div>
@@ -435,7 +433,6 @@ export default function Profile() {
                 className="bg-gray-500 text-white px-4 py-1 rounded-md text-sm"
                 onClick={() => {
                   setIsEditing(false);
-                  // Reset form to original values
                   profileForm.reset();
                 }}
               >
@@ -549,9 +546,9 @@ export default function Profile() {
                 <FormItem>
                   <FormLabel>Phone Number</FormLabel>
                   <FormControl>
-                    <Input 
-                      {...field} 
-                      disabled={!isEditing} 
+                    <Input
+                      {...field}
+                      disabled={!isEditing}
                       placeholder="Enter 10-digit phone number"
                       maxLength={10}
                     />

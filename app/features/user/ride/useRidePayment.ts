@@ -1,7 +1,12 @@
-// features/user/ride/useRidePayment.ts
+"use client";
+
 import { useState } from "react";
-import { apiService } from "@/services/api";
-import { Ride } from "@/services/user/rideApi";
+import { clientApiService } from "@/services/client-api"; // Updated import
+
+interface Ride {
+  rideId: string;
+  // Add other relevant fields if needed
+}
 
 interface RazorpayResponse {
   razorpay_payment_id: string;
@@ -50,8 +55,8 @@ export const useRidePayment = ({
         return;
       }
 
-      const orderResponse = await apiService.ride.createRidePaymentOrder(ride.rideId);
-      const { id: orderId, amount, currency } = orderResponse.order;
+      const orderResponse = await clientApiService.ride.createRidePaymentOrder(ride.rideId); // Updated to clientApiService
+      const { id: orderId, amount, currency } = orderResponse.data.order;
 
       const options = {
         key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_KOCURsj88Mu4Sj",
@@ -70,11 +75,11 @@ export const useRidePayment = ({
               orderId: response.razorpay_order_id,
               signature: response.razorpay_signature,
             };
-            const verifyResponse = await apiService.ride.verifyAndJoinRide(verifyData);
+            const verifyResponse = await clientApiService.ride.verifyAndJoinRide(verifyData); // Updated to clientApiService
             alert("Payment successful! You have joined the ride.");
-            onSuccess(verifyResponse);
+            onSuccess(verifyResponse.data);
           } catch (err: any) {
-            onError(err.message || "Payment verification failed. Please try again.");
+            onError(err.response?.data?.message || err.message || "Payment verification failed. Please try again.");
           }
         },
         prefill: {
@@ -92,7 +97,7 @@ export const useRidePayment = ({
       });
       razorpay.open();
     } catch (err: any) {
-      onError(err.message || "Failed to initiate payment. Please try again.");
+      onError(err.response?.data?.message || err.message || "Failed to initiate payment. Please try again.");
     } finally {
       setPaymentLoading(null);
     }

@@ -2,17 +2,9 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useSession } from "next-auth/react";
-import { apiService } from "../../services/api";
+import { useSession, signOut } from "next-auth/react";
+import { clientApiService, useApiInterceptors } from "@/services/client-api";
 import Cookies from "js-cookie";
-import { jwtDecode } from "jwt-decode";
-import { getValidToken, removeToken } from "@/app/utils/auth";
-
-interface TokenPayload {
-  userId: string;
-  email?: string;
-  role: "user" | "admin";
-}
 
 interface User {
   _id: string;
@@ -23,156 +15,113 @@ interface User {
   role: "user" | "admin";
 }
 
+interface CustomUser {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  image?: string | null;
+  role: "user" | "admin";
+  accessToken: string;
+  refreshToken?: string;
+}
+
 const useAuth = () => {
+  const { data: session, status } = useSession();
   const router = useRouter();
-  interface SessionUser {
-    name?: string | null;
-    email?: string | null;
-    image?: string | null;
-    access_token?: string;
-    refresh_token?: string;
-    id?: string;
-  }
-
-  interface CustomSession {
-    user?: SessionUser;
-    [key: string]: any;
-  }
-
-  const { data: session, status: sessionStatus } = useSession() as { data: CustomSession | null, status: string };
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
 
-  const logout = () => {
+  // Apply API interceptors
+  useApiInterceptors();
+
+  const logout = async () => {
     console.log("Logging out user");
-    removeToken();
-    setIsAuthenticated(false);
-    setUser(null);
-    router.push("/user/login");
+    try {
+      // Call backend logout endpoint to invalidate refresh token
+      if (session?.user?.refreshToken) {
+        await clientApiService.auth.logout(session.user.refreshToken);
+      }
+
+      // Clear all relevant cookies
+      Cookies.remove("accessToken");
+      Cookies.remove("refreshToken");
+      Cookies.remove("next-auth.session-token");
+      Cookies.remove("__Secure-next-auth.session-token");
+
+      // Clear next-auth session
+      await signOut({ redirect: false });
+
+      setIsAuthenticated(false);
+      setUser(null);
+
+      console.log("Logout successful, redirecting to /user/login");
+      router.push("/user/login");
+    } catch (error) {
+      console.error("Logout failed:", error);
+      setIsAuthenticated(false);
+      setUser(null);
+      router.push("/user/login");
+    }
   };
 
   useEffect(() => {
-    const checkAuth = async () => {
-      setIsLoading(true);
-      console.log("Checking auth, sessionStatus:", sessionStatus);
+  const checkAuth = async () => {
+    setIsLoading(status === "loading");
+    console.log("Checking auth, sessionStatus:", status);
+
+    if (status === "authenticated" && session?.user) {
+      const customUser = session.user as CustomUser;
+      console.log("Authenticated user:", customUser);
+
+      if (customUser.role !== "user" && customUser.role !== "admin") {
+        console.log("Invalid role, logging out");
+        logout();
+        return;
+      }
 
       try {
-        if (sessionStatus === "authenticated" && session?.user) {
-          console.log("Google login detected, storing tokens");
-          const accessToken = session.user.access_token;
-          const refreshToken = session.user.refresh_token;
-          let decodedUser: TokenPayload | null = null;
+        const response = await clientApiService.user.getProfile();
+        const profileData = response.data;
 
-          if (accessToken) {
-            Cookies.set("accessToken", accessToken, {
-              expires: 1,
-              secure: process.env.NODE_ENV === "production",
-              sameSite: "strict",
-              path: "/",
-            });
-            try {
-              decodedUser = jwtDecode<TokenPayload>(accessToken);
-              console.log("Decoded Google access token:", decodedUser);
-              if (decodedUser.role !== "user") {
-                throw new Error("Invalid role for Google login");
-              }
-            } catch (error) {
-              console.error("Error decoding Google access token:", error);
-              throw error;
-            }
-          }
-          if (refreshToken) {
-            Cookies.set("refreshToken", refreshToken, {
-              expires: 7,
-              secure: process.env.NODE_ENV === "production",
-              sameSite: "strict",
-              path: "/",
-            });
+        // Check if profileData is valid
+        if (profileData && profileData._id) {
+          if (profileData.status === "Blocked") {
+            console.log("User is blocked, logging out");
+            logout();
+            return;
           }
 
           const newUser: User = {
-            _id: decodedUser?.userId || session.user.id || "",
-            driverId: decodedUser?.userId,
-            email: session.user.email || decodedUser?.email,
-            name: session.user.name ?? undefined,
-            fullName: session.user.name ?? undefined,
-            role: decodedUser?.role || "user",
+            _id: profileData._id || customUser.id,
+            driverId: customUser.id,
+            email: profileData.email || customUser.email,
+            name: profileData.fullName || profileData.name || customUser.name,
+            fullName: profileData.fullName || profileData.name || customUser.email,
+            role: customUser.role,
           };
-          console.log("Setting user from Google login:", newUser);
+          console.log("Setting user from profile data:", newUser);
           setUser(newUser);
           setIsAuthenticated(true);
-
-          const profileData = await apiService.user.getProfile();
-          if (profileData?.success && profileData.data) {
-            if (profileData.data.status === "Blocked") {
-              console.log("User is blocked, logging out");
-              logout();
-              return;
-            }
-          } else {
-            console.warn("Invalid profile data response for Google login:", profileData);
-            throw new Error("Invalid profile data");
-          }
         } else {
-          const token = await getValidToken();
-          console.log("Token from getValidToken:", token ? "present" : "missing");
-
-          if (token) {
-            let decodedUser: TokenPayload | null = null;
-            try {
-              decodedUser = jwtDecode<TokenPayload>(token);
-              console.log("Decoded token:", decodedUser);
-              if (decodedUser.role !== "user") {
-                throw new Error("Invalid role in token");
-              }
-            } catch (error) {
-              console.error("Error decoding token:", error);
-              throw new Error("Invalid token format");
-            }
-
-            const profileData = await apiService.user.getProfile();
-            console.log("Profile data received:", profileData);
-
-            if (profileData?.success && profileData.data) {
-              if (profileData.data.status === "Blocked") {
-                console.log("User is blocked, logging out");
-                logout();
-                return;
-              }
-
-              const newUser: User = {
-                _id: profileData.data._id || decodedUser.userId,
-                driverId: decodedUser.userId,
-                email: profileData.data.email || decodedUser.email,
-                name: profileData.data.name,
-                fullName: profileData.data.name || decodedUser.email,
-                role: decodedUser.role,
-              };
-              console.log("Setting user from profile data:", newUser);
-              setUser(newUser);
-              setIsAuthenticated(true);
-            } else {
-              console.warn("Invalid profile data response:", profileData);
-              throw new Error("Invalid profile data");
-            }
-          } else {
-            console.log("No valid token found, redirecting to login");
-            logout();
-          }
+          console.warn("Invalid profile data response:", profileData);
+          throw new Error("Invalid profile data");
         }
-      } catch (error: any) {
-        console.error("Authentication check failed:", error);
-        setIsAuthenticated(false);
-        console.log("Redirecting to login due to authentication failure");
+      } catch (error) {
+        console.error("Profile fetch failed:", error);
         logout();
-      } finally {
-        setIsLoading(false);
       }
-    };
+    } else if (status === "unauthenticated") {
+      console.log("No session, setting unauthenticated");
+      setIsAuthenticated(false);
+      setUser(null);
+    }
 
-    checkAuth();
-  }, [sessionStatus, session, router]);
+    setIsLoading(false);
+  };
+
+  checkAuth();
+}, [status, session, router]);
 
   return { user, isAuthenticated, isLoading, logout };
 };

@@ -61,7 +61,7 @@ export const isTokenExpired = (token: string): boolean => {
   }
 };
 
-export const refreshToken = async (): Promise<string> => {
+export const refreshToken = async (p0: { refreshToken: string; }): Promise<string> => {
   try {
     const refreshToken = getRefreshToken();
     if (!refreshToken) {

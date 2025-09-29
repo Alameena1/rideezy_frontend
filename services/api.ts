@@ -1,4 +1,5 @@
-import { createUserApiInstance } from "./userInterceptors";
+// services/api.ts
+import axios from "axios";
 import { adminApiService } from "./admin/adminApi";
 import { authApi } from "./user/authApi";
 import { userApi } from "./user/userApi";
@@ -10,19 +11,20 @@ import { trackingApi } from "./user/trackingApi";
 import { notificationApi } from "./user/notificationApi";
 import { chatApi } from "./user/chatApi";
 
-let apiInstance: ReturnType<typeof createUserApiInstance>;
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001/api";
 
-const getApiInstance = () => {
-  if (!apiInstance) {
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001/api";
-    apiInstance = createUserApiInstance(API_BASE_URL);
-  }
-  return apiInstance;
-};
+// Server-side API instance
+const serverApi = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
 
-export const apiService = {
+// Server-side API service (for server components and API routes)
+export const serverApiService = {
   admin: adminApiService,
-  auth: authApi,
+  auth: authApi, // This now only contains server-side methods
   user: userApi,
   vehicle: vehicleApi,
   ride: rideApi,
@@ -33,5 +35,6 @@ export const apiService = {
   chat: chatApi,
 };
 
-export const api = getApiInstance();
-export default apiService;
+export const serverApiInstance = serverApi;
+
+export default serverApiService;

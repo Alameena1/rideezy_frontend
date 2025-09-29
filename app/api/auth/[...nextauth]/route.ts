@@ -1,82 +1,143 @@
 import NextAuth, { NextAuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import { DefaultSession, JWT } from "next-auth";
+import CredentialsProvider from "next-auth/providers/credentials";
+import { serverApiInstance } from "@/services/api";
+import Cookies from "js-cookie";
 
 interface CustomUser {
   id: string;
   name?: string | null;
   email?: string | null;
   image?: string | null;
-  access_token?: string;
-  refresh_token?: string;
-}
-
-interface CustomSession extends DefaultSession {
-  user: CustomUser;
+  role: "user" | "admin";
+  accessToken: string;
+  refreshToken?: string;
 }
 
 const authOptions: NextAuthOptions = {
   providers: [
+    CredentialsProvider({
+      name: "Email/Password",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.password) {
+          console.error("Authorize: Missing credentials");
+          throw new Error("Missing credentials");
+        }
+        try {
+          const response = await serverApiInstance.post("/auth/login", {
+            email: credentials.email,
+            password: credentials.password,
+          });
+          const data = response.data;
+          if (!data.accessToken || !data.user) {
+            console.error("Authorize: Invalid login response", data);
+            throw new Error("Invalid login response");
+          }
+          return {
+            id: data.user.id || "",
+            email: data.user.email,
+            name: data.user.fullName || "",
+            role: data.user.role || "user",
+            accessToken: data.accessToken,
+            refreshToken: data.refreshToken,
+          };
+        } catch (error: any) {
+          console.error("Credentials authorize error:", error.message, error.response?.data);
+          throw new Error("Invalid email or password");
+        }
+      },
+    }),
     GoogleProvider({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      clientId: process.env.GOOGLE_CLIENT_ID || "",
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "",
+      authorization: {
+        params: {
+          prompt: "consent",
+          access_type: "offline",
+          response_type: "code",
+        },
+      },
     }),
   ],
   callbacks: {
-    async signIn({ user, account, profile }) {
-      try {
-        const payload = {
-          fullName: user.name || "",
-          email: user.email || "",
-          image: user.image || "",
-        };
-
-        const response = await fetch("http://localhost:3001/api/auth/google-auth", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        });
-
-        const responseData = await response.json();
-
-        if (response.ok && responseData.accessToken) {
-          // Attach backend token to the user object
-          (user as CustomUser).access_token = responseData.accessToken;
-          (user as CustomUser).refresh_token = responseData.refreshToken;
-          return true;
-        } else {
-          console.error("Google Auth API failed:", responseData);
+    async signIn({ user, account }) {
+      if (account?.provider === "google") {
+        console.log("Google signIn:", { user, account });
+        try {
+          const payload = {
+            fullName: user.name || "",
+            email: user.email || "",
+            image: user.image || "",
+            idToken: account?.id_token,
+          };
+          if (!payload.email || !payload.idToken) {
+            console.error("Google signIn: Missing email or id_token", payload);
+            throw new Error("Missing email or id_token");
+          }
+          const response = await serverApiInstance.post("/auth/google-auth", payload);
+          const responseData = response.data;
+          if (responseData.accessToken && responseData.user) {
+            (user as CustomUser).id = responseData.user.id;
+            (user as CustomUser).accessToken = responseData.accessToken;
+            (user as CustomUser).refreshToken = responseData.refreshToken;
+            (user as CustomUser).role = responseData.user.role || "user";
+            // Store tokens in cookies
+            Cookies.set("accessToken", responseData.accessToken, {
+              expires: 1,
+              secure: process.env.NODE_ENV === "production",
+              sameSite: "strict",
+            });
+            Cookies.set("refreshToken", responseData.refreshToken, {
+              expires: 7,
+              secure: process.env.NODE_ENV === "production",
+              sameSite: "strict",
+            });
+            console.log("Google signIn: Success", responseData);
+            return true;
+          }
+          console.error("Google signIn: Invalid backend response", responseData);
+          throw new Error("Invalid backend response");
+        } catch (error: any) {
+          console.error("Google signIn failed:", error.message, error.response?.data);
           return false;
         }
-      } catch (error) {
-        console.error("Error during Google signIn:", error);
-        return false;
       }
+      return true;
     },
-
     async jwt({ token, user }) {
       if (user) {
-        token.sub = user.id;
-        token.access_token = (user as CustomUser).access_token;
-        token.refresh_token = (user as CustomUser).refresh_token;
+        token.id = user.id;
+        token.role = user.role;
+        token.accessToken = user.accessToken;
+        token.refreshToken = user.refreshToken;
       }
       return token;
     },
-
     async session({ session, token }) {
-      (session.user as CustomUser).id = token.sub as string;
-      (session.user as CustomUser).access_token = token.access_token as string;
-      (session.user as CustomUser).refresh_token = token.refresh_token as string;
+      if (token) {
+        (session.user as CustomUser).id = token.id as string;
+        (session.user as CustomUser).role = token.role as "user" | "admin";
+        (session.user as CustomUser).accessToken = token.accessToken as string;
+        (session.user as CustomUser).refreshToken = token.refreshToken as string;
+      }
       return session;
     },
-
     async redirect({ baseUrl }) {
-      return `${baseUrl}/`; 
+      return `${baseUrl}/`;
     },
   },
+  pages: {
+    signIn: "/user/login",
+    error: "/auth-error",
+  },
+  secret: process.env.NEXTAUTH_SECRET,
+  session: { strategy: "jwt" },
+  debug: process.env.NODE_ENV === "development",
 };
 
 const handler = NextAuth(authOptions);
-export { handler as GET, handler as POST };
+export { handler as GET, handler as POST, authOptions };

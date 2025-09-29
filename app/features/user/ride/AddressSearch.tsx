@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { UseFormRegister, UseFormSetValue } from 'react-hook-form';
-import { apiService } from '../../../../services/api';
+import { clientApiService } from "@/services/client-api"; // Updated import
 import Swal from "sweetalert2";
 
 interface FormData {
@@ -46,7 +46,7 @@ const AddressSearch: React.FC<AddressSearchProps> = ({
         return;
       }
       try {
-        const results = await apiService.geo.searchAddress(query);
+        const results = await clientApiService.geo.searchAddress(query);
         setSuggestions(results);
       } catch (error) {
         console.error('Error searching address:', error);
@@ -110,7 +110,7 @@ const handleUseCurrentLocation = async () => {
     // Reverse geocode
     let placeName: string;
     try {
-      const geoResult = await apiService.geo.reverseGeocode(latitude, longitude);
+      const geoResult = await clientApiService.geo.reverseGeocode(latitude, longitude);
       placeName =
         geoResult?.display_name ||
         `Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;

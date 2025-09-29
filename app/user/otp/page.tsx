@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, JSX } from "react";
 import { useRouter, useSearchParams } from "next/navigation"; 
 import Head from "next/head";
-import { apiService } from "@/services/api"; 
+import { clientApiService } from "@/services/client-api"; // Changed import
 
 type OtpArray = [string, string, string, string, string, string];
 
@@ -88,10 +88,13 @@ export default function VerifyOTP(): JSX.Element {
 
   const verifyOtp = async (otpValue: string): Promise<VerificationResponse> => {
     try {
-      const response = await apiService.auth.verifyOtp({ email, otp: otpValue });
+      const response = await clientApiService.auth.verifyOtp({ email, otp: otpValue }); // Changed to clientApiService
       return { success: true, message: response.message, redirectUrl: "/user/login" };
     } catch (error: any) {
-      return { success: false, message: error.response?.data?.message || "Verification failed. Please try again." };
+      return { 
+        success: false, 
+        message: error.response?.data?.message || error.message || "Verification failed. Please try again." 
+      };
     }
   };
   
@@ -123,10 +126,13 @@ export default function VerifyOTP(): JSX.Element {
 
   const requestNewOtp = async (): Promise<ResendOtpResponse> => {
     try {
-      const response = await apiService.auth.resendOtp({ email });
+      const response = await clientApiService.auth.resendOtp({ email }); // Changed to clientApiService
       return { success: true, message: response.message };
     } catch (error: any) {
-      return { success: false, message: error.response?.data?.message || "Failed to resend OTP." };
+      return { 
+        success: false, 
+        message: error.response?.data?.message || error.message || "Failed to resend OTP." 
+      };
     }
   };
 

@@ -1,9 +1,9 @@
-// app/user/vehicles/page.tsx
+
 "use client";
 
 import { useState, useEffect } from "react";
 import useAuth from "@/app/hooks/useAuth";
-import { apiService } from "@/services/api";
+import { clientApiService } from "@/services/client-api"; // Updated import
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import VehicleForm from "../../features/user/vehicles/VehicleForm";
 import VehicleList from "../../features/user/vehicles/VehicleList";
@@ -43,24 +43,26 @@ export default function VehicleDetails() {
   }, []);
 
   const fetchVehicles = async () => {
-    setIsLoading(true);
-    try {
-      const response = await apiService.vehicle.getVehicles();
-      const vehiclesData = response?.data?.data || response || [];
-      const fetchedVehicles = Array.isArray(vehiclesData)
-        ? vehiclesData.map((vehicle: any) => ({
-            ...vehicle,
-            imageUrl: vehicle.vehicleImage || "/placeholder.svg?height=200&width=300",
-          }))
-        : [];
-      setVehicles(fetchedVehicles);
-    } catch (error) {
-      console.error("Error fetching vehicles:", error);
-      setError("Failed to fetch vehicles. Please try again.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  setIsLoading(true);
+  try {
+    const response = await clientApiService.vehicle.getVehicles();
+    console.log("responce", response);
+    const vehiclesData = response?.data || []; // Access response.data directly
+    const fetchedVehicles = Array.isArray(vehiclesData)
+      ? vehiclesData.map((vehicle: any) => ({
+          ...vehicle,
+          imageUrl: vehicle.vehicleImage || "/placeholder.svg?height=200&width=300",
+        }))
+      : [];
+    setVehicles(fetchedVehicles);
+    console.log("Updated vehicles state:", fetchedVehicles);
+  } catch (error) {
+    console.error("Error fetching vehicles:", error);
+    setError("Failed to fetch vehicles. Please try again.");
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const handleAddVehicle = (newVehicle: Vehicle) => {
     setVehicles([...vehicles, newVehicle]);

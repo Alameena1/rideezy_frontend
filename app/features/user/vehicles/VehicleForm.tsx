@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { apiService } from "@/services/api";
+import { clientApiService } from "@/services/client-api"; // Updated import
 import Cookies from "js-cookie";
 import {
   Form,
@@ -67,7 +67,7 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
     if (isEditMode) {
       const fetchVehicle = async () => {
         try {
-          const response = await apiService.vehicle.getVehicles();
+          const response = await clientApiService.vehicle.getVehicles();
           const vehicle = response.find((v: any) => v._id === vehicleId);
           if (!vehicle) {
             throw new Error("Vehicle not found");
@@ -161,9 +161,9 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
 
       let response;
       if (isEditMode) {
-        response = await apiService.vehicle.updateVehicle(vehicleId, payload);
+        response = await clientApiService.vehicle.updateVehicle(vehicleId, payload);
       } else {
-        response = await apiService.vehicle.addVehicle(payload);
+        response = await clientApiService.vehicle.addVehicle(payload);
       }
 
       if (!response.success) {

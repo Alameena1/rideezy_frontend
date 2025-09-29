@@ -3,7 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { apiService } from '../../../../services/api';
+import { clientApiService } from "@/services/client-api"; // Updated import
 
 interface MapComponentProps {
   startPoint: string;
@@ -45,7 +45,7 @@ const MapComponent: React.FC<MapComponentProps> = ({ startPoint, endPoint, route
 
     const fetchRoute = async () => {
       try {
-        const data = await apiService.geo.calculateRoute(startPoint, endPoint);
+        const data = await clientApiService.geo.calculateRoute(startPoint, endPoint);
         if (data.geometry && data.geometry.coordinates) {
           const route = data.geometry.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]);
           if (routeLayer.current) mapRef.current.removeLayer(routeLayer.current);

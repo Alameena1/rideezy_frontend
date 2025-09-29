@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { walletApi } from "@/services/user/walletApi";
+import { clientApiService } from "@/services/client-api"; // Fixed import
 import Swal from "sweetalert2";
 
 interface RazorpayResponse {
@@ -66,7 +66,8 @@ export const useWalletPayment = ({ userId, onSuccess, onError }: UseWalletPaymen
         return;
       }
 
-      const orderResponse = await walletApi.createOrder({
+      // Fixed API call - using clientApiService
+      const orderResponse = await clientApiService.wallet.createOrder({
         userId,
         amount: options.amount,
         currency: options.currency,
@@ -92,7 +93,8 @@ export const useWalletPayment = ({ userId, onSuccess, onError }: UseWalletPaymen
               orderId: response.razorpay_order_id,
               signature: response.razorpay_signature,
             };
-            const walletResponse = await walletApi.addFunds(addFundsData);
+            // Fixed API call - using clientApiService
+            const walletResponse = await clientApiService.wallet.addFunds(addFundsData);
             console.log("Wallet add funds response:", walletResponse);
             onSuccess(walletResponse);
             Swal.fire("Success!", "Funds added to wallet successfully.", "success");

@@ -1,10 +1,13 @@
-import type { Metadata } from "next";
+"use client";
+
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Provider from "./Provider";
 import 'leaflet/dist/leaflet.css';
-import { Toaster } from "@/components/ui/sonner"; 
-import ToastWrapper from '../app/comp/ToastWrapper';
+import { Toaster } from "@/components/ui/sonner";
+import ToastWrapper from './comp/ToastWrapper';
+import ClientInterceptorWrapper from './ClientInterceptorWrapper';
+
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -15,11 +18,6 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: 'RideEzy - Your Ride Sharing Platform',
-  description: 'Book rides, drive when you want, and travel safely with RideEzy',
-};
-
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -27,13 +25,15 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <Provider>
-        <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-          {children}
-          <Toaster /> 
-          <ToastWrapper />
-        </body>
-      </Provider>
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <Provider>
+          <ClientInterceptorWrapper>
+            {children}
+            <Toaster />
+            <ToastWrapper />
+          </ClientInterceptorWrapper>
+        </Provider>
+      </body>
     </html>
   );
 }
