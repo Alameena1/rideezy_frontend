@@ -1,14 +1,15 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSession } from "next-auth/react"; // Add useSession
+import { useRouter } from "next/navigation"; // Add useRouter
 import useAuth from "@/app/hooks/useAuth";
-import { clientApiService } from "@/services/client-api"; // Updated import
 import { Card, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import VehicleForm from "../../features/user/vehicles/VehicleForm";
 import VehicleList from "../../features/user/vehicles/VehicleList";
 import ErrorAlert from "../../features/user/vehicles/ErrorAlert";
 import MainLayout from "@/app/comp/MainLayout";
+import { useVehicleStore } from "../../stores/vehicleStore";
 
 interface Vehicle {
   _id: string;
@@ -22,56 +23,37 @@ interface Vehicle {
   status: "Pending" | "Approved" | "Rejected";
   imageUrl: string;
   mileage: number;
+  seatCapacity: number;
 }
 
 export default function VehicleDetails() {
-  useAuth();
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [isAddingVehicle, setIsAddingVehicle] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-
-  const currentDate = new Date().toLocaleDateString("en-GB", {
-    weekday: "short",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  const { vehicles, isLoading, error, fetchVehicles, setupSocketListeners } = useVehicleStore();
 
   useEffect(() => {
+    if (status === "loading") return; // Wait for session to load
+    if (status === "unauthenticated") {
+      router.push("/user/login?error=Please%20log%20in%20to%20access%20vehicles");
+      return;
+    }
     fetchVehicles();
-  }, []);
-
-  const fetchVehicles = async () => {
-  setIsLoading(true);
-  try {
-    const response = await clientApiService.vehicle.getVehicles();
-    console.log("responce", response);
-    const vehiclesData = response?.data || []; // Access response.data directly
-    const fetchedVehicles = Array.isArray(vehiclesData)
-      ? vehiclesData.map((vehicle: any) => ({
-          ...vehicle,
-          imageUrl: vehicle.vehicleImage || "/placeholder.svg?height=200&width=300",
-        }))
-      : [];
-    setVehicles(fetchedVehicles);
-    console.log("Updated vehicles state:", fetchedVehicles);
-  } catch (error) {
-    console.error("Error fetching vehicles:", error);
-    setError("Failed to fetch vehicles. Please try again.");
-  } finally {
-    setIsLoading(false);
-  }
-};
+    setupSocketListeners();
+  }, [status, fetchVehicles, setupSocketListeners, router]);
 
   const handleAddVehicle = (newVehicle: Vehicle) => {
-    setVehicles([...vehicles, newVehicle]);
+    useVehicleStore.getState().addVehicle(newVehicle);
     setIsAddingVehicle(false);
   };
 
   const handleDeleteVehicle = (vehicleId: string) => {
-    setVehicles(vehicles.filter((vehicle) => vehicle._id !== vehicleId));
+    useVehicleStore.getState().deleteVehicle(vehicleId);
   };
+
+  if (status === "loading") {
+    return <div>Loading...</div>;
+  }
 
   return (
     <MainLayout activeItem="Vehicles">
@@ -81,7 +63,14 @@ export default function VehicleDetails() {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
                 <CardTitle className="text-2xl font-bold">Your Vehicles</CardTitle>
-                <CardDescription>{currentDate}</CardDescription>
+                <CardDescription>
+                  {new Date().toLocaleDateString("en-GB", {
+                    weekday: "short",
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </CardDescription>
               </div>
               <button
                 onClick={() => setIsAddingVehicle(!isAddingVehicle)}
@@ -99,7 +88,6 @@ export default function VehicleDetails() {
               <VehicleForm
                 onSubmit={handleAddVehicle}
                 onCancel={() => setIsAddingVehicle(false)}
-                setError={setError}
               />
             ) : (
               <VehicleList

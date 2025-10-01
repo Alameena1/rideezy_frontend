@@ -3,7 +3,7 @@ import { serverApiInstance } from "../api";
 
 export const authApi = {
   // Server-side methods (for server components and API routes)
-  login: async (credentials: { email: string; password: string }) => {
+  login: async (email: string, password: string, credentials: { email: string; password: string; }) => {
     const response = await serverApiInstance.post("/auth/login", credentials);
     return response.data;
   },

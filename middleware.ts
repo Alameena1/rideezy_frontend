@@ -32,20 +32,17 @@ export async function middleware(request: NextRequest) {
     publicRoutes.some((route) => pathname.startsWith(route));
   const isAuthRoute = authRoutes.includes(pathname);
 
+  const sessionToken = request.cookies.get('next-auth.session-token')?.value || 
+                      request.cookies.get('__Secure-next-auth.session-token')?.value;
+
   console.log("Middleware:", {
     pathname,
     isAdminRoute,
     isUserRoute,
     isPublicRoute,
     isAuthRoute,
-    cookies: Object.fromEntries(
-      request.cookies.getAll().map(cookie => [cookie.name, cookie.value])
-    ),
+    sessionToken: sessionToken ? "present" : "absent",
   });
-
-  const sessionToken = request.cookies.get('next-auth.session-token')?.value || 
-                      request.cookies.get('__Secure-next-auth.session-token')?.value ||
-                      request.cookies.get('accessToken')?.value;
 
   if (isPublicRoute && !isAuthRoute) {
     console.log("Middleware: Allowing public route:", pathname);
@@ -53,7 +50,7 @@ export async function middleware(request: NextRequest) {
   }
 
   if (isAuthRoute && sessionToken) {
-    console.log("Middleware: Authenticated user trying to access auth route, redirecting", { pathname, sessionToken });
+    console.log("Middleware: Authenticated user trying to access auth route, redirecting", { pathname });
     if (pathname === "/admin/login") {
       return NextResponse.redirect(new URL("/admin/dashboard", request.url));
     }
@@ -67,6 +64,7 @@ export async function middleware(request: NextRequest) {
     if (isUserRoute) {
       const loginUrl = new URL("/user/login", request.url);
       loginUrl.searchParams.set("redirect", pathname);
+      loginUrl.searchParams.set("error", "Please%20log%20in%20to%20access%20this%20page");
       return NextResponse.redirect(loginUrl);
     } else if (isAdminRoute) {
       return NextResponse.redirect(new URL("/admin/login", request.url));

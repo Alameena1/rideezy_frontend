@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import useAuth from "@/app/hooks/useAuth";
-import { clientApiService } from "@/services/client-api"; // Updated import
+import { clientApiService } from "@/services/client/client-api"; // Updated import
 import "leaflet/dist/leaflet.css";
 import Swal from "sweetalert2";
 import { useForm } from "react-hook-form";

@@ -1,31 +1,32 @@
-// VehicleList.tsx
-import { useState } from "react"
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
-import VehicleCard from "./VehicleCard"
-import EmptyState from "./EmptyState"
+import { useState } from "react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import VehicleCard from "./VehicleCard";
+import EmptyState from "./EmptyState";
 
 interface Vehicle {
-  _id: string
-  vehicleName: string
-  vehicleType: string
-  licensePlate: string
-  color?: string
-  insuranceNumber?: string
-  status: "Pending" | "Approved" | "Rejected"
-  imageUrl: string
+  _id: string;
+  vehicleName: string;
+  vehicleType: string;
+  licensePlate: string;
+  color?: string;
+  insuranceNumber?: string;
+  status: "Pending" | "Approved" | "Rejected";
+  imageUrl: string;
+  mileage: number;
+  seatCapacity: number;
 }
 
 interface VehicleListProps {
-  vehicles: Vehicle[]
-  isLoading: boolean
-  onDelete?: (vehicleId: string) => void 
+  vehicles: Vehicle[];
+  isLoading: boolean;
+  onDelete?: (vehicleId: string) => void;
 }
 
 export default function VehicleList({ vehicles, isLoading, onDelete }: VehicleListProps) {
-  const [activeTab, setActiveTab] = useState("all")
+  const [activeTab, setActiveTab] = useState("all");
 
   const filteredVehicles =
-    activeTab === "all" ? vehicles : vehicles.filter((vehicle) => vehicle.status.toLowerCase() === activeTab)
+    activeTab === "all" ? vehicles : vehicles.filter((vehicle) => vehicle.status.toLowerCase() === activeTab);
 
   return (
     <div className="space-y-6">
@@ -50,10 +51,10 @@ export default function VehicleList({ vehicles, isLoading, onDelete }: VehicleLi
           ) : (
             <div className="grid gap-4">
               {filteredVehicles.map((vehicle) => (
-                <VehicleCard 
-                  key={vehicle._id} 
-                  vehicle={vehicle} 
-                  onDelete={onDelete} // Pass onDelete prop
+                <VehicleCard
+                  key={vehicle._id}
+                  vehicle={vehicle}
+                  onDelete={onDelete}
                 />
               ))}
             </div>
@@ -61,5 +62,5 @@ export default function VehicleList({ vehicles, isLoading, onDelete }: VehicleLi
         </TabsContent>
       </Tabs>
     </div>
-  )
+  );
 }

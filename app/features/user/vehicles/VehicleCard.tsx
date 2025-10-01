@@ -5,9 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Edit, Trash2, RefreshCcw } from "lucide-react";
-import VehicleForm from "./VehicleForm"; // Updated VehicleForm is compatible
-import { clientApiService } from "@/services/client-api"; // Updated import
+import VehicleForm from "./VehicleForm";
+import { clientApiService } from "@/services/client/client-api";
 import Swal from "sweetalert2";
+import { useVehicleStore } from "../../../stores/vehicleStore";
 
 interface Vehicle {
   _id: string;
@@ -20,6 +21,7 @@ interface Vehicle {
   vehicleImage: string;
   documentImage: string;
   mileage: number;
+  seatCapacity: number;
   user: {
     _id: string;
     fullName: string;
@@ -41,8 +43,7 @@ export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCar
   const [isReapplying, setIsReapplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  console.log("vehicle",vehicle)
+  const { updateVehicle } = useVehicleStore();
 
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
@@ -70,7 +71,7 @@ export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCar
     if (result.isConfirmed) {
       setIsDeleting(true);
       try {
-        await clientApiService.vehicle.deleteVehicle(vehicle._id); // Updated to clientApiService
+        await useVehicleStore.getState().deleteVehicle(vehicle._id);
         onDelete?.(vehicle._id);
         Swal.fire({
           title: "Deleted!",
@@ -80,10 +81,10 @@ export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCar
           showConfirmButton: false,
         });
       } catch (error: any) {
-        setError(error.response?.data?.message || "Failed to delete vehicle. Please try again.");
+        setError(error.message || "Failed to delete vehicle. Please try again.");
         Swal.fire({
           title: "Error!",
-          text: error.response?.data?.message || "Failed to delete the vehicle. Please try again.",
+          text: error.message || "Failed to delete the vehicle. Please try again.",
           icon: "error",
           confirmButtonColor: "#3085d6",
         });
@@ -197,7 +198,7 @@ export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCar
             onSubmit={async (updatedVehicle) => {
               try {
                 if (isReapplying) {
-                  await clientApiService.vehicle.reapplyVehicle(vehicle._id, updatedVehicle); // Updated to clientApiService
+                  await clientApiService.vehicle.reapplyVehicle(vehicle._id, updatedVehicle);
                   onReapply?.(vehicle._id);
                   Swal.fire({
                     title: "Reapplied!",
@@ -207,7 +208,7 @@ export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCar
                     showConfirmButton: false,
                   });
                 } else {
-                  await clientApiService.vehicle.updateVehicle(vehicle._id, updatedVehicle); // Updated to clientApiService
+                  await updateVehicle(vehicle._id, updatedVehicle);
                   Swal.fire({
                     title: "Updated!",
                     text: `${vehicle.vehicleName} has been updated.`,

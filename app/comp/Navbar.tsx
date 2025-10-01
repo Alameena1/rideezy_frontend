@@ -13,7 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Bell } from "lucide-react";
-import { clientApiService } from "@/services/client-api";
+import { clientApiService } from "@/services/client/client-api";
 import useAuth from "../hooks/useAuth";
 import { useSocketStore } from "../stores/socketStore";
 

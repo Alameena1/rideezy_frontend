@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
-import { clientApiService } from "@/services/client-api";
+import { clientApiService } from "@/services/client/client-api";
 import useAuth from "@/app/hooks/useAuth";
 import MainLayout from "@/app/comp/MainLayout";
 import { zodResolver } from "@hookform/resolvers/zod";

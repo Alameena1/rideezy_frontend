@@ -2,8 +2,9 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { clientApiService } from "@/services/client-api"; // Updated import
-import Cookies from "js-cookie";
+import { clientApiService } from "@/services/client/client-api";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import {
   Form,
   FormControl,
@@ -16,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Car, FileText } from "lucide-react";
+import { useVehicleStore } from "../../../stores/vehicleStore";
 
 const vehicleSchema = z.object({
   vehicleName: z.string().min(2, { message: "Vehicle name is required" }),
@@ -24,7 +26,7 @@ const vehicleSchema = z.object({
   color: z.string().min(1, { message: "Color is required" }),
   insuranceNumber: z.string().min(1, { message: "Insurance number is required" }),
   mileage: z.coerce.number().int().min(0, { message: "Mileage must be a positive integer" }),
-  seatCapacity: z.coerce.number().int().min(1, { message: "Seat capacity must be at least 1" }), // New field
+  seatCapacity: z.coerce.number().int().min(1, { message: "Seat capacity must be at least 1" }),
   vehicleImage: z
     .any()
     .refine((file) => !file || (file instanceof File && file.size > 0), { message: "Invalid vehicle image" })
@@ -39,14 +41,17 @@ interface VehicleFormProps {
   vehicleId?: string;
   onSubmit: (vehicle: any) => void;
   onCancel: () => void;
-  setError: (error: string | null) => void;
 }
 
-export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }: VehicleFormProps) {
+export default function VehicleForm({ vehicleId, onSubmit, onCancel }: VehicleFormProps) {
   const [vehicleImagePreview, setVehicleImagePreview] = useState<string | null>(null);
   const [documentImagePreview, setDocumentImagePreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const isEditMode = !!vehicleId;
+  const { vehicles, addPendingVehicle, clearPendingVehicle } = useVehicleStore();
+  const { data: session, status } = useSession();
+  const router = useRouter();
 
   const form = useForm<z.infer<typeof vehicleSchema>>({
     resolver: zodResolver(vehicleSchema),
@@ -57,7 +62,7 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
       color: "",
       insuranceNumber: "",
       mileage: 0,
-      seatCapacity: 1, // Default seat capacity
+      seatCapacity: 1,
       vehicleImage: null,
       documentImage: null,
     },
@@ -65,33 +70,26 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
 
   useEffect(() => {
     if (isEditMode) {
-      const fetchVehicle = async () => {
-        try {
-          const response = await clientApiService.vehicle.getVehicles();
-          const vehicle = response.find((v: any) => v._id === vehicleId);
-          if (!vehicle) {
-            throw new Error("Vehicle not found");
-          }
-          form.reset({
-            vehicleName: vehicle.vehicleName,
-            vehicleType: vehicle.vehicleType,
-            licensePlate: vehicle.licensePlate,
-            color: vehicle.color || "",
-            insuranceNumber: vehicle.insuranceNumber || "",
-            mileage: vehicle.mileage,
-            seatCapacity: vehicle.seatCapacity || 1, // Load seat capacity
-            vehicleImage: null,
-            documentImage: null,
-          });
-          setVehicleImagePreview(vehicle.vehicleImage || null);
-          setDocumentImagePreview(vehicle.documentImage || null);
-        } catch (error: any) {
-          setError(error.message || "Failed to load vehicle data");
-        }
-      };
-      fetchVehicle();
+      const vehicle = vehicles.find((v) => v._id === vehicleId);
+      if (vehicle) {
+        form.reset({
+          vehicleName: vehicle.vehicleName,
+          vehicleType: vehicle.vehicleType,
+          licensePlate: vehicle.licensePlate,
+          color: vehicle.color || "",
+          insuranceNumber: vehicle.insuranceNumber || "",
+          mileage: vehicle.mileage,
+          seatCapacity: vehicle.seatCapacity || 1,
+          vehicleImage: null,
+          documentImage: null,
+        });
+        setVehicleImagePreview(vehicle.vehicleImage || null);
+        setDocumentImagePreview(vehicle.documentImage || null);
+      } else {
+        setError("Vehicle not found");
+      }
     }
-  }, [vehicleId, form, setError, isEditMode]);
+  }, [vehicleId, vehicles, form, isEditMode]);
 
   const handleVehicleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -114,9 +112,18 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
   };
 
   const uploadFile = async (file: File): Promise<string> => {
+    if (status === "loading") {
+      throw new Error("Session is still loading, please wait.");
+    }
+    if (status === "unauthenticated") {
+      throw new Error("Authentication required. Please log in.");
+    }
     const formData = new FormData();
     formData.append("file", file);
-    const token = Cookies.get("accessToken");
+    const token = session?.user?.accessToken;
+    if (!token) {
+      throw new Error("Authentication required. Please log in.");
+    }
     const response = await fetch("/api/upload", {
       method: "POST",
       headers: {
@@ -135,10 +142,19 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
     setError(null);
     setIsLoading(true);
     try {
-      const token = Cookies.get("accessToken");
+      if (status === "loading") {
+        setError("Session is still loading, please wait.");
+        return;
+      }
+      if (status === "unauthenticated") {
+        setError("Authentication required. Please log in.");
+        setTimeout(() => router.push("/user/login"), 2000);
+        return;
+      }
+      const token = session?.user?.accessToken;
       if (!token) {
         setError("Authentication required. Please log in.");
-        window.location.href = "/user/login";
+        setTimeout(() => router.push("/user/login"), 2000);
         return;
       }
 
@@ -149,7 +165,7 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
         color: values.color,
         insuranceNumber: values.insuranceNumber,
         mileage: values.mileage,
-        seatCapacity: values.seatCapacity, // Include seat capacity
+        seatCapacity: values.seatCapacity,
       };
 
       if (values.vehicleImage instanceof File) {
@@ -170,13 +186,23 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
         throw new Error(response.message || `Failed to ${isEditMode ? "update" : "add"} vehicle`);
       }
 
-      onSubmit({
+      const newVehicle = {
         _id: isEditMode ? vehicleId : response.data._id,
         ...payload,
         status: response.data.status || "Pending",
         imageUrl: payload.vehicleImage || vehicleImagePreview,
-      });
+        user: response.data.user,
+        createdAt: response.data.createdAt,
+        updatedAt: response.data.updatedAt,
+      };
 
+      if (!isEditMode) {
+        // Mark vehicle as pending and add locally
+        addPendingVehicle(newVehicle._id);
+        useVehicleStore.getState().addVehicle(newVehicle);
+      }
+
+      onSubmit(newVehicle);
       form.reset();
       setVehicleImagePreview(null);
       setDocumentImagePreview(null);
@@ -187,8 +213,15 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
         error.message ||
         `Failed to ${isEditMode ? "update" : "register"} vehicle. Please try again.`;
       setError(errorMessage);
+      if (errorMessage.includes("Authentication") || errorMessage.includes("token")) {
+        setTimeout(() => router.push("/user/login"), 2000);
+      }
     } finally {
       setIsLoading(false);
+      // Clear pending vehicle after a delay to ensure socket event is skipped
+      if (!isEditMode) {
+        setTimeout(() => clearPendingVehicle(response?.data?._id || ""), 1000);
+      }
     }
   };
 
@@ -205,6 +238,11 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
       <p className="text-gray-500 mb-6">
         {isEditMode ? "Update the details of your vehicle" : "Fill in the details to register your vehicle"}
       </p>
+      {error && (
+        <div className="mb-4 p-4 bg-red-100 text-red-700 rounded-lg border border-red-300">
+          {error}
+        </div>
+      )}
       <Form {...form}>
         <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -408,7 +446,7 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel, setError }:
             <Button type="button" variant="outline" onClick={onCancel}>
               Cancel
             </Button>
-            <Button type="submit" disabled={isLoading}>
+            <Button type="submit" disabled={isLoading || status === "loading"}>
               {isLoading ? (isEditMode ? "Updating..." : "Registering...") : (isEditMode ? "Update Vehicle" : "Register Vehicle")}
             </Button>
           </div>

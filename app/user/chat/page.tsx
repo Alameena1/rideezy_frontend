@@ -9,7 +9,7 @@ import { MessageCircle, Loader2 } from "lucide-react";
 import { useSearchParams, useRouter } from "next/navigation";
 import useAuth from "@/app/hooks/useAuth";
 import MainLayout from "@/app/comp/MainLayout";
-import { clientApiService } from "@/services/client-api"; // Fixed import
+import { clientApiService } from "@/services/client/client-api"; // Fixed import
 import { useChat } from "../../hooks/useChat";
 import { useSocketStore } from "../../stores/socketStore";
 

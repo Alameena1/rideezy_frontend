@@ -1,8 +1,7 @@
 import NextAuth, { NextAuthOptions } from "next-auth";
-import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
+import GoogleProvider from "next-auth/providers/google";
 import { serverApiInstance } from "@/services/api";
-import Cookies from "js-cookie";
 
 interface CustomUser {
   id: string;
@@ -24,30 +23,41 @@ const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
-          console.error("Authorize: Missing credentials");
+          console.error("Authorize: Missing credentials", { email: credentials?.email });
           throw new Error("Missing credentials");
         }
         try {
+          const email = credentials.email.trim().toLowerCase();
+          const password = credentials.password.trim();
+          console.log("Authorize: Sending login request", { email, passwordLength: password.length });
           const response = await serverApiInstance.post("/auth/login", {
-            email: credentials.email,
-            password: credentials.password,
+            email,
+            password,
           });
           const data = response.data;
-          if (!data.accessToken || !data.user) {
-            console.error("Authorize: Invalid login response", data);
-            throw new Error("Invalid login response");
+          console.log("Authorize: Backend response", { success: data.success, user: data.user, accessToken: data.accessToken, refreshToken: data.refreshToken });
+          
+          if (!data.success || !data.accessToken || !data.user?.id) {
+            console.error("Authorize: Invalid login response", { data });
+            throw new Error(data.message || "Invalid login response");
           }
+
           return {
-            id: data.user.id || "",
+            id: data.user.id,
             email: data.user.email,
-            name: data.user.fullName || "",
+            name: data.user.fullName || data.user.email,
             role: data.user.role || "user",
             accessToken: data.accessToken,
-            refreshToken: data.refreshToken,
+            refreshToken: data.refreshToken || undefined,
           };
         } catch (error: any) {
-          console.error("Credentials authorize error:", error.message, error.response?.data);
-          throw new Error("Invalid email or password");
+          console.error("Authorize: Credentials authorize error:", {
+            message: error.message,
+            response: error.response?.data,
+            status: error.response?.status,
+            requestPayload: { email: credentials.email.trim(), passwordLength: credentials.password.trim().length },
+          });
+          throw new Error(error.response?.data?.message || "Invalid email or password");
         }
       },
     }),
@@ -85,17 +95,6 @@ const authOptions: NextAuthOptions = {
             (user as CustomUser).accessToken = responseData.accessToken;
             (user as CustomUser).refreshToken = responseData.refreshToken;
             (user as CustomUser).role = responseData.user.role || "user";
-            // Store tokens in cookies
-            Cookies.set("accessToken", responseData.accessToken, {
-              expires: 1,
-              secure: process.env.NODE_ENV === "production",
-              sameSite: "strict",
-            });
-            Cookies.set("refreshToken", responseData.refreshToken, {
-              expires: 7,
-              secure: process.env.NODE_ENV === "production",
-              sameSite: "strict",
-            });
             console.log("Google signIn: Success", responseData);
             return true;
           }
@@ -114,6 +113,7 @@ const authOptions: NextAuthOptions = {
         token.role = user.role;
         token.accessToken = user.accessToken;
         token.refreshToken = user.refreshToken;
+        console.log("JWT Callback: Token updated", { id: token.id, accessToken: token.accessToken, refreshToken: token.refreshToken });
       }
       return token;
     },
@@ -123,6 +123,7 @@ const authOptions: NextAuthOptions = {
         (session.user as CustomUser).role = token.role as "user" | "admin";
         (session.user as CustomUser).accessToken = token.accessToken as string;
         (session.user as CustomUser).refreshToken = token.refreshToken as string;
+        console.log("Session Callback: Session updated", { user: session.user });
       }
       return session;
     },

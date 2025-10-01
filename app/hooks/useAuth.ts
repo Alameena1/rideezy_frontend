@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession, signOut } from "next-auth/react";
-import { clientApiService, useApiInterceptors } from "@/services/client-api";
-import Cookies from "js-cookie";
+import { clientApiService, useApiInterceptors } from "@/services/client/client-api";
 
 interface User {
   _id: string;
@@ -43,9 +42,7 @@ const useAuth = () => {
         await clientApiService.auth.logout(session.user.refreshToken);
       }
 
-      // Clear all relevant cookies
-      Cookies.remove("accessToken");
-      Cookies.remove("refreshToken");
+      // Clear next-auth session cookies (no need for access/refresh cookies)
       Cookies.remove("next-auth.session-token");
       Cookies.remove("__Secure-next-auth.session-token");
 

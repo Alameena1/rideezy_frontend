@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { UseFormRegister, UseFormSetValue } from 'react-hook-form';
-import { clientApiService } from "@/services/client-api"; // Updated import
+import { clientApiService } from "@/services/client/client-api"; // Updated import
 import Swal from "sweetalert2";
 
 interface FormData {

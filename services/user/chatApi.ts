@@ -1,5 +1,5 @@
 // services/client/chatApi.ts
-import { clientApi } from "../client-api";
+import { clientApi } from "../client/client-api";
 
 interface Message {
   _id: string;

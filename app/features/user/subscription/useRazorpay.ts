@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Swal from "sweetalert2";
-import { clientApiService } from "@/services/client-api"; // Updated import
+import { clientApiService } from "@/services/client/client-api"; // Updated import
 
 interface SubscribeResponse {
   data: any;

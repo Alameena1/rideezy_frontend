@@ -3,7 +3,7 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { clientApiService } from "@/services/client-api"; // Updated import
+import { clientApiService } from "@/services/client/client-api"; 
 
 interface MapComponentProps {
   startPoint: string;

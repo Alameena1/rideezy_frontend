@@ -4,8 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { signIn, useSession } from "next-auth/react";
-import { clientApiService, useApiInterceptors } from "@/services/client-api";
+import { signIn, useSession, signOut } from "next-auth/react";
+import { clientApiService, useApiInterceptors } from "@/services/client/client-api";
 import Cookies from "js-cookie";
 
 export default function LoginPage() {
@@ -28,10 +28,18 @@ export default function LoginPage() {
   useApiInterceptors();
 
   useEffect(() => {
-    if (status === "authenticated") {
-      console.log("LoginPage: User authenticated, redirecting to /");
-      router.push("/");
-    }
+    // Clear any stale session on mount
+    const clearStaleSession = async () => {
+      if (status === "authenticated") {
+        console.log("LoginPage: Clearing stale session");
+        await signOut({ redirect: false });
+        Cookies.remove("next-auth.session-token");
+        Cookies.remove("__Secure-next-auth.session-token");
+      }
+    };
+    clearStaleSession();
+
+    // Handle error from query params
     if (searchParams) {
       const error = searchParams.get("error");
       if (error) {
@@ -41,7 +49,13 @@ export default function LoginPage() {
         }));
       }
     }
-  }, [status, router, searchParams]);
+
+    // Only redirect if not loading and authenticated
+    if (status === "authenticated" && !loading) {
+      console.log("LoginPage: User authenticated, redirecting to /");
+      router.push("/");
+    }
+  }, [status, router, searchParams, loading]);
 
   const validateEmail = (email: string) => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -83,38 +97,16 @@ export default function LoginPage() {
     if (!validateForm()) return;
     setLoading(true);
     try {
-      // Call the backend API to verify credentials
-      const response = await clientApiService.auth.login({
-        email: formData.email,
-        password: formData.password,
-      });
-      console.log("Login response:", response);
-      if (!response.success) {
-        throw new Error(response.message || "Login failed");
-      }
-
-      // Store tokens in cookies
-      Cookies.set("accessToken", response.accessToken, {
-        expires: formData.rememberMe ? 7 : 1, // 7 days if rememberMe, else 1 day
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-      });
-      Cookies.set("refreshToken", response.refreshToken, {
-        expires: 7, // 7 days for refresh token
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
-      });
-
-      // Call signIn to set next-auth session
+      console.log("LoginPage: Submitting credentials", { email: formData.email.trim(), passwordLength: formData.password.length });
       const result = await signIn("credentials", {
         redirect: false,
-        email: formData.email,
-        password: formData.password,
+        email: formData.email.trim(),
+        password: formData.password.trim(),
       });
 
       if (result?.error) {
         console.error("Next-auth signIn error:", result.error);
-        setErrors({ ...errors, general: "Invalid email or password" });
+        setErrors({ ...errors, general: result.error || "Invalid email or password" });
       } else {
         console.log("Login success, redirecting to /");
         router.push("/");
@@ -138,7 +130,7 @@ export default function LoginPage() {
     router.push("/user/forgot-password");
   };
 
-  if (status === "authenticated") {
+  if (status === "authenticated" && !loading) {
     return null;
   }
   return (
@@ -256,7 +248,7 @@ export default function LoginPage() {
             <div className="space-y-6">
               <button
                 type="submit"
-                className="w-full py-3 px-4 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 transition-all disabled:opacity-50"
+                className="w-full not-allowed"
                 disabled={loading}
               >
                 {loading ? "Logging in..." : "Log In"}

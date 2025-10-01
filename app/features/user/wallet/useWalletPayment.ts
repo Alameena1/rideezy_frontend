@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { clientApiService } from "@/services/client-api"; // Fixed import
+import { clientApiService } from "@/services/client/client-api"; // Fixed import
 import Swal from "sweetalert2";
 
 interface RazorpayResponse {

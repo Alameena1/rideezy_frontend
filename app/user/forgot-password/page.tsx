@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "axios";
-import { clientApiService } from "@/services/client-api"; // Fixed import
+import { clientApiService } from "@/services/client/client-api"; // Fixed import
 
 export default function ForgotPasswordPage() {
   const router = useRouter();

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import useAuth from "@/app/hooks/useAuth";
-import { clientApiService } from "@/services/client-api"; // Fixed import
+import { clientApiService } from "@/services/client/client-api"; // Fixed import
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";

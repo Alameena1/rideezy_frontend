@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { clientApiService } from "@/services/client-api"; // Updated import
+import { clientApiService } from "@/services/client/client-api"; // Updated import
 
 interface Ride {
   rideId: string;

@@ -4,7 +4,7 @@ import axios from "axios";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import Cookies from "js-cookie";
+import { signOut } from "next-auth/react";
 
 export const createUserApiInstance = (baseURL: string) => {
   const api = axios.create({
@@ -16,7 +16,7 @@ export const createUserApiInstance = (baseURL: string) => {
   });
 
   const useTokenInterceptor = () => {
-    const { data: session, update } = useSession();
+    const { data: session, status, update } = useSession();
     const router = useRouter();
 
     useEffect(() => {
@@ -40,11 +40,17 @@ export const createUserApiInstance = (baseURL: string) => {
             return config;
           }
 
-          let accessToken = session?.user?.accessToken;
-          if (!accessToken) {
-            accessToken = Cookies.get("accessToken");
+          if (status === "loading") {
+            console.log("[Interceptor] Session is loading, skipping Authorization");
+            return config;
+          }
+          if (status === "unauthenticated") {
+            console.log("[Interceptor] User is unauthenticated, skipping Authorization");
+            return config;
           }
 
+          const accessToken = session?.user?.accessToken;
+          console.log("[Interceptor] Access token:", accessToken ? "present" : "missing");
           if (accessToken) {
             config.headers.Authorization = `Bearer ${accessToken}`;
             console.log("[Interceptor] Added Authorization header for:", config.url);
@@ -78,10 +84,22 @@ export const createUserApiInstance = (baseURL: string) => {
             "/auth/google-auth",
           ];
 
+          // Handle blocked user
+          if (
+            error.response?.status === 403 &&
+            error.response?.data?.message === "You have been blocked by the admin, please contact support"
+          ) {
+            console.log("[Interceptor] User is blocked, logging out");
+            await signOut({ redirect: false });
+            router.push("/user/login?error=You%20have%20been%20blocked%20by%20the%20admin%2C%20please%20contact%20support");
+            return Promise.reject(error);
+          }
+
+          // Handle token expiration
           if (
             error.response?.status === 401 &&
+            error.response?.data?.message === "Access token expired, please refresh" &&
             originalRequest &&
-            originalRequest.url &&
             !originalRequest._retry &&
             !unauthenticatedRoutes.some((route) => originalRequest.url.includes(route))
           ) {
@@ -89,44 +107,31 @@ export const createUserApiInstance = (baseURL: string) => {
             originalRequest._retry = true;
 
             try {
-              let refreshToken = session?.user?.refreshToken;
-              if (!refreshToken) {
-                refreshToken = Cookies.get("refreshToken");
-              }
-
+              const refreshToken = session?.user?.refreshToken;
+              console.log("[Interceptor] Refresh token:", refreshToken ? "present" : "missing");
               if (!refreshToken) {
                 console.error("[Interceptor] No refresh token found");
-                router.push("/user/login");
+                await signOut({ redirect: false });
+                router.push("/user/login?error=No%20refresh%20token%20found");
                 throw new Error("No refresh token found");
               }
 
               const response = await axios.post(
                 `${baseURL}/auth/refresh-token`,
                 { refreshToken },
-                { headers: { "Content-Type": "application/json" } }
+                { headers: { "Content-Type": "application/json" }, withCredentials: true }
               );
 
               const { accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data;
+              console.log("[Interceptor] Refresh token response:", { newAccessToken, newRefreshToken });
 
               if (!newAccessToken) {
                 console.error("[Interceptor] Refresh token response missing accessToken");
-                router.push("/user/login");
+                await signOut({ redirect: false });
+                router.push("/user/login?error=Invalid%20refresh%20token%20response");
                 throw new Error("Invalid refresh token response");
               }
 
-              // Update cookies
-              Cookies.set("accessToken", newAccessToken, {
-                expires: 1,
-                secure: process.env.NODE_ENV === "production",
-                sameSite: "strict",
-              });
-              Cookies.set("refreshToken", newRefreshToken || refreshToken, {
-                expires: 7,
-                secure: process.env.NODE_ENV === "production",
-                sameSite: "strict",
-              });
-
-              // Update next-auth session
               await update({
                 ...session,
                 user: {
@@ -142,7 +147,8 @@ export const createUserApiInstance = (baseURL: string) => {
               return api(originalRequest);
             } catch (refreshError) {
               console.error("[Interceptor] Refresh token failed:", refreshError);
-              router.push("/user/login");
+              await signOut({ redirect: false });
+              router.push("/user/login?error=Failed%20to%20refresh%20token");
               return Promise.reject(refreshError);
             }
           }
@@ -156,7 +162,7 @@ export const createUserApiInstance = (baseURL: string) => {
         api.interceptors.request.eject(requestInterceptor);
         api.interceptors.response.eject(responseInterceptor);
       };
-    }, [session, update, router]);
+    }, [session, status, update, router]);
 
     return api;
   };

@@ -4,7 +4,7 @@
 import { useState, useEffect, useRef, JSX } from "react";
 import { useRouter, useSearchParams } from "next/navigation"; 
 import Head from "next/head";
-import { clientApiService } from "@/services/client-api"; // Changed import
+import { clientApiService } from "@/services/client/client-api"; // Changed import
 
 type OtpArray = [string, string, string, string, string, string];
 

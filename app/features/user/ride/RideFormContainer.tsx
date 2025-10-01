@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import Swal from "sweetalert2";
-import { clientApiService } from "@/services/client-api"; // Updated import
+import { clientApiService } from "@/services/client/client-api"; // Updated import
 import MapComponent from "./MapComponent";
 import AddressSearch from "./AddressSearch";
 import RideFormFields from "./RideFormFields";
