@@ -7,7 +7,7 @@ import { createAdminApiInstance } from "../adminInterceptors"; // Adjust path to
 // Assuming you have or extend auth utils for admin; if not, implement getAdminValidToken and getAdminRefreshToken
 import { getRefreshToken, getValidToken } from "../../app/utils/auth"; // Reuse or extend for admin
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001/api";
+const API_BASE_URL =  "http://localhost:3001";
 
 let adminClientApiInstance: ReturnType<typeof createAdminApiInstance> | null = null;
 

@@ -1,8 +1,8 @@
-
+// app/admin/rides/page.tsx
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { apiService } from "@/services/api";
+import { adminClientApiService } from "@/services/client/adminClientApi"; // Updated import
 import * as L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { Button } from "@/components/ui/button";
@@ -132,7 +132,7 @@ export default function RideManagement() {
   const fetchRides = async () => {
     try {
       setLoading(true);
-      const response: PaginatedResponse = await apiService.admin.ride.getRides({
+      const response: PaginatedResponse = await adminClientApiService.ride.getRides({
         page,
         limit,
         search,
@@ -210,6 +210,7 @@ export default function RideManagement() {
         return;
       }
 
+      // Use apiService.tracking since tracking routes are under /api/tracking
       const trackingData = await apiService.tracking.getTrackingPosition(ride._id);
       console.log(`[RideManagement] Tracking data fetched for ride ${rideId}:`, trackingData);
 
@@ -376,6 +377,7 @@ export default function RideManagement() {
           return;
         }
 
+        // Use apiService.tracking for tracking routes
         const trackingData = await apiService.tracking.getTrackingPosition(ride._id);
         let currentPosition: [number, number] | null = null;
         let status: "Started" | "Paused" | "Completed" = trackingStatus;
@@ -552,7 +554,7 @@ export default function RideManagement() {
 
   const handleCancelRide = async (ride: Ride) => {
     try {
-      await apiService.admin.ride.cancelRide(ride._id);
+      await adminClientApiService.ride.cancelRide(ride._id);
       setRides(rides.map((r) => (r._id === ride._id ? { ...r, status: "Canceled" } : r)));
       setTrackingData((prev) => {
         const { [ride._id]: _, ...rest } = prev;
@@ -579,7 +581,7 @@ export default function RideManagement() {
 
   const handleBlockRide = async (ride: Ride) => {
     try {
-      await apiService.admin.ride.blockRide(ride._id);
+      await adminClientApiService.ride.blockRide(ride._id);
       setRides(rides.map((r) => (r._id === ride._id ? { ...r, status: "Blocked" } : r)));
       setTrackingData((prev) => {
         const { [ride._id]: _, ...rest } = prev;

@@ -35,8 +35,14 @@ const authOptions: NextAuthOptions = {
             password,
           });
           const data = response.data;
-          console.log("Authorize: Backend response", { success: data.success, user: data.user, accessToken: data.accessToken, refreshToken: data.refreshToken });
-          
+          console.log("Authorize: Backend response", {
+            success: data.success,
+            userId: data.user?.id,
+            role: data.user?.role,
+            accessToken: data.accessToken ? "present" : "missing",
+            refreshToken: data.refreshToken ? "present" : "missing",
+          });
+
           if (!data.success || !data.accessToken || !data.user?.id) {
             console.error("Authorize: Invalid login response", { data });
             throw new Error(data.message || "Invalid login response");
@@ -76,7 +82,7 @@ const authOptions: NextAuthOptions = {
   callbacks: {
     async signIn({ user, account }) {
       if (account?.provider === "google") {
-        console.log("Google signIn:", { user, account });
+        console.log("Google signIn:", { userId: user.id, email: user.email, role: user.role });
         try {
           const payload = {
             fullName: user.name || "",
@@ -95,7 +101,11 @@ const authOptions: NextAuthOptions = {
             (user as CustomUser).accessToken = responseData.accessToken;
             (user as CustomUser).refreshToken = responseData.refreshToken;
             (user as CustomUser).role = responseData.user.role || "user";
-            console.log("Google signIn: Success", responseData);
+            console.log("Google signIn: Success", {
+              userId: responseData.user.id,
+              role: responseData.user.role,
+              accessToken: responseData.accessToken ? "present" : "missing",
+            });
             return true;
           }
           console.error("Google signIn: Invalid backend response", responseData);
@@ -113,7 +123,12 @@ const authOptions: NextAuthOptions = {
         token.role = user.role;
         token.accessToken = user.accessToken;
         token.refreshToken = user.refreshToken;
-        console.log("JWT Callback: Token updated", { id: token.id, accessToken: token.accessToken, refreshToken: token.refreshToken });
+        console.log("JWT Callback: Token updated", {
+          id: token.id,
+          role: token.role,
+          accessToken: token.accessToken ? "present" : "missing",
+          refreshToken: token.refreshToken ? "present" : "missing",
+        });
       }
       return token;
     },
@@ -123,7 +138,11 @@ const authOptions: NextAuthOptions = {
         (session.user as CustomUser).role = token.role as "user" | "admin";
         (session.user as CustomUser).accessToken = token.accessToken as string;
         (session.user as CustomUser).refreshToken = token.refreshToken as string;
-        console.log("Session Callback: Session updated", { user: session.user });
+        console.log("Session Callback: Session updated", {
+          userId: session.user.id,
+          role: session.user.role,
+          accessToken: session.user.accessToken ? "present" : "missing",
+        });
       }
       return session;
     },

@@ -1,4 +1,3 @@
-// services/client/chatApi.ts
 import { clientApi } from "../client/client-api";
 
 interface Message {

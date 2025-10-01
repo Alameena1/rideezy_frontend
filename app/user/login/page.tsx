@@ -4,9 +4,8 @@ import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
-import { signIn, useSession, signOut } from "next-auth/react";
+import { signIn, useSession } from "next-auth/react";
 import { clientApiService, useApiInterceptors } from "@/services/client/client-api";
-import Cookies from "js-cookie";
 
 export default function LoginPage() {
   const { data: session, status } = useSession();
@@ -28,32 +27,19 @@ export default function LoginPage() {
   useApiInterceptors();
 
   useEffect(() => {
-    // Clear any stale session on mount
-    const clearStaleSession = async () => {
-      if (status === "authenticated") {
-        console.log("LoginPage: Clearing stale session");
-        await signOut({ redirect: false });
-        Cookies.remove("next-auth.session-token");
-        Cookies.remove("__Secure-next-auth.session-token");
-      }
-    };
-    clearStaleSession();
-
     // Handle error from query params
-    if (searchParams) {
-      const error = searchParams.get("error");
-      if (error) {
-        setErrors((prev) => ({
-          ...prev,
-          general: error === "AuthenticationFailed" ? "Authentication failed. Please try again." : decodeURIComponent(error),
-        }));
-      }
+    const error = searchParams.get("error");
+    if (error) {
+      setErrors((prev) => ({
+        ...prev,
+        general: error === "AuthenticationFailed" ? "Authentication failed. Please try again." : decodeURIComponent(error),
+      }));
     }
 
-    // Only redirect if not loading and authenticated
+    // Redirect if authenticated
     if (status === "authenticated" && !loading) {
       console.log("LoginPage: User authenticated, redirecting to /");
-      router.push("/");
+      router.replace("/"); // Use replace to avoid adding to history
     }
   }, [status, router, searchParams, loading]);
 
@@ -107,14 +93,12 @@ export default function LoginPage() {
       if (result?.error) {
         console.error("Next-auth signIn error:", result.error);
         setErrors({ ...errors, general: result.error || "Invalid email or password" });
-      } else {
-        console.log("Login success, redirecting to /");
-        router.push("/");
+        setLoading(false);
       }
+      // No need for manual redirect here; useEffect handles it
     } catch (error: any) {
       console.error("Login error:", error.message);
       setErrors({ ...errors, general: error.message || "Login failed" });
-    } finally {
       setLoading(false);
     }
   };
@@ -130,9 +114,10 @@ export default function LoginPage() {
     router.push("/user/forgot-password");
   };
 
-  if (status === "authenticated" && !loading) {
-    return null;
+  if (status === "authenticated") {
+    return null; // Prevent rendering while redirecting
   }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
       <div className="w-full max-w-4xl bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col md:flex-row">
@@ -248,7 +233,7 @@ export default function LoginPage() {
             <div className="space-y-6">
               <button
                 type="submit"
-                className="w-full not-allowed"
+                className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-all disabled:opacity-50"
                 disabled={loading}
               >
                 {loading ? "Logging in..." : "Log In"}

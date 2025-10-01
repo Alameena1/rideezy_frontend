@@ -9,7 +9,8 @@ import { MessageCircle, Loader2 } from "lucide-react";
 import { useSearchParams, useRouter } from "next/navigation";
 import useAuth from "@/app/hooks/useAuth";
 import MainLayout from "@/app/comp/MainLayout";
-import { clientApiService } from "@/services/client/client-api"; // Fixed import
+import { clientApiService, useApiInterceptors } from "@/services/client/client-api"; // Fixed import
+
 import { useChat } from "../../hooks/useChat";
 import { useSocketStore } from "../../stores/socketStore";
 
@@ -38,6 +39,8 @@ interface Conversation {
 }
 
 const Chat: React.FC = () => {
+  useApiInterceptors();
+
   const searchParams = useSearchParams();
   const router = useRouter();
   const conversationId = searchParams.get("conversationId");
@@ -69,14 +72,6 @@ const Chat: React.FC = () => {
   const [prevConversationId, setPrevConversationId] = useState<string | null>(null);
 
   const { error: socketError, socket } = useSocketStore();
-
-  // Set up API interceptors for authenticated requests
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const { clientApi } = require('@/services/client-api');
-      clientApi.useTokenInterceptor();
-    }
-  }, []);
 
   useEffect(() => {
     if (authLoading) return;
@@ -442,9 +437,9 @@ const Chat: React.FC = () => {
                 </div>
               )}
 
-              <ScrollArea 
-                ref={scrollRef} 
-                className="flex-1 p-4 overflow-y-auto" 
+              <ScrollArea
+                ref={scrollRef}
+                className="flex-1 p-4 overflow-y-auto"
                 style={{ maxHeight: "calc(100vh - 300px)" }}
               >
                 {isLoading ? (

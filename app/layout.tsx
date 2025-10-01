@@ -3,10 +3,10 @@
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import Provider from "./Provider";
-import 'leaflet/dist/leaflet.css';
+import "leaflet/dist/leaflet.css";
 import { Toaster } from "@/components/ui/sonner";
-import ToastWrapper from './comp/ToastWrapper';
-import ClientInterceptorWrapper from './ClientInterceptorWrapper';
+import ToastWrapper from "./comp/ToastWrapper";
+import ClientInterceptorWrapper from "./ClientInterceptorWrapper";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,11 +18,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>

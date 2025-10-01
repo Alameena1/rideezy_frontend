@@ -1,4 +1,5 @@
-import apiService, { serverApiInstance } from "../api";
+// services/user/rideApi.ts
+import { serverApiInstance } from "../serverInstance"; // Use serverApiInstance to break cycle
 import { EditRideDto } from "../../types/ride.types";
 
 export interface Ride {
@@ -166,8 +167,9 @@ export const rideApi = {
 
   handleJoinRequest: async (rideId: string, driverId: string, passengerId: string, action: "accept" | "reject") => {
     try {
-      const ridesResponse = await apiService.ride.getRides();
-      const ride = ridesResponse.data.find((r: Ride) => r.rideId === rideId);
+      // Use serverApiInstance instead of apiService to avoid cycle
+      const ridesResponse = await serverApiInstance.get("/initiate-rides/rides", { withCredentials: true });
+      const ride = ridesResponse.data.data?.find((r: Ride) => r.rideId === rideId);
 
       if (!ride) {
         throw new Error(`Ride with rideId ${rideId} not found`);
@@ -178,8 +180,8 @@ export const rideApi = {
         {
           driverId,
           action,
-          pickupPlaceName: ride.pendingRequests?.find((p: { passengerId: string; }) => p.passengerId === passengerId)?.pickupPlaceName || 'Unknown',
-          dropoffPlaceName: ride.pendingRequests?.find((p: { passengerId: string; }) => p.passengerId === passengerId)?.dropoffPlaceName || 'Unknown'
+          pickupPlaceName: ride.pendingRequests?.find((p: { passengerId: string }) => p.passengerId === passengerId)?.pickupPlaceName || "Unknown",
+          dropoffPlaceName: ride.pendingRequests?.find((p: { passengerId: string }) => p.passengerId === passengerId)?.dropoffPlaceName || "Unknown",
         },
         {
           withCredentials: true,
@@ -237,27 +239,26 @@ export const rideApi = {
     }
   },
 
- updateRide: async (id: string, updates: { currentPosition?: [number, number], passengerId: string; action: "picked" | "dropped" }, driverId: string) => {
-  try {
-    console.log("[rideApi] Sending updateRide request:", {
-      url: `/initiate-rides/${id}/update`,
-      updates,
-      driverId,
-    });
-    // Remove the nesting - send updates directly
-    const response = await serverApiInstance.put(`/initiate-rides/${id}/update`, updates, {
-      withCredentials: true,
-      headers: { "Driver-Id": driverId }, 
-    });
-    console.log("[rideApi] Update ride response:", response.data);
-    return response.data.data as Ride;
-  } catch (error: any) {
-    console.error("[rideApi] Error updating ride:", {
-      message: error.message,
-      response: error.response?.data,
-      status: error.response?.status,
-    });
-    throw new Error(error.response?.data?.message || "Failed to update ride");
-  }
-},
+  updateRide: async (id: string, updates: { currentPosition?: [number, number]; passengerId: string; action: "picked" | "dropped" }, driverId: string) => {
+    try {
+      console.log("[rideApi] Sending updateRide request:", {
+        url: `/initiate-rides/${id}/update`,
+        updates,
+        driverId,
+      });
+      const response = await serverApiInstance.put(`/initiate-rides/${id}/update`, updates, {
+        withCredentials: true,
+        headers: { "Driver-Id": driverId },
+      });
+      console.log("[rideApi] Update ride response:", response.data);
+      return response.data.data as Ride;
+    } catch (error: any) {
+      console.error("[rideApi] Error updating ride:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
+      throw new Error(error.response?.data?.message || "Failed to update ride");
+    }
+  },
 };

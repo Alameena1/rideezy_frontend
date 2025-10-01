@@ -1,3 +1,4 @@
+// Dashboard.tsx
 "use client";
 import React, { useState, useEffect } from "react";
 import {
@@ -13,7 +14,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { apiService } from "@/services/api";
+import { adminClientApiService as apiService } from "@/services/api";
 
 const COLORS = ["#0088FE", "#00C49F"];
 
@@ -35,7 +36,7 @@ export default function Dashboard() {
     const fetchDashboardData = async () => {
       try {
         setLoading(true);
-        const response = await apiService.admin.dashboard.getDashboardMetrics();
+        const response = await apiService.dashboard.getDashboardMetrics();
         console.log("opopopopopo",response)
         setMetrics(response.metrics);
         setUserGrowth(response.userGrowth);

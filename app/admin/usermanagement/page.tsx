@@ -1,7 +1,8 @@
+// UserManagement.tsx
 "use client";
 
 import { useState, useEffect } from "react";
-import { apiService } from "@/services/api";
+import { adminClientApiService as apiService } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -60,7 +61,7 @@ export default function UserManagement() {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const response: PaginatedResponse = await apiService.admin.user.getUsers({
+      const response: PaginatedResponse = await apiService.user.getUsers({
         page,
         limit,
         search,
@@ -101,7 +102,7 @@ export default function UserManagement() {
   const handleToggleStatus = async (user: User) => {
     try {
       const newStatus = user.status === "Active" ? "Blocked" : "Active";
-      await apiService.admin.user.toggleUserStatus(user._id, newStatus);
+      await apiService.user.toggleUserStatus(user._id, newStatus);
       setUsers(users.map((u) => (u._id === user._id ? { ...u, status: newStatus } : u)));
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to update user status";

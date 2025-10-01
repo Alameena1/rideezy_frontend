@@ -1,6 +1,6 @@
+// services/adminInterceptors.ts (updated to break cycle)
 import axios from "axios";
 import Cookies from "js-cookie";
-import { getRefreshToken, getValidToken } from "../app/utils/auth";
 
 export const createAdminApiInstance = (baseURL: string) => {
   const api = axios.create({
@@ -10,6 +10,10 @@ export const createAdminApiInstance = (baseURL: string) => {
     },
   });
 
+  // Local admin token getters (no import from auth.ts)
+  const getAdminValidToken = () => Cookies.get("adminAuthToken");
+  const getAdminRefreshToken = () => Cookies.get("refreshToken");
+
   api.interceptors.request.use(
     async (config) => {
       const unauthenticatedRoutes = ["/admin/login", "/admin/refresh-token", "/admin/logout"];
@@ -18,13 +22,13 @@ export const createAdminApiInstance = (baseURL: string) => {
       }
 
       try {
-        const token = await getValidToken();
+        const token = getAdminValidToken();
         if (token) {
           config.headers.Authorization = `Bearer ${token}`;
         }
         return config;
       } catch (error) {
-        console.error("Failed to get valid token:", error);
+        console.error("Failed to get admin valid token:", error);
         return config;
       }
     },
@@ -55,7 +59,7 @@ export const createAdminApiInstance = (baseURL: string) => {
         originalRequest._retry = true;
 
         try {
-          const refreshToken = getRefreshToken();
+          const refreshToken = getAdminRefreshToken();
           if (!refreshToken) throw new Error("No refresh token found");
 
           const response = await axios.post(
@@ -86,15 +90,17 @@ export const createAdminApiInstance = (baseURL: string) => {
           originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
           return api(originalRequest);
         } catch (refreshError) {
-          console.error("Refresh token failed:", refreshError);
+          console.error("Admin refresh token failed:", refreshError);
           Cookies.remove("adminAuthToken", { path: "/" });
           Cookies.remove("refreshToken", { path: "/" });
-          window.location.href = "/admin/login";
+          if (typeof window !== 'undefined') {
+            window.location.href = "/admin/login";
+          }
           return Promise.reject(refreshError);
         }
       }
 
-      console.log("Interceptor caught error:", error.response?.status, error.response?.data);
+      console.log("Admin Interceptor caught error:", error.response?.status, error.response?.data);
       return Promise.reject(error);
     }
   );

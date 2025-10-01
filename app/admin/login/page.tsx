@@ -1,8 +1,9 @@
+// AdminLoginPage.tsx
 "use client";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { apiService } from "@/services/api";
+import { adminClientApiService as apiService } from "@/services/api";
 import { setToken, setRefreshToken } from "@/app/utils/auth";
 
 export default function AdminLoginPage() {
@@ -23,7 +24,7 @@ export default function AdminLoginPage() {
     setLoading(true);
 
     try {
-      const response = await apiService.admin.auth.login(formData.email, formData.password);
+      const response = await apiService.auth.login(formData.email, formData.password);
       console.log("Login successful:", response);
       if (response.success) {
         setToken(response.accessToken);

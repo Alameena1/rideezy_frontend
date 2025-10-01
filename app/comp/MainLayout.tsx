@@ -1,8 +1,8 @@
 "use client";
 
 import { ReactNode, useState } from "react";
-import Navbar from "./Navbar";
-import Sidebar from "./Sidebar";
+import ClientNavbarWrapper from "./ClientNavbarWrapper";
+import ClientSidebarWrapper from "./ClientSidebarWrapper";
 import Footer from "./Footer";
 
 interface SidebarItem {
@@ -27,7 +27,7 @@ export default function MainLayout({ children, activeItem, hideSidebar = false }
     { icon: "👑", label: "Subscription", active: activeItem === "Subscription" },
     { icon: "🤝", label: "Joined Ride", active: activeItem === "Joined Ride" },
     { icon: "💰", label: "Wallet", active: activeItem === "Wallet" },
-    { icon: "💬", label: "Chat", active: activeItem === "Chat" }, // Added Chat
+    { icon: "💬", label: "Chat", active: activeItem === "Chat" },
   ];
 
   const toggleSidebar = () => {
@@ -36,11 +36,11 @@ export default function MainLayout({ children, activeItem, hideSidebar = false }
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-50">
-      <Navbar />
+      <ClientNavbarWrapper />
       <div className="flex flex-1">
         {!hideSidebar && (
           <>
-            <Sidebar
+            <ClientSidebarWrapper
               isOpen={isSidebarOpen}
               toggleSidebar={toggleSidebar}
               items={sidebarItems}

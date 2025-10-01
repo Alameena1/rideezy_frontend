@@ -1,7 +1,8 @@
+// UserIdVerification.tsx
 "use client";
 
 import { useState, useEffect } from "react";
-import { apiService } from "@/services/api";
+import { adminClientApiService as apiService } from "@/services/api";
 
 interface User {
   _id: string;
@@ -29,7 +30,7 @@ export default function UserIdVerification() {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const response = await apiService.admin.user.getUsers();
+      const response = await apiService.user.getUsers();
       console.log("Fetched users response:", response);
       
       // Check if response is an object with a 'data' property that is an array
@@ -56,7 +57,7 @@ export default function UserIdVerification() {
 
   const handleApproveUser = async (userId: string) => {
     try {
-      await apiService.admin.user.verifyGovId(userId, "Verified");
+      await apiService.user.verifyGovId(userId, "Verified");
       
       setUsers(users.map((user) =>
         user._id === userId ? { ...user, govId: { ...user.govId, verificationStatus: "Verified" } } : user
@@ -81,7 +82,7 @@ export default function UserIdVerification() {
     }
 
     try {
-      await apiService.admin.user.verifyGovId(selectedUser, "Rejected", rejectionNote);
+      await apiService.user.verifyGovId(selectedUser, "Rejected", rejectionNote);
       setUsers(users.map((user) =>
         user._id === selectedUser ? { ...user, govId: { ...user.govId, verificationStatus: "Rejected", rejectionNote } } : user
       ));

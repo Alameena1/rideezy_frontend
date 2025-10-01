@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import useAuth from "@/app/hooks/useAuth";
-import { clientApiService } from "@/services/client/client-api"; // Fixed import
+import { clientApiService, useApiInterceptors } from "@/services/client/client-api"; // Fixed import
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -61,6 +61,9 @@ export default function JoinedRideDetails() {
   const [leafletLoaded, setLeafletLoaded] = useState<typeof L | null>(null);
   const userId = user?._id || "default_user_id";
 
+  // Set up API interceptors
+  useApiInterceptors();
+
   const mapRefs = useRef<{ [key: string]: L.Map | null }>({});
   const routeLayers = useRef<{ [key: string]: L.Polyline | null }>({});
   const startMarkerRefs = useRef<{ [key: string]: L.Marker | null }>({});
@@ -80,14 +83,6 @@ export default function JoinedRideDetails() {
     month: "short",
     year: "numeric",
   });
-
-  // Set up API interceptors for authenticated requests
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const { clientApi } = require('@/services/client-api');
-      clientApi.useTokenInterceptor();
-    }
-  }, []);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -124,7 +119,7 @@ export default function JoinedRideDetails() {
   const fetchJoinedRides = async () => {
     setIsLoading(true);
     try {
-      const joinedRidesData = await clientApiService.ride.getJoinedRides(); // Fixed API call
+      const joinedRidesData = await clientApiService.ride.getJoinedRides();
       const fetchedRides = Array.isArray(joinedRidesData.data) ? joinedRidesData.data : [];
       console.log("[JoinedRideDetails] Fetched rides:", fetchedRides);
 
@@ -303,7 +298,7 @@ export default function JoinedRideDetails() {
         return;
       }
 
-      const trackingData = await clientApiService.tracking.getTrackingPosition(ride._id); // Fixed API call
+      const trackingData = await clientApiService.tracking.getTrackingPosition(ride._id);
       console.log("[JoinedRideDetails] Tracking data fetched for ride", rideId, ":", trackingData);
 
       let currentPosition: [number, number] | null = null;
@@ -422,7 +417,7 @@ export default function JoinedRideDetails() {
           return;
         }
 
-        const trackingData = await clientApiService.tracking.getTrackingPosition(ride._id); // Fixed API call
+        const trackingData = await clientApiService.tracking.getTrackingPosition(ride._id);
         let currentPosition: [number, number] | null = null;
         let status: "Started" | "Paused" | "Completed" = trackingStatus;
         let updatedPickupActions = pickupActions;
@@ -564,7 +559,7 @@ export default function JoinedRideDetails() {
 
     if (result.isConfirmed) {
       try {
-        await clientApiService.ride.cancelJoinedRide(rideId); // Fixed API call
+        await clientApiService.ride.cancelJoinedRide(rideId);
         setRides((prev) =>
           prev.map((ride) =>
             ride.rideId === rideId ? { ...ride, status: "Cancelled", requestStatus: "rejected" } : ride

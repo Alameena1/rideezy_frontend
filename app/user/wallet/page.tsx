@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import useAuth from "@/app/hooks/useAuth";
-import { clientApiService } from "@/services/client/client-api"; // Fixed import
+import { clientApiService, useApiInterceptors } from "@/services/client/client-api"; // Fixed import
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -77,6 +77,9 @@ export default function Wallet() {
   const limit = 3;
   const userId = user?._id;
 
+  // Set up API interceptors
+  useApiInterceptors();
+
   const currentDate = new Date().toLocaleDateString("en-GB", {
     weekday: "short",
     day: "2-digit",
@@ -88,7 +91,7 @@ export default function Wallet() {
     userId: userId || undefined,
     onSuccess: (walletResponse: WalletResponse) => {
       console.log("Payment success response:", walletResponse);
-      setWallet(prev => ({
+      setWallet((prev) => ({
         balance: walletResponse.balance || prev.balance,
         currency: "INR",
         transactions: walletResponse.transactions || prev.transactions || [],
@@ -102,14 +105,6 @@ export default function Wallet() {
     },
     onError: (errorMessage) => setError(errorMessage),
   });
-
-  // Set up API interceptors for authenticated requests
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const { clientApi } = require('@/services/client-api');
-      clientApi.useTokenInterceptor();
-    }
-  }, []);
 
   useEffect(() => {
     if (authLoading) return;
@@ -127,8 +122,8 @@ export default function Wallet() {
       setIsLoading(true);
       setError(null);
       try {
-        const response = await clientApiService.wallet.getWallet(userId, currentPage, limit); // Fixed API call
-        
+        const response = await clientApiService.wallet.getWallet(userId, currentPage, limit);
+
         if (response.success) {
           setWallet({
             balance: response.balance || 0,
@@ -140,19 +135,17 @@ export default function Wallet() {
           });
         } else {
           setError("Failed to load wallet data. Please try again.");
-          // Set default wallet state on error
-          setWallet(prev => ({
+          setWallet((prev) => ({
             ...prev,
-            transactions: prev.transactions || []
+            transactions: prev.transactions || [],
           }));
         }
       } catch (err: any) {
         console.error("Error fetching wallet:", err.response?.data || err);
         setError(err.response?.data?.message || "Failed to load wallet data. Please try again.");
-        // Ensure transactions is always an array even on error
-        setWallet(prev => ({
+        setWallet((prev) => ({
           ...prev,
-          transactions: prev.transactions || []
+          transactions: prev.transactions || [],
         }));
       } finally {
         setIsLoading(false);
@@ -241,7 +234,8 @@ export default function Wallet() {
                             className="flex justify-between items-center p-3 bg-gray-50 rounded-md"
                           >
                             <span className="text-gray-600">
-                              {transaction.description || `${transaction.type} - ${new Date(transaction.createdAt).toLocaleDateString()}`}
+                              {transaction.description ||
+                                `${transaction.type} - ${new Date(transaction.createdAt).toLocaleDateString()}`}
                             </span>
                             <span
                               className={`font-medium ${

@@ -1,7 +1,8 @@
+// Subscription.tsx
 "use client";
 
 import { useState, useEffect } from "react";
-import { apiService } from "@/services/api";
+import { adminClientApiService as apiService } from "@/services/api";
 // @ts-ignore
 import Swal from 'sweetalert2';
 
@@ -39,7 +40,7 @@ export default function Subscription() {
       try {
         setLoading(true);
         setError(null);
-        const fetchedSubscriptions = await apiService.admin.subscription.getSubscriptionPlans();
+        const fetchedSubscriptions = await apiService.subscription.getSubscriptionPlans();
 
         console.log("Fetched Subscriptions:", fetchedSubscriptions);
         if (Array.isArray(fetchedSubscriptions)) {
@@ -84,7 +85,7 @@ export default function Subscription() {
 
     try {
       if (modalMode === "add") {
-        const createdPlan = await apiService.admin.subscription.createSubscriptionPlan(currentPlan);
+        const createdPlan = await apiService.subscription.createSubscriptionPlan(currentPlan);
         setSubscriptions([...subscriptions, createdPlan]);
         Swal.fire(
           'Success!',
@@ -92,7 +93,7 @@ export default function Subscription() {
           'success'
         );
       } else {
-        const updatedPlan = await apiService.admin.subscription.updateSubscriptionPlan(currentPlan._id!, currentPlan);
+        const updatedPlan = await apiService.subscription.updateSubscriptionPlan(currentPlan._id!, currentPlan);
         setSubscriptions(subscriptions.map((plan) =>
           plan._id === currentPlan._id ? updatedPlan : plan
         ));
@@ -129,7 +130,7 @@ export default function Subscription() {
     if (!result.isConfirmed) return;
 
     try {
-      await apiService.admin.subscription.deleteSubscriptionPlan(planId);
+      await apiService.subscription.deleteSubscriptionPlan(planId);
       setSubscriptions(subscriptions.filter((plan) => plan._id !== planId));
       Swal.fire(
         'Deleted!',
@@ -155,7 +156,7 @@ export default function Subscription() {
   console.log("New status:", newStatus);
   
   try {
-    await apiService.admin.subscription.toggleSubscriptionPlanStatus(planId, newStatus);
+    await apiService.subscription.toggleSubscriptionPlanStatus(planId, newStatus);
     setSubscriptions(subscriptions.map((plan) =>
       plan._id === planId ? { ...plan, status: newStatus } : plan
     ));

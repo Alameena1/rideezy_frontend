@@ -1,7 +1,8 @@
+// VehicleVerification.tsx
 "use client";
 
 import { useState, useEffect } from "react";
-import { apiService } from "@/services/api";
+import { adminClientApiService as apiService } from "@/services/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -72,7 +73,7 @@ export default function VehicleVerification() {
   const fetchVehicles = async () => {
     try {
       setLoading(true);
-      const response: PaginatedResponse = await apiService.admin.vehicle.getVehicles({
+      const response: PaginatedResponse = await apiService.vehicle.getVehicles({
         page,
         limit,
         search,
@@ -118,7 +119,7 @@ export default function VehicleVerification() {
 
   const handleApproveVehicle = async (vehicleId: string) => {
     try {
-      await apiService.admin.vehicle.updateVehicleStatus(vehicleId, "Approved");
+      await apiService.vehicle.updateVehicleStatus(vehicleId, "Approved");
       setVehicles(vehicles.map((vehicle) =>
         vehicle._id === vehicleId ? { ...vehicle, status: "Approved" } : vehicle
       ));
@@ -142,7 +143,7 @@ export default function VehicleVerification() {
     }
 
     try {
-      await apiService.admin.vehicle.updateVehicleStatus(selectedVehicle, "Rejected", rejectionNote);
+      await apiService.vehicle.updateVehicleStatus(selectedVehicle, "Rejected", rejectionNote);
       setVehicles(vehicles.map((vehicle) =>
         vehicle._id === selectedVehicle ? { ...vehicle, status: "Rejected" } : vehicle
       ));

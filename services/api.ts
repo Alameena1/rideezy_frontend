@@ -1,5 +1,4 @@
-// services/api.ts
-import axios from "axios";
+// services/api.ts (updated import and re-export)
 import { adminApiService } from "./admin/adminApi";
 import { authApi } from "./user/authApi";
 import { userApi } from "./user/userApi";
@@ -11,15 +10,12 @@ import { trackingApi } from "./user/trackingApi";
 import { notificationApi } from "./user/notificationApi";
 import { chatApi } from "./user/chatApi";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001/api";
+// Client-side imports
+import { clientApiService } from "./client/client-api";
+import { adminClientApiService } from "./client/adminClientApi";
 
-// Server-side API instance
-const serverApi = axios.create({
-  baseURL: API_BASE_URL,
-  headers: {
-    "Content-Type": "application/json",
-  },
-});
+// Import instance from separate file (breaks cycle) - ensure named import
+import { serverApiInstance } from "./serverInstance";
 
 // Server-side API service (for server components and API routes)
 export const serverApiService = {
@@ -35,6 +31,16 @@ export const serverApiService = {
   chat: chatApi,
 };
 
-export const serverApiInstance = serverApi;
+// Re-export for backward compatibility
+export { serverApiInstance };
+
+// Client-side API service (for client components)
+export const clientApiServiceFull = {
+  ...clientApiService,
+  admin: adminClientApiService,
+};
+
+// Re-export adminClientApiService for direct imports in components
+export { adminClientApiService };
 
 export default serverApiService;
