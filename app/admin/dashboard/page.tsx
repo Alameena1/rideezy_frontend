@@ -1,6 +1,8 @@
-// Dashboard.tsx
+// app/admin/dashboard/page.tsx - UPDATED
 "use client";
 import React, { useState, useEffect } from "react";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import {
   BarChart,
   Bar,
@@ -19,6 +21,8 @@ import { adminClientApiService as apiService } from "@/services/api";
 const COLORS = ["#0088FE", "#00C49F"];
 
 export default function Dashboard() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
   const [metrics, setMetrics] = useState({
     totalUsers: 0,
     totalRides: 0,
@@ -32,17 +36,35 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  // Redirect if not admin
+  useEffect(() => {
+    if (status === "unauthenticated") {
+      router.push("/admin/login");
+    } else if (status === "authenticated" && (session?.user as any)?.role !== "admin") {
+      router.push("/");
+    }
+  }, [session, status, router]);
+
   useEffect(() => {
     const fetchDashboardData = async () => {
+      // Wait for session to be loaded and user to be admin
+      if (status !== "authenticated" || (session?.user as any)?.role !== "admin") {
+        return;
+      }
+
       try {
         setLoading(true);
+        console.log("📊 Fetching dashboard data with session...");
+        
         const response = await apiService.dashboard.getDashboardMetrics();
-        console.log("opopopopopo",response)
+        console.log("📊 Dashboard response:", response);
+        
         setMetrics(response.metrics);
         setUserGrowth(response.userGrowth);
         setRideCount(response.rideCount);
         setRevenueDistribution(response.revenueDistribution);
-      } catch (err) {
+      } catch (err: any) {
+        console.error("❌ Dashboard fetch error:", err);
         setError(err.message || "Failed to load dashboard data");
       } finally {
         setLoading(false);
@@ -50,7 +72,15 @@ export default function Dashboard() {
     };
 
     fetchDashboardData();
-  }, []);
+  }, [session, status]);
+
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen bg-gray-900 p-6 flex items-center justify-center">
+        <p className="text-white text-xl">Loading session...</p>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
@@ -70,7 +100,12 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-900 p-6">
-      <h1 className="text-3xl font-bold text-white mb-8">Admin Dashboard</h1>
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold text-white">Admin Dashboard</h1>
+        <div className="text-white">
+          Welcome, {(session?.user as any)?.name || session?.user?.email}
+        </div>
+      </div>
 
       {/* Metrics Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 mb-8">
@@ -92,7 +127,7 @@ export default function Dashboard() {
         </div>
         <div className="bg-gray-800 p-6 rounded-lg shadow-lg">
           <h2 className="text-xl font-semibold text-white mb-2">Platform Revenue</h2>
-          <p className="text-3xl font-bold text-yellow-400">${metrics.totalRevenue.toFixed(2)}</p>
+          <p className="text-3xl font-bold text-yellow-400">${metrics.totalRevenue?.toFixed(2) || '0.00'}</p>
         </div>
       </div>
 
@@ -145,19 +180,18 @@ export default function Dashboard() {
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-  data={revenueDistribution}
-  dataKey="value"
-  nameKey="name"
-  cx="50%"
-  cy="50%"
-  outerRadius={100}
-  label={({ name, value }) => `${name}: ${value.toFixed(2)}`}
->
-  {revenueDistribution.map((entry, index) => (
-    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-  ))}
-</Pie>
-
+                  data={revenueDistribution}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={100}
+                  label={({ name, value }) => `${name}: ${value?.toFixed(2) || '0.00'}`}
+                >
+                  {revenueDistribution.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
                 <Tooltip
                   contentStyle={{ backgroundColor: "#1F2937", border: "none", color: "#ffffff" }}
                 />

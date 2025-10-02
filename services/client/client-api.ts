@@ -118,41 +118,41 @@ export const clientApiService = {
     resetPassword: (data: { token: string; password: string }) =>
       clientApi.api.post("/auth/reset-password", data).then((res) => res.data),
   },
-  user: {
-    getProfile: () => clientApi.api.get("/user/profile").then((res) => res.data),
-    updateProfile: (data: any) => clientApi.api.put("/user/profile", data).then((res) => res.data),
-    submitGovId: (data: any) => clientApi.api.post("/user/gov-id", data).then((res) => res.data),
-    getUser: (userId: string) => clientApi.api.get(`/user/${userId}`).then((res) => res.data),
+   user: {
+    getProfile: () => clientApi.api.get("/api/user/profile").then((res) => res.data), // FIXED: Added /api
+    updateProfile: (data: any) => clientApi.api.put("/api/user/profile", data).then((res) => res.data), // FIXED: Added /api
+    submitGovId: (data: any) => clientApi.api.post("/api/user/gov-id", data).then((res) => res.data), // FIXED: Added /api
+    getUser: (userId: string) => clientApi.api.get(`/api/user/${userId}`).then((res) => res.data), // FIXED: Added /api
   },
   notification: {
     getUserNotifications: (userId: string) =>
-      clientApi.api.get(`/notifications/${userId}`).then((res) => res.data),
+      clientApi.api.get(`/api/notifications/${userId}`).then((res) => res.data), // FIXED: Added /api
     markAsRead: (notificationId: string) =>
-      clientApi.api.patch(`/notifications/${notificationId}/read`).then((res) => res.data),
+      clientApi.api.patch(`/api/notifications/${notificationId}/read`).then((res) => res.data), // FIXED: Added /api
   },
   chat: {
     getConversation: (conversationId: string) =>
-      clientApi.api.get(`/chat/conversations/${conversationId}`).then((res) => res.data),
+      clientApi.api.get(`/api/chat/conversations/${conversationId}`).then((res) => res.data), // FIXED: Added /api
     getMessages: (conversationId: string) =>
-      clientApi.api.get(`/chat/conversations/${conversationId}/messages`).then((res) => res.data),
+      clientApi.api.get(`/api/chat/conversations/${conversationId}/messages`).then((res) => res.data), // FIXED: Added /api
     createConversation: (participants: string[]) =>
-      clientApi.api.post("/chat/conversations", { participants }).then((res) => res.data),
+      clientApi.api.post("/api/chat/conversations", { participants }).then((res) => res.data), // FIXED: Added /api
     sendMessage: (conversationId: string, content: string) =>
-      clientApi.api.post(`/chat/conversations/${conversationId}/messages`, { content }).then((res) => res.data),
+      clientApi.api.post(`/api/chat/conversations/${conversationId}/messages`, { content }).then((res) => res.data), // FIXED: Added /api
     sendImageMessage: (conversationId: string, formData: FormData) =>
-      clientApi.api.post(`/chat/conversations/${conversationId}/image`, formData, {
+      clientApi.api.post(`/api/chat/conversations/${conversationId}/image`, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
-      }).then((res) => res.data),
+      }).then((res) => res.data), // FIXED: Added /api
     deleteMessage: (messageId: string) =>
-      clientApi.api.delete(`/chat/messages/${messageId}`).then((res) => res.data),
+      clientApi.api.delete(`/api/chat/messages/${messageId}`).then((res) => res.data), // FIXED: Added /api
     uploadChatImage: (formData: FormData) =>
-      clientApi.api.post('/chat/upload-image', formData, {
+      clientApi.api.post('/api/chat/upload-image', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
-      }).then((res) => res.data),
+      }).then((res) => res.data), // FIXED: Added /api
     getUserConversations: (userId: string) =>
-      clientApi.api.get(`/chat/users/${userId}/conversations`).then((res) => res.data),
+      clientApi.api.get(`/api/chat/users/${userId}/conversations`).then((res) => res.data), // FIXED: Added /api
     getOrCreateRideConversation: (data: { rideId: string; driverId: string; userId: string }) =>
-      clientApi.api.post("/chat/ride-conversation", data).then((res) => res.data),
+      clientApi.api.post("/api/chat/ride-conversation", data).then((res) => res.data), // FIXED: Added /api
   },
   ride: {
     startRide: (data: {
@@ -167,22 +167,22 @@ export const clientApiService = {
       distance: number;
       routeGeometry: string;
       platformFee?: number;
-    }) => clientApi.api.post("/initiate-rides/start", data).then((res) => res.data),
-    getRides: () => clientApi.api.get("/initiate-rides/rides").then((res) => res.data),
+    }) => clientApi.api.post("/api/initiate-rides/start", data).then((res) => res.data), // FIXED: Added /api
+    getRides: () => clientApi.api.get("/api/initiate-rides/rides").then((res) => res.data), // FIXED: Added /api
     editRide: (rideId: string, driverId: string, dto: any) =>
-      clientApi.api.put(`/initiate-rides/${rideId}`, dto, { headers: { "Driver-Id": driverId } }).then((res) => res.data),
-    cancelRide: (rideId: string) => clientApi.api.delete(`/initiate-rides/${rideId}`).then((res) => res.data),
+      clientApi.api.put(`/api/initiate-rides/${rideId}`, dto, { headers: { "Driver-Id": driverId } }).then((res) => res.data), // FIXED: Added /api
+    cancelRide: (rideId: string) => clientApi.api.delete(`/api/initiate-rides/${rideId}`).then((res) => res.data), // FIXED: Added /api
     startTracking: (rideId: string, driverId: string) =>
-      clientApi.api.put(`/initiate-rides/${rideId}/start-tracking`, {}, { headers: { "Driver-Id": driverId } }).then((res) => res.data),
-    getJoinedRides: () => clientApi.api.get("/join-rides/joined").then((res) => res.data),
+      clientApi.api.put(`/api/initiate-rides/${rideId}/start-tracking`, {}, { headers: { "Driver-Id": driverId } }).then((res) => res.data), // FIXED: Added /api
+    getJoinedRides: () => clientApi.api.get("/api/join-rides/joined").then((res) => res.data), // FIXED: Added /api
     findNearestRides: (data: { userLocation: string; destination: string }) =>
-      clientApi.api.post("/join-rides/nearest", data).then((res) => res.data),
+      clientApi.api.post("/api/join-rides/nearest", data).then((res) => res.data), // FIXED: Added /api
     joinRide: (rideId: string, passengerId: string, pickupLocation: string, dropoffLocation: string) =>
-      clientApi.api.post("/join-rides/join", { rideId, passengerId, pickupLocation, dropoffLocation }).then((res) => res.data),
+      clientApi.api.post("/api/join-rides/join", { rideId, passengerId, pickupLocation, dropoffLocation }).then((res) => res.data), // FIXED: Added /api
     handleJoinRequest: (rideId: string, driverId: string, passengerId: string, action: "accept" | "reject") =>
-      clientApi.api.put(`/join-rides/${rideId}/requests/${passengerId}`, { driverId, action }).then((res) => res.data),
+      clientApi.api.put(`/api/join-rides/${rideId}/requests/${passengerId}`, { driverId, action }).then((res) => res.data), // FIXED: Added /api
     createRidePaymentOrder: (rideId: string) =>
-      clientApi.api.post("/join-rides/create-ride-order", { rideId }).then((res) => res.data),
+      clientApi.api.post("/api/join-rides/create-ride-order", { rideId }).then((res) => res.data), // FIXED: Added /api
     verifyAndJoinRide: (data: {
       rideId: string;
       pickupLocation: string;
@@ -190,26 +190,26 @@ export const clientApiService = {
       paymentId: string;
       orderId: string;
       signature: string;
-    }) => clientApi.api.post("/join-rides/verify-and-join", data).then((res) => res.data),
-    cancelJoinedRide: (rideId: string) => clientApi.api.delete(`/join-rides/joined/${rideId}`).then((res) => res.data),
+    }) => clientApi.api.post("/api/join-rides/verify-and-join", data).then((res) => res.data), // FIXED: Added /api
+    cancelJoinedRide: (rideId: string) => clientApi.api.delete(`/api/join-rides/joined/${rideId}`).then((res) => res.data), // FIXED: Added /api
     updateRide: (id: string, updates: { currentPosition?: [number, number]; passengerId: string; action: "picked" | "dropped" }, driverId: string) =>
-      clientApi.api.put(`/initiate-rides/${id}/update`, updates, { headers: { "Driver-Id": driverId } }).then((res) => res.data),
+      clientApi.api.put(`/api/initiate-rides/${id}/update`, updates, { headers: { "Driver-Id": driverId } }).then((res) => res.data), // FIXED: Added /api
   },
   wallet: {
     getWallet: (userId: string, page: number = 1, limit: number = 10) =>
-      clientApi.api.get(`/wallet/balance/${userId}`, { params: { page, limit } }).then((res) => res.data),
+      clientApi.api.get(`/api/wallet/balance/${userId}`, { params: { page, limit } }).then((res) => res.data), // FIXED: Added /api
     createOrder: (data: { userId: string; amount: number; currency: string }) =>
-      clientApi.api.post("/wallet/create-deposit-order", data).then((res) => res.data),
+      clientApi.api.post("/api/wallet/create-deposit-order", data).then((res) => res.data), // FIXED: Added /api
     addFunds: (data: {
       userId: string;
       amount: number;
       paymentId: string;
       orderId: string;
       signature: string;
-    }) => clientApi.api.post("/wallet/deposit", data).then((res) => res.data),
+    }) => clientApi.api.post("/api/wallet/deposit", data).then((res) => res.data), // FIXED: Added /api
   },
   vehicle: {
-    getVehicles: () => clientApi.api.get("/vehicles").then((res) => res.data),
+    getVehicles: () => clientApi.api.get("/api/vehicles").then((res) => res.data), // FIXED: Added /api
     addVehicle: (vehicleData: {
       vehicleName: string;
       vehicleType: string;
@@ -219,7 +219,7 @@ export const clientApiService = {
       vehicleImage: string;
       documentImage: string;
       mileage: number;
-    }) => clientApi.api.post("/vehicles", vehicleData).then((res) => res.data),
+    }) => clientApi.api.post("/api/vehicles", vehicleData).then((res) => res.data), // FIXED: Added /api
     updateVehicle: (vehicleId: string, vehicleData: {
       vehicleName: string;
       vehicleType: string;
@@ -229,8 +229,8 @@ export const clientApiService = {
       vehicleImage: string;
       documentImage: string;
       mileage: number;
-    }) => clientApi.api.put(`/vehicles/${vehicleId}`, vehicleData).then((res) => res.data),
-    deleteVehicle: (vehicleId: string) => clientApi.api.delete(`/vehicles/${vehicleId}`).then((res) => res.data),
+    }) => clientApi.api.put(`/api/vehicles/${vehicleId}`, vehicleData).then((res) => res.data), // FIXED: Added /api
+    deleteVehicle: (vehicleId: string) => clientApi.api.delete(`/api/vehicles/${vehicleId}`).then((res) => res.data), // FIXED: Added /api
     reapplyVehicle: (vehicleId: string, vehicleData: {
       vehicleName: string;
       vehicleType: string;
@@ -240,31 +240,31 @@ export const clientApiService = {
       vehicleImage: string;
       documentImage: string;
       mileage: number;
-    }) => clientApi.api.post(`/vehicles/${vehicleId}/reapply`, vehicleData).then((res) => res.data),
+    }) => clientApi.api.post(`/api/vehicles/${vehicleId}/reapply`, vehicleData).then((res) => res.data), // FIXED: Added /api
   },
-  tracking: {
+   tracking: {
     startTracking: (rideId: string, driverId: string, initialPosition: [number, number]) =>
-      clientApi.api.post(`/tracking/${rideId}/start`, { driverId, initialPosition }).then((res) => res.data),
+      clientApi.api.post(`/api/tracking/${rideId}/start`, { driverId, initialPosition }).then((res) => res.data), // FIXED: Added /api
     updateTrackingPosition: (rideId: string, position: [number, number]) =>
-      clientApi.api.put(`/tracking/${rideId}/position`, { position }).then((res) => res.data),
-    getTrackingStatus: (rideId: string) => clientApi.api.get(`/tracking/${rideId}/status`).then((res) => res.data),
-    getTrackingPosition: (rideId: string) => clientApi.api.get(`/tracking/${rideId}/position`).then((res) => res.data),
-    stopTracking: (rideId: string) => clientApi.api.put(`/tracking/${rideId}/stop`, {}).then((res) => res.data),
+      clientApi.api.put(`/api/tracking/${rideId}/position`, { position }).then((res) => res.data), // FIXED: Added /api
+    getTrackingStatus: (rideId: string) => clientApi.api.get(`/api/tracking/${rideId}/status`).then((res) => res.data), // FIXED: Added /api
+    getTrackingPosition: (rideId: string) => clientApi.api.get(`/api/tracking/${rideId}/position`).then((res) => res.data), // FIXED: Added /api
+    stopTracking: (rideId: string) => clientApi.api.put(`/api/tracking/${rideId}/stop`, {}).then((res) => res.data), // FIXED: Added /api
   },
   subscription: {
-    getSubscriptionPlans: () => clientApi.api.get("/subscriptions/plans").then((res) => res.data),
-    checkSubscription: (userId: string) => clientApi.api.get(`/subscriptions/check/${userId}`).then((res) => res.data),
-    createOrder: (planId: string) => clientApi.api.post("/subscriptions/create-order", { planId }).then((res) => res.data),
+    getSubscriptionPlans: () => clientApi.api.get("/api/subscriptions/plans").then((res) => res.data), // FIXED: Added /api
+    checkSubscription: (userId: string) => clientApi.api.get(`/api/subscriptions/check/${userId}`).then((res) => res.data), // FIXED: Added /api
+    createOrder: (planId: string) => clientApi.api.post("/api/subscriptions/create-order", { planId }).then((res) => res.data), // FIXED: Added /api
     verifyAndSubscribe: (data: {
       userId: string;
       planId: string;
       paymentId: string;
       orderId: string;
       signature: string;
-    }) => clientApi.api.post("/subscriptions/verify", data).then((res) => res.data),
+    }) => clientApi.api.post("/api/subscriptions/verify", data).then((res) => res.data), // FIXED: Added /api
     subscribeWithWallet: (data: { userId: string; planId: string }) =>
-      clientApi.api.post("/subscriptions/subscribe-wallet", data).then((res) => res.data),
-    getSubscriptionStatus: () => clientApi.api.get("/subscriptions/status").then((res) => res.data),
+      clientApi.api.post("/api/subscriptions/subscribe-wallet", data).then((res) => res.data), // FIXED: Added /api
+    getSubscriptionStatus: () => clientApi.api.get("/api/subscriptions/status").then((res) => res.data), // FIXED: Added /api
   },
   geo: {
     searchAddress: async (query: string) => {
@@ -283,7 +283,7 @@ export const clientApiService = {
       throw new Error('Location not found in Kerala');
     },
     calculateRoute: (startPoint: string, endPoint: string) =>
-      clientApi.api.post("/route", { startPoint, endPoint }).then((res) => res.data),
+      clientApi.api.post("/api/route", { startPoint, endPoint }).then((res) => res.data), // FIXED: Added /api
   },
   admin: {
     auth: {

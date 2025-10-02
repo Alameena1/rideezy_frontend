@@ -1,10 +1,11 @@
+// app/admin/layout.tsx - UPDATED
 "use client";
 
 import { ReactNode, useState, useEffect } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Menu, X, Home, Users, CheckSquare, Truck, LogOut } from "lucide-react";
-import apiService from "@/services/api"; 
+import { signOut } from "next-auth/react";
 
 interface SidebarLinkProps {
   href: string;
@@ -61,12 +62,26 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
 
   const handleLogout = async () => {
     try {
-      await apiService.admin.auth.logout(); // Use apiService.admin.auth.logout()
-      closeSidebar();
+      console.log("🔄 Starting admin logout...");
+      
+      // Use NextAuth signOut instead of API call
+      await signOut({ 
+        redirect: false,
+        callbackUrl: "/admin/login"
+      });
+      
+      console.log("✅ NextAuth signOut completed");
+      
+      // Clear any local storage or state if needed
+      localStorage.removeItem("admin-data");
+      
+      // Redirect to admin login
       router.push("/admin/login");
       router.refresh();
+      
     } catch (error) {
-      console.error("Logout failed:", error);
+      console.error("❌ Logout failed:", error);
+      // Force redirect even if there's an error
       router.push("/admin/login");
       router.refresh();
     }
@@ -134,7 +149,7 @@ const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
           <div className="p-4 border-t border-gray-700">
             <button
               onClick={handleLogout}
-              className="flex items-center gap-3 px-4 py-3 rounded-md transition-colors text-gray-300 hover:bg-gray-700 hover:text-white w-full text-left"
+              className="flex items-center gap-3 px-4 py-3 rounded-md transition-colors text-gray-300 hover:bg-red-700 hover:text-white w-full text-left"
             >
               <LogOut size={18} />
               <span>Logout</span>

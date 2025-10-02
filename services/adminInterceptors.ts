@@ -1,6 +1,6 @@
-// services/adminInterceptors.ts (updated to break cycle)
+// services/adminInterceptors.ts - UPDATED
 import axios from "axios";
-import Cookies from "js-cookie";
+import { getSession } from "next-auth/react";
 
 export const createAdminApiInstance = (baseURL: string) => {
   const api = axios.create({
@@ -10,25 +10,30 @@ export const createAdminApiInstance = (baseURL: string) => {
     },
   });
 
-  // Local admin token getters (no import from auth.ts)
-  const getAdminValidToken = () => Cookies.get("adminAuthToken");
-  const getAdminRefreshToken = () => Cookies.get("refreshToken");
-
   api.interceptors.request.use(
     async (config) => {
       const unauthenticatedRoutes = ["/admin/login", "/admin/refresh-token", "/admin/logout"];
+      
+      // Skip auth for unauthenticated routes
       if (config.url && unauthenticatedRoutes.some((route) => config.url!.includes(route))) {
         return config;
       }
 
       try {
-        const token = getAdminValidToken();
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
+        // Get session from NextAuth instead of cookies
+        const session = await getSession();
+        const accessToken = (session?.user as any)?.accessToken;
+
+        if (accessToken) {
+          config.headers.Authorization = `Bearer ${accessToken}`;
+          console.log("🔐 Admin API: Using NextAuth token for request");
+        } else {
+          console.warn("⚠️ Admin API: No access token found in session");
         }
+        
         return config;
       } catch (error) {
-        console.error("Failed to get admin valid token:", error);
+        console.error("Failed to get admin session:", error);
         return config;
       }
     },
@@ -40,15 +45,16 @@ export const createAdminApiInstance = (baseURL: string) => {
     async (error) => {
       const originalRequest = error.config;
 
+      // Handle blocked user
       if (
         error.response?.status === 403 &&
         error.response?.data?.message === "Your account has been blocked. Contact support."
       ) {
-        Cookies.remove("adminAuthToken", { path: "/" });
-        Cookies.remove("refreshToken", { path: "/" });
+        console.error("❌ Admin account blocked");
         return Promise.reject(error);
       }
 
+      // Handle token refresh (using NextAuth)
       if (
         error.response?.status === 401 &&
         !originalRequest._retry &&
@@ -59,40 +65,36 @@ export const createAdminApiInstance = (baseURL: string) => {
         originalRequest._retry = true;
 
         try {
-          const refreshToken = getAdminRefreshToken();
-          if (!refreshToken) throw new Error("No refresh token found");
+          console.log("🔄 Admin API: Token expired, attempting refresh...");
+          
+          const session = await getSession();
+          const refreshToken = (session?.user as any)?.refreshToken;
 
+          if (!refreshToken) {
+            throw new Error("No refresh token found in session");
+          }
+
+          // Call your backend refresh endpoint
           const response = await axios.post(
             `${baseURL}/admin/refresh-token`,
             { refreshToken },
             { headers: { "Content-Type": "application/json" } }
           );
 
-          const { token: newAccessToken, refreshToken: newRefreshToken } = response.data;
+          const { accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data;
 
-          Cookies.set("adminAuthToken", newAccessToken, {
-            expires: 1,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "strict",
-            path: "/",
-          });
-
-          if (newRefreshToken) {
-            Cookies.set("refreshToken", newRefreshToken, {
-              expires: 7,
-              secure: process.env.NODE_ENV === "production",
-              sameSite: "strict",
-              path: "/",
-            });
-          }
-
+          // Update the session (NextAuth will handle this)
+          // Note: You might need to trigger a session update here
+          
+          // Retry original request with new token
           api.defaults.headers.Authorization = `Bearer ${newAccessToken}`;
           originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+          
+          console.log("✅ Admin API: Token refreshed successfully");
           return api(originalRequest);
         } catch (refreshError) {
-          console.error("Admin refresh token failed:", refreshError);
-          Cookies.remove("adminAuthToken", { path: "/" });
-          Cookies.remove("refreshToken", { path: "/" });
+          console.error("❌ Admin API: Token refresh failed:", refreshError);
+          // Redirect to login
           if (typeof window !== 'undefined') {
             window.location.href = "/admin/login";
           }
@@ -100,7 +102,7 @@ export const createAdminApiInstance = (baseURL: string) => {
         }
       }
 
-      console.log("Admin Interceptor caught error:", error.response?.status, error.response?.data);
+      console.log("Admin API Error:", error.response?.status, error.response?.data);
       return Promise.reject(error);
     }
   );
