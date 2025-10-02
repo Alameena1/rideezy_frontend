@@ -1,22 +1,41 @@
 import { clientApi } from "../client/client-api";
 
-interface Message {
+export interface Message {
   _id: string;
   conversationId: string;
-  senderId: { _id: string; name: string };
+  senderId: { _id: string; fullName: string; profilePicture?: string };
   content: string;
+  messageType: 'text' | 'image' | 'file';
+  imageUrl?: string;
+  fileUrl?: string;
+  fileName?: string;
+  isDeleted: boolean;
   timestamp: string;
+  createdAt: string | number | Date;
 }
 
-interface Conversation {
+export interface Conversation {
   _id: string;
-  participants: string[];
+  participants: Array<{ _id: string; fullName: string; profilePicture?: string }>;
   createdAt: string;
   rideId?: string;
+  lastMessage?: string;
+  lastMessageTime?: Date;
+  unreadCount?: number;
+}
+
+export interface ChatResponse {
+  success: boolean;
+  message?: string;
+  conversation?: Conversation;
+  conversations?: Conversation[];
+  messages?: Message[];
+  imageUrl?: string;
+  deletedMessage?: Message;
 }
 
 export const chatApi = {
-  getConversation: async (conversationId: string) => {
+  getConversation: async (conversationId: string): Promise<ChatResponse> => {
     try {
       console.log("Fetching conversation:", conversationId);
       const response = await clientApi.api.get(`/chat/conversations/${conversationId}`);
@@ -31,7 +50,7 @@ export const chatApi = {
     }
   },
 
-  getMessages: async (conversationId: string) => {
+  getMessages: async (conversationId: string): Promise<ChatResponse> => {
     try {
       console.log("Fetching messages for conversation:", conversationId);
       const response = await clientApi.api.get(`/chat/conversations/${conversationId}/messages`);
@@ -46,7 +65,7 @@ export const chatApi = {
     }
   },
 
-  createConversation: async (participants: string[]) => {
+  createConversation: async (participants: string[]): Promise<ChatResponse> => {
     try {
       console.log("Creating conversation with participants:", participants);
       const response = await clientApi.api.post("/chat/conversations", { participants });
@@ -61,7 +80,7 @@ export const chatApi = {
     }
   },
 
-  sendMessage: async (conversationId: string, content: string) => {
+  sendMessage: async (conversationId: string, content: string): Promise<ChatResponse> => {
     try {
       const response = await clientApi.api.post(`/chat/conversations/${conversationId}/messages`, { content });
       return {
@@ -74,7 +93,57 @@ export const chatApi = {
     }
   },
 
-  getUserConversations: async (userId: string) => {
+  sendImageMessage: async (conversationId: string, formData: FormData): Promise<ChatResponse> => {
+    try {
+      console.log("Sending image message to conversation:", conversationId);
+      const response = await clientApi.api.post(`/chat/conversations/${conversationId}/image`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      console.log("sendImageMessage response:", response);
+      return {
+        success: response.data.success,
+        message: response.data.message,
+      };
+    } catch (error) {
+      console.error("Failed to send image message:", error);
+      throw error;
+    }
+  },
+
+  deleteMessage: async (messageId: string): Promise<ChatResponse> => {
+    try {
+      console.log("Deleting message:", messageId);
+      const response = await clientApi.api.delete(`/chat/messages/${messageId}`);
+      console.log("deleteMessage response:", response);
+      return {
+        success: response.data.success,
+        message: response.data.message,
+        deletedMessage: response.data.deletedMessage,
+      };
+    } catch (error) {
+      console.error("Failed to delete message:", error);
+      throw error;
+    }
+  },
+
+  uploadChatImage: async (formData: FormData): Promise<ChatResponse> => {
+    try {
+      console.log("Uploading chat image");
+      const response = await clientApi.api.post('/chat/upload-image', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      console.log("uploadChatImage response:", response);
+      return {
+        success: response.data.success,
+        imageUrl: response.data.imageUrl,
+      };
+    } catch (error) {
+      console.error("Failed to upload chat image:", error);
+      throw error;
+    }
+  },
+
+  getUserConversations: async (userId: string): Promise<ChatResponse> => {
     try {
       console.log("Fetching conversations for user:", userId);
       const response = await clientApi.api.get(`/chat/users/${userId}/conversations`);
@@ -89,7 +158,7 @@ export const chatApi = {
     }
   },
 
-  getOrCreateRideConversation: async (data: { rideId: string; driverId: string; userId: string }) => {
+  getOrCreateRideConversation: async (data: { rideId: string; driverId: string; userId: string }): Promise<ChatResponse> => {
     try {
       console.log("Getting or creating ride conversation:", data);
       const response = await clientApi.api.post("/chat/ride-conversation", data);
@@ -104,3 +173,5 @@ export const chatApi = {
     }
   },
 };
+
+export default chatApi;

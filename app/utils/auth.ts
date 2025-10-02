@@ -1,97 +1,50 @@
-import jwt from "jsonwebtoken";
-import apiService from "@/services/api";
-import Cookies from "js-cookie";
+import { getSession } from "next-auth/react";
 
-export const getToken = (): string | null => {
-  if (typeof window !== "undefined") {
-    return localStorage.getItem("token") || Cookies.get("accessToken") || null;
-  }
-  return null;
-};
-
-export const getRefreshToken = (): string | null => {
-  if (typeof window !== "undefined") {
-    return Cookies.get("refreshToken") || null;
-  }
-  return null;
-};
-
-export const setToken = (token: string): void => {
-  if (typeof window !== "undefined") {
-    // Use adminAuthToken for admin context
-    Cookies.set("adminAuthToken", token, {
-      expires: 1,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      path: "/",
-    });
-    // Optionally keep in localStorage for fallback
-    localStorage.setItem("token", token);
-  }
-};
-
-export const setRefreshToken = (refreshToken: string): void => {
-  if (typeof window !== "undefined") {
-    Cookies.set("refreshToken", refreshToken, {
-      expires: 7,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      path: "/",
-    });
-    localStorage.setItem("refreshToken", refreshToken);
-  }
-};
-
-export const removeToken = (): void => {
-  if (typeof window !== "undefined") {
-    localStorage.removeItem("token");
-    localStorage.removeItem("refreshToken");
-    Cookies.remove("adminAuthToken");
-    Cookies.remove("refreshToken");
-  }
-};
-
-export const isTokenExpired = (token: string): boolean => {
+export const getToken = async (): Promise<string | null> => {
   try {
-    const decoded = jwt.decode(token) as { exp?: number };
-    if (!decoded?.exp) return true;
-    return decoded.exp * 1000 < Date.now();
+    const session = await getSession();
+    return (session?.user as any)?.accessToken || null;
   } catch (error) {
-    return true;
+    console.error("Error getting token:", error);
+    return null;
   }
 };
 
-export const refreshToken = async (p0: { refreshToken: string; }): Promise<string> => {
+export const getRefreshToken = async (): Promise<string | null> => {
   try {
-    const refreshToken = getRefreshToken();
+    const session = await getSession();
+    return (session?.user as any)?.refreshToken || null;
+  } catch (error) {
+    console.error("Error getting refresh token:", error);
+    return null;
+  }
+};
+
+export const refreshToken = async (): Promise<string | null> => {
+  try {
+    const session = await getSession();
+    const refreshToken = (session?.user as any)?.refreshToken;
+    
     if (!refreshToken) {
       throw new Error("No refresh token available");
     }
 
-    const response = await apiService.auth.refreshToken({ refreshToken });
-    if (response.success && response.token) {
-      setToken(response.token);
-      if (response.refreshToken) {
-        setRefreshToken(response.refreshToken);
-      }
-      return response.token;
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/auth/refresh-token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ refreshToken }),
+    });
+
+    if (!response.ok) {
+      throw new Error("Failed to refresh token");
     }
-    throw new Error("Failed to refresh token: " + (response.message || "Unknown error"));
+
+    const data = await response.json();
+    return data.accessToken || null;
   } catch (error) {
-    removeToken();
-    throw error;
+    console.error("Error refreshing token:", error);
+    return null;
   }
-};
-
-export const getValidToken = async (): Promise<string> => {
-  const token = getToken() || Cookies.get("adminAuthToken"); 
-  if (!token) {
-    throw new Error("No token available");
-  }
-
-  if (isTokenExpired(token)) {
-    return await refreshToken();
-  }
-
-  return token;
 };

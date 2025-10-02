@@ -62,6 +62,43 @@ export interface AdminLoginResponse {
   message?: string;
 }
 
+// Chat specific interfaces
+export interface Message {
+  _id: string;
+  conversationId: string;
+  senderId: { _id: string; fullName: string; profilePicture?: string };
+  content: string;
+  messageType: 'text' | 'image' | 'file';
+  imageUrl?: string;
+  fileUrl?: string;
+  fileName?: string;
+  isDeleted: boolean;
+  timestamp: string;
+  createdAt: string | number | Date;
+}
+
+export interface Conversation {
+  _id: string;
+  participants: Array<{ _id: string; fullName: string; profilePicture?: string }>;
+  createdAt: string;
+  rideId?: string;
+  lastMessage?: string;
+  lastMessageTime?: Date;
+  unreadCount?: number;
+}
+
+export interface ChatImageUploadResponse {
+  success: boolean;
+  imageUrl: string;
+  message?: string;
+}
+
+export interface DeleteMessageResponse {
+  success: boolean;
+  message: string;
+  deletedMessage?: Message;
+}
+
 export const clientApiService = {
   auth: {
     login: (credentials: { email: string; password: string }) =>
@@ -102,6 +139,16 @@ export const clientApiService = {
       clientApi.api.post("/chat/conversations", { participants }).then((res) => res.data),
     sendMessage: (conversationId: string, content: string) =>
       clientApi.api.post(`/chat/conversations/${conversationId}/messages`, { content }).then((res) => res.data),
+    sendImageMessage: (conversationId: string, formData: FormData) =>
+      clientApi.api.post(`/chat/conversations/${conversationId}/image`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      }).then((res) => res.data),
+    deleteMessage: (messageId: string) =>
+      clientApi.api.delete(`/chat/messages/${messageId}`).then((res) => res.data),
+    uploadChatImage: (formData: FormData) =>
+      clientApi.api.post('/chat/upload-image', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      }).then((res) => res.data),
     getUserConversations: (userId: string) =>
       clientApi.api.get(`/chat/users/${userId}/conversations`).then((res) => res.data),
     getOrCreateRideConversation: (data: { rideId: string; driverId: string; userId: string }) =>
