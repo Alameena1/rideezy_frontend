@@ -91,36 +91,36 @@ const JoinRidePage: React.FC = () => {
   const [L, setL] = useState<any>(null);
 
   const { handleRidePayment, paymentLoading } = useRidePayment({
-    userId: user?._id || "",
-    pickupLocation: userLocation,
-    dropoffLocation: destination,
-    pickupPlaceName: userLocationName,
-    dropoffPlaceName: destinationName,
-    onSuccess: (ride) => {
-      setJoinLocation(userLocation);
-      setError(null);
-      Swal.fire({
-        icon: "success",
-        title: "Successfully Joined the Ride!",
-        text: "Would you like to view the ride details or continue searching?",
-        showCancelButton: true,
-        confirmButtonText: "View Ride",
-        cancelButtonText: "Continue Searching",
-        confirmButtonColor: "#3085d6",
-        cancelButtonColor: "#d33",
-      }).then((result) => {
-        if (result.isConfirmed) {
-          window.location.href = `/user/joinedRideDetails?rideId=${ride.rideId}`;
-        } else {
-          handleSearch();
-        }
-      });
-    },
-    onError: (errorMessage) => {
-      setError(errorMessage);
-      setIsCostLoading(false);
-    },
-  });
+  userId: user?._id || "",
+  pickupLocation: userLocation,
+  dropoffLocation: destination,
+  pickupPlaceName: userLocationName, // Add this
+  dropoffPlaceName: destinationName, // Add this
+  onSuccess: (ride) => {
+    setJoinLocation(userLocation);
+    setError(null);
+    Swal.fire({
+      icon: "success",
+      title: "Successfully Joined the Ride!",
+      text: "Would you like to view the ride details or continue searching?",
+      showCancelButton: true,
+      confirmButtonText: "View Ride",
+      cancelButtonText: "Continue Searching",
+      confirmButtonColor: "#3085d6",
+      cancelButtonColor: "#d33",
+    }).then((result) => {
+      if (result.isConfirmed) {
+        window.location.href = `/user/joinedRideDetails?rideId=${ride.rideId}`;
+      } else {
+        handleSearch();
+      }
+    });
+  },
+  onError: (errorMessage) => {
+    setError(errorMessage);
+    setIsCostLoading(false);
+  },
+});
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -332,33 +332,62 @@ const JoinRidePage: React.FC = () => {
   }, [selectedRide, userLocation, destination, user?._id, fetchPassengerCost]);
 
   const handleSearch = async () => {
-    if (!userLocation || !destination) {
-      setError("Please select both your location and destination.");
+  if (!userLocation || !destination) {
+    setError("Please select both your location and destination.");
+    return;
+  }
+
+  setIsLoading(true);
+  setError(null);
+  
+  try {
+    const response = await clientApiService.ride.findNearestRides({ userLocation, destination });
+    console.log("[JoinRidePage] Fetched rides response:", response);
+    
+    // Handle different response formats
+    let ridesData = [];
+    
+    if (Array.isArray(response)) {
+      // Response is already an array
+      ridesData = response;
+    } else if (response && Array.isArray(response.data)) {
+      // Response has data property that's an array
+      ridesData = response.data;
+    } else if (response && response.data && Array.isArray(response.data.data)) {
+      // Response has nested data property
+      ridesData = response.data.data;
+    } else if (response && response.success && Array.isArray(response.data)) {
+      // Response has success flag and data array
+      ridesData = response.data;
+    } else {
+      console.warn("[JoinRidePage] Unexpected response format:", response);
+      setError("No rides found matching your criteria.");
+      setRides([]);
       return;
     }
-
-    setIsLoading(true);
-    setError(null);
     
-    try {
-      const response = await clientApiService.ride.findNearestRides({ userLocation, destination }); // Updated to clientApiService
-      console.log("[JoinRidePage] Fetched rides:", response);
-      setRides(response);
-      setSelectedRide(null);
-      setJoinLocation(null);
-      setPassengerDistance(null);
-      setPassengerCost(null);
-      setIsCostLoading(false);
-      setIsJoinRideSuccessful(false);
-    } catch (err: any) {
-      const message =
-        err.response?.data?.message || err.message || "Failed to fetch rides. Please try again.";
-      setError(message);
-      console.error("[JoinRidePage] Error fetching rides:", err);
-    } finally {
-      setIsLoading(false);
+    console.log("[JoinRidePage] Processed rides data:", ridesData);
+    setRides(ridesData);
+    setSelectedRide(null);
+    setJoinLocation(null);
+    setPassengerDistance(null);
+    setPassengerCost(null);
+    setIsCostLoading(false);
+    setIsJoinRideSuccessful(false);
+    
+    if (ridesData.length === 0) {
+      setError("No rides found matching your criteria. Try adjusting your search locations.");
     }
-  };
+  } catch (err: any) {
+    console.error("[JoinRidePage] Error fetching rides:", err);
+    const message =
+      err.response?.data?.message || err.message || "Failed to fetch rides. Please try again.";
+    setError(message);
+    setRides([]); // Ensure rides is always an array
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   const validateLocationFormat = (location: string): boolean => {
     const [lat, lng] = location.split(",").map(Number);

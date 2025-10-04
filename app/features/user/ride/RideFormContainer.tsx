@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import Swal from "sweetalert2";
-import { clientApiService } from "@/services/client/client-api"; // Updated import
+import { clientApiService } from "@/services/client/client-api";
 import MapComponent from "./MapComponent";
 import AddressSearch from "./AddressSearch";
 import RideFormFields from "./RideFormFields";
@@ -72,7 +72,7 @@ const RideFormContainer: React.FC = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const userData = await clientApiService.user.getProfile(); // Updated to clientApiService
+        const userData = await clientApiService.user.getProfile();
         console.log("[RideFormContainer] Fetched user data:", userData);
         const driverId = userData.data?._id || userData._id;
         if (!driverId) {
@@ -80,13 +80,13 @@ const RideFormContainer: React.FC = () => {
         }
         setValue("driverId", driverId);
 
-        const vehiclesData = await clientApiService.vehicle.getVehicles(); // Updated to clientApiService
+        const vehiclesData = await clientApiService.vehicle.getVehicles();
         console.log("[RideFormContainer] Fetched vehicles:", vehiclesData);
         const vehicles = vehiclesData.data?.data || vehiclesData.data || [];
         setVehicles(vehicles);
         if (vehicles.length > 0) setValue("vehicleId", vehicles[0]._id);
 
-        const subscriptionData = await clientApiService.subscription.getSubscriptionStatus(); // Updated to clientApiService
+        const subscriptionData = await clientApiService.subscription.getSubscriptionStatus();
         console.log("[RideFormContainer] Subscription status:", subscriptionData);
         setIsSubscribed(subscriptionData.data?.isSubscribed || false);
       } catch (error: any) {
@@ -114,7 +114,7 @@ const RideFormContainer: React.FC = () => {
       const totalRideCost = totalFuelCost + platformFee;
       setPerKmRate(totalRideCost / distanceInKm);
     }
-  }, [routeData, vehicleId, passengerCount, fuelPrice, isSubscribed]);
+  }, [routeData, vehicleId, passengerCount, fuelPrice, vehicles, isSubscribed]);
 
   const onSubmit = async (data: FormData) => {
     if (!routeData || !routeData.distance || !routeData.geometry) {
@@ -127,7 +127,7 @@ const RideFormContainer: React.FC = () => {
     }
 
     const selectedVehicle = vehicles.find((v) => v._id === data.vehicleId);
-    if (data.passengerCount > selectedVehicle?.seatCapacity) {
+    if (data.passengerCount > (selectedVehicle?.seatCapacity || 0)) {
       Swal.fire({
         icon: "error",
         title: "Invalid Passenger Count",
@@ -155,12 +155,14 @@ const RideFormContainer: React.FC = () => {
 
     setIsLoading(true);
     try {
-      const response = await clientApiService.ride.startRide(rideData); // Updated to clientApiService
+      const response = await clientApiService.ride.startRide(rideData);
       console.log("[RideFormContainer] Start ride response:", response);
       Swal.fire({
         icon: "success",
         title: "Ride Initiated Successfully!",
-        text: platformFee > 0 ? `A platform fee of ₹${platformFee} has been applied and deducted from your wallet.` : "No platform fee applied.",
+        text: platformFee && platformFee > 0 
+          ? `A platform fee of ₹${platformFee} has been applied and deducted from your wallet.` 
+          : "No platform fee applied.",
         showCancelButton: true,
         confirmButtonText: "View Ride",
         cancelButtonText: "Go Home",
@@ -194,7 +196,12 @@ const RideFormContainer: React.FC = () => {
       <h2 className="text-2xl font-bold mb-4">Start a New Ride</h2>
       <div className="flex flex-col md:flex-row gap-4">
         <div className="w-full md:w-1/2">
-          <MapComponent startPoint={startPoint} endPoint={endPoint} routeData={routeData} setRouteData={setRouteData} />
+          <MapComponent 
+            startPoint={startPoint} 
+            endPoint={endPoint} 
+            routeData={routeData} 
+            setRouteData={setRouteData} 
+          />
         </div>
         <div className="w-full md:w-1/2">
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
@@ -224,11 +231,12 @@ const RideFormContainer: React.FC = () => {
               perKmRate={perKmRate}
               platformFee={platformFee}
               selectedVehicleId={vehicleId}
+              isLoading={isLoading}
             />
             <button
               type="submit"
-              className="w-full bg-black text-white py-2 rounded-md hover:bg-gray-800"
-              disabled={isLoading}
+              className="w-full bg-black text-white py-2 rounded-md hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              disabled={isLoading || !routeData}
             >
               {isLoading ? "Submitting..." : "Start Ride"}
             </button>

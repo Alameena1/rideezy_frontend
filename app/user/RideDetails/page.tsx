@@ -2,19 +2,21 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import useAuth from "@/app/hooks/useAuth";
-import { clientApiService } from "@/services/client/client-api"; // Updated import
+import { clientApiService } from "@/services/client/client-api";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Separator } from "@/components/ui/separator";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { ChevronDown, ChevronUp, RefreshCw, Route } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import * as L from "leaflet";
 import ErrorAlert from "../../features/user/vehicles/ErrorAlert";
 import MainLayout from "../../comp/MainLayout";
 import "leaflet/dist/leaflet.css";
+import Link from "next/link";
 
 interface Ride {
   _id: string;
@@ -57,7 +59,7 @@ interface TrackingPosition {
 }
 
 export default function RideDetails() {
-  const { user } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [rides, setRides] = useState<Ride[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
@@ -108,8 +110,14 @@ export default function RideDetails() {
   }, []);
 
   useEffect(() => {
-    fetchRides();
-  }, []);
+    // Only fetch rides if user is authenticated
+    if (user && isAuthenticated) {
+      fetchRidesWithRetry();
+    } else if (!authLoading) {
+      setError("Please log in to view your rides.");
+      setIsLoading(false);
+    }
+  }, [user, isAuthenticated, authLoading]);
 
   const calculateHaversineDistance = (coord1: [number, number], coord2: [number, number]): number => {
     if (!coord1 || !coord2 || coord1.length !== 2 || coord2.length !== 2 || coord1.some(isNaN) || coord2.some(isNaN)) {
@@ -140,7 +148,7 @@ export default function RideDetails() {
     for (let i = 0; i < retries; i++) {
       try {
         const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`, {
-          headers: { 'User-Agent': 'RideEzy/1.0 (contact@rideezy.com)' }, // Unique User-Agent
+          headers: { 'User-Agent': 'RideEzy/1.0 (contact@rideezy.com)' },
         });
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -162,20 +170,60 @@ export default function RideDetails() {
       }
     }
     console.warn(`[RideDetails] All retries failed for ${cacheKey}, returning coordinates`);
-    return `${lat},${lon}`; // Fallback to coordinates
+    return `${lat},${lon}`;
   };
 
   const fetchRides = async () => {
     setIsLoading(true);
+    setError(null);
+    
     try {
-      const ridesData = await clientApiService.ride.getRides(); // Updated to clientApiService
-      if (!Array.isArray(ridesData.data)) {
-        setError("Invalid rides data format");
+      console.log("[RideDetails] Starting to fetch rides...");
+      const response = await clientApiService.ride.getRides();
+      console.log("[RideDetails] Raw API response:", response);
+      console.log("[RideDetails] Response structure:", {
+        data: response.data,
+        success: response.success,
+        status: response.status,
+        fullResponse: response
+      });
+
+      // Handle different response formats
+      let ridesData = [];
+      
+      if (Array.isArray(response)) {
+        ridesData = response;
+        console.log("[RideDetails] Response is direct array");
+      } else if (response && Array.isArray(response.data)) {
+        ridesData = response.data;
+        console.log("[RideDetails] Response has data array");
+      } else if (response && response.data && Array.isArray(response.data.data)) {
+        ridesData = response.data.data;
+        console.log("[RideDetails] Response has nested data array");
+      } else if (response && response.success && Array.isArray(response.data)) {
+        ridesData = response.data;
+        console.log("[RideDetails] Response has success flag and data array");
+      } else if (response && response.rides && Array.isArray(response.rides)) {
+        ridesData = response.rides;
+        console.log("[RideDetails] Response has rides array");
+      } else {
+        console.warn("[RideDetails] Unexpected response format:", response);
+        setError("No rides found or invalid response format.");
+        setRides([]);
         return;
       }
-      const mappedRides: Ride[] = ridesData.data.map((ride: any) => ({
-        _id: ride._id.toString(),
-        rideId: ride.rideId || "N/A",
+
+      console.log("[RideDetails] Processed rides data:", ridesData);
+      
+      if (ridesData.length === 0) {
+        console.log("[RideDetails] No rides found in the response");
+        setRides([]);
+        return;
+      }
+
+      const mappedRides: Ride[] = ridesData.map((ride: any) => ({
+        _id: ride._id?.toString() || ride.id?.toString() || `temp-${Math.random()}`,
+        rideId: ride.rideId || ride._id || "N/A",
         driverId: ride.driverId || "N/A",
         vehicleId: ride.vehicleId || "N/A",
         date: ride.date ? new Date(ride.date).toISOString().split("T")[0] : "N/A",
@@ -196,26 +244,36 @@ export default function RideDetails() {
         routeGeometry: ride.routeGeometry || "",
         pendingRequests: ride.pendingRequests || [],
       }));
-      setRides(mappedRides);
-      console.log("[RideDetails] Mapped rides:", mappedRides);
 
+      console.log("[RideDetails] Mapped rides:", mappedRides);
+      setRides(mappedRides);
+
+      // Fetch place names
       const placePromises = mappedRides.map(async (ride: Ride) => {
-        const [startLat, startLon] = ride.startPoint.split(",").map(Number);
-        const [endLat, endLon] = ride.endPoint.split(",").map(Number);
-        if (isNaN(startLat) || isNaN(startLon) || isNaN(endLat) || isNaN(endLon)) {
-          console.warn(`[RideDetails] Invalid coordinates for ride ${ride._id}: ${ride.startPoint}, ${ride.endPoint}`);
+        try {
+          const [startLat, startLon] = ride.startPoint.split(",").map(Number);
+          const [endLat, endLon] = ride.endPoint.split(",").map(Number);
+          
+          if (isNaN(startLat) || isNaN(startLon) || isNaN(endLat) || isNaN(endLon)) {
+            console.warn(`[RideDetails] Invalid coordinates for ride ${ride._id}: ${ride.startPoint}, ${ride.endPoint}`);
+            return { rideId: ride._id, startPlace: ride.startPoint, endPlace: ride.endPoint };
+          }
+          
+          let startPlace = ride.startPoint;
+          let endPlace = ride.endPoint;
+          
+          try {
+            startPlace = await reverseGeocode(startLat, startLon);
+            endPlace = await reverseGeocode(endLat, endLon);
+          } catch (error) {
+            console.error(`[RideDetails] Failed to geocode for ride ${ride._id}:`, error);
+          }
+          
+          return { rideId: ride._id, startPlace, endPlace };
+        } catch (error) {
+          console.error(`[RideDetails] Error processing place names for ride ${ride._id}:`, error);
           return { rideId: ride._id, startPlace: ride.startPoint, endPlace: ride.endPoint };
         }
-        let startPlace = ride.startPoint;
-        let endPlace = ride.endPoint;
-        try {
-          startPlace = await reverseGeocode(startLat, startLon);
-          endPlace = await reverseGeocode(endLat, endLon);
-        } catch (error) {
-          console.error(`[RideDetails] Failed to geocode for ride ${ride._id}:`, error);
-          setError("Failed to load place names for some rides. Using coordinates instead.");
-        }
-        return { rideId: ride._id, startPlace, endPlace };
       });
 
       const placeResults = await Promise.all(placePromises);
@@ -223,8 +281,10 @@ export default function RideDetails() {
         acc[rideId] = { startPlace, endPlace };
         return acc;
       }, {} as { [key: string]: PlaceName });
+      
       setPlaceNames(newPlaceNames);
 
+      // Initialize action states
       const initialPickupActions = mappedRides.reduce((acc, ride) => {
         acc[ride._id] = ride.passengers.reduce((passAcc, pass) => {
           passAcc[pass.passengerId] = pass.pickedUp || false;
@@ -232,6 +292,7 @@ export default function RideDetails() {
         }, {} as { [key: string]: boolean });
         return acc;
       }, {} as { [key: string]: { [key: string]: boolean } });
+      
       const initialDropoffActions = mappedRides.reduce((acc, ride) => {
         acc[ride._id] = ride.passengers.reduce((passAcc, pass) => {
           passAcc[pass.passengerId] = pass.droppedOff || false;
@@ -239,13 +300,52 @@ export default function RideDetails() {
         }, {} as { [key: string]: boolean });
         return acc;
       }, {} as { [key: string]: { [key: string]: boolean } });
+      
       setPickupActions(initialPickupActions);
       setDropoffActions(initialDropoffActions);
+
     } catch (error: any) {
-      console.error("[RideDetails] Error fetching rides:", error.message || error);
-      setError("Failed to fetch rides. Please try again.");
+      console.error("[RideDetails] Error fetching rides:", {
+        message: error.message,
+        stack: error.stack,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      
+      let errorMessage = "Failed to fetch rides. Please try again.";
+      
+      if (error.response?.status === 401) {
+        errorMessage = "Authentication failed. Please log in again.";
+      } else if (error.response?.status === 404) {
+        errorMessage = "No rides found for your account.";
+      } else if (error.message?.includes("Network Error")) {
+        errorMessage = "Network error. Please check your connection.";
+      } else if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      }
+      
+      setError(errorMessage);
+      setRides([]);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchRidesWithRetry = async (retries = 3, delay = 1000) => {
+    for (let i = 0; i < retries; i++) {
+      try {
+        await fetchRides();
+        return;
+      } catch (error) {
+        console.warn(`[RideDetails] Fetch attempt ${i + 1} failed:`, error);
+        if (i < retries - 1) {
+          console.log(`[RideDetails] Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          delay *= 2;
+        } else {
+          throw error;
+        }
+      }
     }
   };
 
@@ -391,14 +491,14 @@ export default function RideDetails() {
   const handleEditRide = async () => {
     if (!selectedRide || !user?.driverId) return;
     try {
-      await clientApiService.ride.editRide(selectedRide.rideId!, user.driverId, { // Updated to clientApiService
+      await clientApiService.ride.editRide(selectedRide.rideId!, user.driverId, {
         date: editDate || undefined,
         time: editTime || undefined,
       });
       setEditModalOpen(false);
       setSelectedRide(null);
       setModalError(null);
-      await fetchRides();
+      await fetchRidesWithRetry();
     } catch (error: any) {
       const errorMessage = error.response?.data?.message || error.message || "Failed to edit ride";
       console.error("[RideDetails] Error editing ride:", errorMessage, { error });
@@ -409,8 +509,8 @@ export default function RideDetails() {
   const handleCancelRide = async (rideId: string) => {
     if (confirm("Are you sure you want to cancel this ride?")) {
       try {
-        await clientApiService.ride.cancelRide(rideId); // Updated to clientApiService
-        await fetchRides();
+        await clientApiService.ride.cancelRide(rideId);
+        await fetchRidesWithRetry();
       } catch (error: any) {
         console.error("[RideDetails] Error cancelling ride:", error);
         setError(error.message || "Failed to cancel ride");
@@ -436,7 +536,7 @@ export default function RideDetails() {
 
       let trackingStatus = null;
       try {
-        const trackingResponse = await clientApiService.tracking.getTrackingStatus(ride._id); // Updated to clientApiService
+        const trackingResponse = await clientApiService.tracking.getTrackingStatus(ride._id);
         trackingStatus = trackingResponse.data?.status;
         console.log("[RideDetails] Existing tracking status:", trackingStatus);
       } catch (statusError: any) {
@@ -465,12 +565,12 @@ export default function RideDetails() {
 
       if (trackingStatus === null) {
         console.log("[RideDetails] Initializing tracking with driverId:", driverId, "position:", initialPosition);
-        const startTrackingResponse = await clientApiService.tracking.startTracking(ride._id, driverId, initialPosition); // Updated to clientApiService
+        const startTrackingResponse = await clientApiService.tracking.startTracking(ride._id, driverId, initialPosition);
         console.log("[RideDetails] Start tracking response:", startTrackingResponse.data);
-        await clientApiService.tracking.updateTrackingPosition(ride._id, initialPosition); // Updated to clientApiService
+        await clientApiService.tracking.updateTrackingPosition(ride._id, initialPosition);
       }
 
-      await clientApiService.ride.updateRide(ride._id, { status: "Started" }, driverId); // Updated to clientApiService
+      await clientApiService.ride.updateRide(ride._id, { status: "Started" }, driverId);
 
       const updatedRide: Ride = { ...ride, currentPosition: initialPosition, status: "Started" };
       const updatedRides: Ride[] = rides.map((r) => (r._id === rideId ? updatedRide : r));
@@ -532,13 +632,13 @@ export default function RideDetails() {
         console.log("[RideDetails] Ride already Started, skipping startTracking");
       } else {
         try {
-          await clientApiService.ride.startTracking(ride.rideId!, ride.driverId); // Updated to clientApiService
+          await clientApiService.ride.startTracking(ride.rideId!, ride.driverId);
         } catch (updateError: any) {
           console.warn("[RideDetails] Failed to start tracking, proceeding with local state:", updateError.message);
         }
       }
 
-      const trackingPosition = await clientApiService.tracking.getTrackingPosition(rideId); // Updated to clientApiService
+      const trackingPosition = await clientApiService.tracking.getTrackingPosition(rideId);
       console.log("[RideDetails] Tracking position fetched:", trackingPosition);
 
       let currentPosition: [number, number] | null = null;
@@ -618,7 +718,7 @@ export default function RideDetails() {
       return;
     }
 
-    const stepDuration = 1000; // 1 second per step
+    const stepDuration = 1000;
     let currentIndex = findNearestIndex(coordinates, startPosition);
     if (currentIndex === -1) currentIndex = 0;
     let isUpdating = false;
@@ -661,7 +761,7 @@ export default function RideDetails() {
             pickupAction: pickupActions[ride._id]?.[dropoff.passengerId],
             dropoffAction: dropoffActions[ride._id]?.[dropoff.passengerId],
           });
-          return !isNaN(pickupLat) && !isNaN(pickupLng) && distance < 0.1 && (pickupActions[ride._id]?.[dropoff.passengerId] || false) && !(dropoffActions[ride._id]?.[dropoff.passengerId] || false);
+          return !isNaN(dropoffLat) && !isNaN(dropoffLng) && distance < 0.1 && (pickupActions[ride._id]?.[dropoff.passengerId] || false) && !(dropoffActions[ride._id]?.[dropoff.passengerId] || false);
         });
 
         setSimulationPaused((prev) => ({ ...prev, [rideId]: shouldPause }));
@@ -730,7 +830,7 @@ export default function RideDetails() {
           animationIntervals.current[rideId] = null;
           
           try {
-            await clientApiService.tracking.stopTracking(ride._id); // Updated to clientApiService
+            await clientApiService.tracking.stopTracking(ride._id);
           } catch (error: any) {
             if (error.response?.status === 400 && error.response?.data?.message === 'Ride not found') {
               console.log('[RideDetails] Ride already removed from tracking');
@@ -743,10 +843,9 @@ export default function RideDetails() {
           setRides(updatedRides);
           
           try {
-            await clientApiService.ride.updateRide(ride._id, { status: "Completed" }, ride.driverId); // Updated to clientApiService
+            await clientApiService.ride.updateRide(ride._id, { status: "Completed" }, ride.driverId);
           } catch (error: any) {
             console.error('[RideDetails] Error updating ride status:', error);
-            // Even if this fails, we'll update the local state
           }
           
           cleanupMap(rideId);
@@ -759,7 +858,7 @@ export default function RideDetails() {
         vehicleMarkerRefs.current[rideId]!.setLatLng(currentPosition);
         lastPositions.current[rideId] = currentPosition;
         mapRefs.current[rideId]!.panTo(currentPosition);
-        await clientApiService.tracking.updateTrackingPosition(ride._id, currentPosition); // Updated to clientApiService
+        await clientApiService.tracking.updateTrackingPosition(ride._id, currentPosition);
       } catch (error: any) {
         console.error("[RideDetails] Simulation error for", rideId, ":", error);
         if (error.message.includes("Write conflict")) {
@@ -789,11 +888,6 @@ export default function RideDetails() {
     return nearestIndex;
   };
 
-  const snapToRoute = (point: [number, number], routeCoords: [number, number][]): [number, number] => {
-    const nearestIndex = findNearestIndex(routeCoords, point);
-    return routeCoords[nearestIndex];
-  };
-
   const handlePickup = async (rideId: string, passengerId: string) => {
     try {
       const ride = rides.find((r) => r._id === rideId);
@@ -813,15 +907,15 @@ export default function RideDetails() {
       const PICKUP_THRESHOLD = 0.1;
       if (distance > PICKUP_THRESHOLD) throw new Error(`Vehicle is ${(distance * 1000).toFixed(0)}m away from pickup point`);
 
-      await clientApiService.tracking.updateTrackingPosition(ride._id, frontendPosition); // Updated to clientApiService
-      const trackingResponse = await clientApiService.tracking.getTrackingPosition(ride._id); // Updated to clientApiService
+      await clientApiService.tracking.updateTrackingPosition(ride._id, frontendPosition);
+      const trackingResponse = await clientApiService.tracking.getTrackingPosition(ride._id);
       const backendPosition = trackingResponse.data as [number, number] | null;
       if (!backendPosition) throw new Error("Failed to retrieve backend position");
 
       const backendDistance = calculateHaversineDistance(backendPosition, pickupCoord);
       if (backendDistance > PICKUP_THRESHOLD) throw new Error(`Backend position is ${(backendDistance * 1000).toFixed(0)}m away from pickup point`);
 
-      await clientApiService.ride.updateRide(ride._id, { passengerId, action: "picked", currentPosition: backendPosition }, user.driverId); // Updated to clientApiService
+      await clientApiService.ride.updateRide(ride._id, { passengerId, action: "picked", currentPosition: backendPosition }, user.driverId);
       setPickupActions((prev) => ({ ...prev, [rideId]: { ...prev[rideId], [passengerId]: true } }));
       setPausedPassengerIds((prev) => ({ ...prev, [rideId]: prev[rideId]?.filter((id) => id !== passengerId) || [] }));
       setSimulationPaused((prev) => ({ ...prev, [rideId]: false }));
@@ -884,15 +978,15 @@ export default function RideDetails() {
       const DROPOFF_THRESHOLD = 0.1;
       if (distance > DROPOFF_THRESHOLD) throw new Error(`Vehicle is ${(distance * 1000).toFixed(0)}m away from drop-off point`);
 
-      await clientApiService.tracking.updateTrackingPosition(ride._id, frontendPosition); // Updated to clientApiService
-      const trackingResponse = await clientApiService.tracking.getTrackingPosition(ride._id); // Updated to clientApiService
+      await clientApiService.tracking.updateTrackingPosition(ride._id, frontendPosition);
+      const trackingResponse = await clientApiService.tracking.getTrackingPosition(ride._id);
       const backendPosition = trackingResponse.data as [number, number] | null;
       if (!backendPosition) throw new Error("Failed to retrieve backend position");
 
       const backendDistance = calculateHaversineDistance(backendPosition, dropoffCoord);
       if (backendDistance > DROPOFF_THRESHOLD) throw new Error(`Backend position is ${(backendDistance * 1000).toFixed(0)}m away from drop-off point`);
 
-      await clientApiService.ride.updateRide(ride._id, { passengerId, action: "dropped", currentPosition: backendPosition }, user.driverId); // Updated to clientApiService
+      await clientApiService.ride.updateRide(ride._id, { passengerId, action: "dropped", currentPosition: backendPosition }, user.driverId);
       setDropoffActions((prev) => ({ ...prev, [rideId]: { ...prev[rideId], [passengerId]: true } }));
       setPausedPassengerIds((prev) => ({ ...prev, [rideId]: prev[rideId]?.filter((id) => id !== passengerId) || [] }));
       setSimulationPaused((prev) => ({ ...prev, [rideId]: false }));
@@ -942,7 +1036,7 @@ export default function RideDetails() {
       if (!ride || !ride.rideId) throw new Error("Ride or rideId not found");
 
       try {
-        await clientApiService.tracking.stopTracking(ride._id); // Updated to clientApiService
+        await clientApiService.tracking.stopTracking(ride._id);
       } catch (error: any) {
         if (error.response?.status === 400 && error.response?.data?.message === 'Ride not found') {
           console.log('[RideDetails] Ride already removed from tracking');
@@ -963,10 +1057,9 @@ export default function RideDetails() {
       setSimulationPaused((prev) => ({ ...prev, [rideId]: false }));
       
       try {
-        await clientApiService.ride.updateRide(ride._id, { status: "Completed" }, ride.driverId); // Updated to clientApiService
+        await clientApiService.ride.updateRide(ride._id, { status: "Completed" }, ride.driverId);
       } catch (error: any) {
         console.error('[RideDetails] Error updating ride status:', error);
-        // Even if this fails, we'll update the local state
       }
     } catch (error: any) {
       console.error("[RideDetails] Error stopping ride:", error.message);
@@ -980,7 +1073,7 @@ export default function RideDetails() {
       const ride = rides.find((r) => r._id === rideId);
       if (!ride || !ride.rideId) throw new Error("Ride or rideId not found");
 
-      const trackingResponse = await clientApiService.tracking.getTrackingPosition(ride._id); // Updated to clientApiService
+      const trackingResponse = await clientApiService.tracking.getTrackingPosition(ride._id);
       if (!trackingResponse.data || !Array.isArray(trackingResponse.data) || trackingResponse.data.length !== 2) {
         throw new Error("No current position found");
       }
@@ -1033,12 +1126,85 @@ export default function RideDetails() {
 
   const handleJoinRequest = async (rideId: string, passengerId: string, action: "accept" | "reject") => {
     try {
-      console.log("[RideDetails] Initiating handleJoinRequest with:", { rideId, driverId: user!.driverId, passengerId, action });
-      await clientApiService.ride.handleJoinRequest(rideId, user!.driverId, passengerId, action); // Updated to clientApiService
-      await fetchRides();
+      console.log("[RideDetails] === HANDLE JOIN REQUEST DEBUG ===");
+      console.log("[RideDetails] Received rideId:", rideId);
+      console.log("[RideDetails] Received passengerId:", passengerId);
+      console.log("[RideDetails] Received action:", action);
+      console.log("[RideDetails] Current user driverId:", user?.driverId);
+      console.log("[RideDetails] All rides:", rides.map(r => ({ 
+        _id: r._id, 
+        rideId: r.rideId,
+        driverId: r.driverId 
+      })));
+      
+      // Find the ride by _id
+      const ride = rides.find(r => r._id === rideId);
+      
+      if (!ride) {
+        console.error("[RideDetails] ❌ Ride not found for _id:", rideId);
+        console.error("[RideDetails] Available _ids:", rides.map(r => r._id));
+        setError(`Ride not found. Please try refreshing the page.`);
+        return;
+      }
+
+      console.log("[RideDetails] ✅ Found ride:", ride._id);
+      console.log("[RideDetails] Ride driverId:", ride.driverId);
+      console.log("[RideDetails] Current user driverId:", user?.driverId);
+
+      // Verify the current user is the driver of this ride
+      if (user?.driverId !== ride.driverId) {
+        console.error("[RideDetails] ❌ Unauthorized: User is not the driver of this ride");
+        setError("You are not authorized to manage this ride");
+        return;
+      }
+
+      console.log("[RideDetails] Making API call with:", {
+        rideId: ride._id,
+        driverId: user.driverId,
+        passengerId,
+        action
+      });
+
+      await clientApiService.ride.handleJoinRequest(ride._id, user.driverId, passengerId, action);
+      console.log("[RideDetails] ✅ Join request handled successfully");
+      
+      // Trigger notification for the passenger
+      try {
+        const request = ride.pendingRequests?.find(req => req.passengerId === passengerId);
+        const passengerName = request?.passengerName || "Passenger";
+        
+        if (action === "accept") {
+          console.log("[RideDetails] Triggering accepted notification for passenger:", passengerId);
+          await clientApiService.notification.triggerRideJoinAcceptedNotification(
+            ride._id, 
+            passengerId, 
+            passengerName
+          );
+        } else {
+          console.log("[RideDetails] Triggering rejected notification for passenger:", passengerId);
+          await clientApiService.notification.triggerRideJoinRejectedNotification(
+            ride._id, 
+            passengerId, 
+            passengerId,
+            passengerName
+          );
+        }
+      } catch (notifError) {
+        console.warn("[RideDetails] Notification trigger failed:", notifError);
+        // Continue even if notification fails
+      }
+      
+      await fetchRidesWithRetry();
     } catch (error: any) {
-      console.error("[RideDetails] Error handling join request:", error.message);
-      setError(`Failed to ${action} join request: ${error.message}`);
+      console.error("[RideDetails] ❌ Error handling join request:", error);
+      console.error("[RideDetails] Error details:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status
+      });
+      
+      const errorMessage = error.response?.data?.message || error.message || "Unknown error";
+      setError(`Failed to ${action} join request: ${errorMessage}`);
     }
   };
 
@@ -1053,7 +1219,7 @@ export default function RideDetails() {
           await fetchTrackingAndResume(ride._id);
         } else if (ride.status === "Started" && mapRefs.current[ride._id] && !vehicleMarkerRefs.current[ride._id]) {
           console.log("[RideDetails] Re-adding vehicle marker for started ride", ride._id);
-          const trackingResponse = await clientApiService.tracking.getTrackingPosition(ride._id); // Updated to clientApiService
+          const trackingResponse = await clientApiService.tracking.getTrackingPosition(ride._id);
           const currentPosition = trackingResponse.data as [number, number] | null;
           if (currentPosition) {
             vehicleMarkerRefs.current[ride._id] = leafletLoaded.marker(currentPosition, {
@@ -1096,14 +1262,63 @@ export default function RideDetails() {
                 <CardTitle className="text-2xl font-bold">Your Rides</CardTitle>
                 <CardDescription className="text-gray-500">{currentDate}</CardDescription>
               </div>
+              <Button 
+                onClick={() => fetchRidesWithRetry()} 
+                variant="outline" 
+                disabled={isLoading}
+                className="flex items-center gap-2"
+              >
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
+                    Loading...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4" />
+                    Refresh
+                  </>
+                )}
+              </Button>
             </div>
           </CardHeader>
           <CardContent className="p-6">
-            {error && <ErrorAlert message={error} />}
+            {error && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertDescription className="flex items-center justify-between">
+                  <span>{error}</span>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => fetchRidesWithRetry()}
+                    className="ml-2"
+                  >
+                    Retry
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            )}
+            
             {isLoading ? (
-              <p className="text-gray-600">Loading rides...</p>
+              <div className="flex flex-col items-center justify-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+                <p className="text-gray-600">Loading your rides...</p>
+              </div>
             ) : rides.length === 0 ? (
-              <p className="text-gray-600">No rides found.</p>
+              <div className="text-center py-12">
+                <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
+                  <Route className="h-8 w-8 text-gray-400" />
+                </div>
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No rides found</h3>
+                <p className="text-gray-500 mb-4">
+                  {error ? "There was an error loading your rides." : "You haven't created any rides yet."}
+                </p>
+                {!error && (
+                  <Button asChild>
+                    <Link href="/user/ride">Create Your First Ride</Link>
+                  </Button>
+                )}
+              </div>
             ) : (
               <div className="grid gap-6">
                 {rides.map((ride) => {
@@ -1323,14 +1538,14 @@ export default function RideDetails() {
                                             <Button
                                               variant="success"
                                               size="sm"
-                                              onClick={() => handleJoinRequest(ride.rideId, request.passengerId, "accept")}
+                                              onClick={() => handleJoinRequest(ride._id, request.passengerId, "accept")}
                                             >
                                               Accept
                                             </Button>
                                             <Button
                                               variant="destructive"
                                               size="sm"
-                                              onClick={() => handleJoinRequest(ride.rideId, request.passengerId, "reject")}
+                                              onClick={() => handleJoinRequest(ride._id, request.passengerId, "reject")}
                                             >
                                               Reject
                                             </Button>

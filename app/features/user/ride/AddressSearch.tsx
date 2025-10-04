@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UseFormRegister, UseFormSetValue } from 'react-hook-form';
-import { clientApiService } from "@/services/client/client-api"; // Updated import
+import { clientApiService } from "@/services/client/client-api";
 import Swal from "sweetalert2";
 
 interface FormData {
@@ -34,14 +34,21 @@ const AddressSearch: React.FC<AddressSearchProps> = ({
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
   const [isLoadingLocation, setIsLoadingLocation] = useState(false);
+  const [isClient, setIsClient] = useState(false);
+
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   const handleSearch = (query: string) => {
+    if (!isClient) return;
+
     if (searchTimeout) {
       clearTimeout(searchTimeout);
     }
 
     const timeout = setTimeout(async () => {
-      if (!query || query.length < 3 || typeof window === 'undefined') {
+      if (!query || query.length < 3) {
         setSuggestions([]);
         return;
       }
@@ -64,103 +71,101 @@ const AddressSearch: React.FC<AddressSearchProps> = ({
     }
   };
 
-
-const handleUseCurrentLocation = async () => {
-  if (typeof window === "undefined" || !navigator.geolocation) {
-    await Swal.fire({
-      icon: "error",
-      title: "Geolocation Not Supported",
-      text: "Your browser does not support location services. Please enter your location manually.",
-    });
-    return;
-  }
-
-  setIsLoadingLocation(true);
-
-  try {
-    const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: true,
-        timeout: 20000,
-        maximumAge: 0,
-      });
-    });
-
-    const { latitude, longitude, accuracy } = position.coords;
-
-    console.log("[Geo] Raw device coordinates:", {
-      latitude,
-      longitude,
-      accuracy,
-    });
-
-    // Check if this is IP-based (huge accuracy value)
-    if (accuracy && accuracy > 50000) {
+  const handleUseCurrentLocation = async () => {
+    if (!isClient || typeof window === "undefined" || !navigator.geolocation) {
       await Swal.fire({
-        icon: "warning",
-        title: "Approximate Location Detected",
-        html: `
-          Your device does not have GPS.<br/>
-          Location is being determined using your IP address.<br/>
-          <b>Accuracy:</b> about ${Math.round(accuracy / 1000)} km.
-        `,
+        icon: "error",
+        title: "Geolocation Not Supported",
+        text: "Your browser does not support location services. Please enter your location manually.",
       });
+      return;
     }
 
-    // Reverse geocode
-    let placeName: string;
+    setIsLoadingLocation(true);
+
     try {
-      const geoResult = await clientApiService.geo.reverseGeocode(latitude, longitude);
-      placeName =
-        geoResult?.display_name ||
-        `Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
-    } catch (error) {
-      console.error("[Geo] Reverse geocoding failed:", error);
-      placeName = `Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 20000,
+          maximumAge: 0,
+        });
+      });
+
+      const { latitude, longitude, accuracy } = position.coords;
+
+      console.log("[Geo] Raw device coordinates:", {
+        latitude,
+        longitude,
+        accuracy,
+      });
+
+      // Check if this is IP-based (huge accuracy value)
+      if (accuracy && accuracy > 50000) {
+        await Swal.fire({
+          icon: "warning",
+          title: "Approximate Location Detected",
+          html: `
+            Your device does not have GPS.<br/>
+            Location is being determined using your IP address.<br/>
+            <b>Accuracy:</b> about ${Math.round(accuracy / 1000)} km.
+          `,
+        });
+      }
+
+      // Reverse geocode
+      let placeName: string;
+      try {
+        const geoResult = await clientApiService.geo.reverseGeocode(latitude, longitude);
+        placeName =
+          geoResult?.display_name ||
+          `Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
+      } catch (error) {
+        console.error("[Geo] Reverse geocoding failed:", error);
+        placeName = `Location (${latitude.toFixed(4)}, ${longitude.toFixed(4)})`;
+      }
+
+      setValue(field, `${latitude},${longitude}`);
+      setValue(placeNameField, placeName);
+      setSuggestions([]);
+
+      console.log("[Geo] Final Location:", {
+        coords: `${latitude},${longitude}`,
+        placeName,
+        accuracy: accuracy ? `${accuracy}m` : "unknown",
+      });
+    } catch (error: any) {
+      console.error("[Geo] Error fetching location:", error);
+
+      if (error.code === error.PERMISSION_DENIED) {
+        await Swal.fire({
+          icon: "error",
+          title: "Permission Denied",
+          text: "Location access was denied. Please enable it in your browser settings.",
+        });
+      } else if (error.code === error.POSITION_UNAVAILABLE) {
+        await Swal.fire({
+          icon: "error",
+          title: "Location Unavailable",
+          text: "Location services are not available. Please check your device settings.",
+        });
+      } else if (error.code === error.TIMEOUT) {
+        await Swal.fire({
+          icon: "error",
+          title: "Request Timed Out",
+          text: "Location request timed out. Try again outdoors or use manual search.",
+        });
+      } else {
+        await Swal.fire({
+          icon: "error",
+          title: "Failed to Get Location",
+          text: "Unable to fetch location. Please enter it manually.",
+        });
+      }
+    } finally {
+      setIsLoadingLocation(false);
     }
-
-    setValue(field, `${latitude},${longitude}`);
-    setValue(placeNameField, placeName);
-    setSuggestions([]);
-
-    console.log("[Geo] Final Location:", {
-      coords: `${latitude},${longitude}`,
-      placeName,
-      accuracy: accuracy ? `${accuracy}m` : "unknown",
-    });
-  } catch (error: any) {
-    console.error("[Geo] Error fetching location:", error);
-
-    if (error.code === error.PERMISSION_DENIED) {
-      await Swal.fire({
-        icon: "error",
-        title: "Permission Denied",
-        text: "Location access was denied. Please enable it in your browser settings.",
-      });
-    } else if (error.code === error.POSITION_UNAVAILABLE) {
-      await Swal.fire({
-        icon: "error",
-        title: "Location Unavailable",
-        text: "Location services are not available. Please check your device settings.",
-      });
-    } else if (error.code === error.TIMEOUT) {
-      await Swal.fire({
-        icon: "error",
-        title: "Request Timed Out",
-        text: "Location request timed out. Try again outdoors or use manual search.",
-      });
-    } else {
-      await Swal.fire({
-        icon: "error",
-        title: "Failed to Get Location",
-        text: "Unable to fetch location. Please enter it manually.",
-      });
-    }
-  } finally {
-    setIsLoadingLocation(false);
-  }
-};
-
+  };
 
   return (
     <div>
@@ -176,7 +181,7 @@ const handleUseCurrentLocation = async () => {
           data-1p-ignore
           data-lpignore="true"
         />
-        {allowCurrentLocation && (
+        {isClient && allowCurrentLocation && (
           <button
             type="button"
             onClick={handleUseCurrentLocation}
@@ -224,5 +229,4 @@ const handleUseCurrentLocation = async () => {
   );
 };
 
-
-export default AddressSearch; 
+export default AddressSearch;
