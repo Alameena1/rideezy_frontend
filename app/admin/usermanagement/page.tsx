@@ -1,4 +1,3 @@
-// UserManagement.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -21,6 +20,7 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+import Swal from 'sweetalert2';
 
 interface User {
   _id: string;
@@ -32,6 +32,7 @@ interface User {
   status: string;
   subscribed: boolean;
   govtIdStatus: string;
+  hasOngoingRides?: boolean;
 }
 
 interface PaginatedResponse {
@@ -46,6 +47,14 @@ interface PaginatedResponse {
   };
 }
 
+interface OngoingRidesResponse {
+  success: boolean;
+  hasOngoingRides: boolean;
+  ongoingRides: any[];
+  message: string;
+  length: number;
+}
+
 export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -57,6 +66,7 @@ export default function UserManagement() {
   const [totalItems, setTotalItems] = useState(0);
   const [hasNext, setHasNext] = useState(false);
   const [hasPrev, setHasPrev] = useState(false);
+  const [blockingUser, setBlockingUser] = useState<string | null>(null);
 
   const fetchUsers = async () => {
     try {
@@ -80,6 +90,7 @@ export default function UserManagement() {
         status: user.status || "Active",
         subscribed: user.subscription?.isSubscribed || false,
         govtIdStatus: user.govId?.verificationStatus || "Pending",
+        hasOngoingRides: user.hasOngoingRides || false,
       }));
       setUsers(mappedUsers);
       setTotalPages(response.pagination.totalPages);
@@ -99,15 +110,119 @@ export default function UserManagement() {
     fetchUsers();
   }, [page, limit, search]);
 
-  const handleToggleStatus = async (user: User) => {
+  const checkOngoingRides = async (userId: string): Promise<OngoingRidesResponse> => {
     try {
+      const response = await apiService.user.checkUserOngoingRides(userId);
+      return response;
+    } catch (error) {
+      console.error("Error checking ongoing rides:", error);
+      return {
+        success: false,
+        hasOngoingRides: false,
+        ongoingRides: [],
+        message: "Failed to check ongoing rides",
+        length: 0
+      };
+    }
+  };
+
+  const handleToggleStatus = async (user: User) => {
+    if (blockingUser === user._id) return;
+    
+    try {
+      setBlockingUser(user._id);
+      
+      // If trying to block a user, check for ongoing rides first
+      if (user.status === "Active") {
+        const ongoingRidesCheck = await checkOngoingRides(user._id);
+        
+        if (ongoingRidesCheck.hasOngoingRides && ongoingRidesCheck.ongoingRides.length > 0) {
+          // Show informative message that blocking is not allowed during ongoing rides
+          const rideDetails = ongoingRidesCheck.ongoingRides.map((ride, index) => 
+            `• Ride ${index + 1}: ${ride.startPlaceName} to ${ride.endPlaceName} (${ride.status})`
+          ).join('\n');
+          
+          await Swal.fire({
+            title: 'Cannot Block User',
+            html: `
+              <div class="text-left">
+                <p class="mb-3"><strong>${user.name}</strong> has ${ongoingRidesCheck.ongoingRides.length} ongoing ride(s):</p>
+                <div class="bg-gray-100 p-3 rounded text-sm mb-4 max-h-32 overflow-y-auto">
+                  ${rideDetails}
+                </div>
+                <p class="text-orange-600 font-semibold text-sm">
+                  ❌ User cannot be blocked while they have ongoing rides.<br/>
+                  Please try again after the user completes all their rides.
+                </p>
+              </div>
+            `,
+            icon: 'warning',
+            confirmButtonText: 'OK',
+            confirmButtonColor: '#3085d6',
+            customClass: {
+              popup: 'rounded-lg',
+              confirmButton: 'px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700'
+            }
+          });
+          
+          setBlockingUser(null);
+          return; // Prevent blocking
+        }
+      }
+      
+      // If no ongoing rides or activating user, proceed with normal confirmation
+      const action = user.status === "Active" ? "block" : "activate";
+      const actionText = user.status === "Active" ? "Block" : "Activate";
+      const confirmColor = user.status === "Active" ? "#d33" : "#3085d6";
+      
+      const result = await Swal.fire({
+        title: `${actionText} User?`,
+        text: `Are you sure you want to ${action} ${user.name}?`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: `Yes, ${actionText}`,
+        cancelButtonText: 'Cancel',
+        confirmButtonColor: confirmColor,
+        cancelButtonColor: user.status === "Active" ? '#3085d6' : '#d33',
+      });
+      
+      if (!result.isConfirmed) {
+        setBlockingUser(null);
+        return;
+      }
+      
+      // Proceed with the status change
       const newStatus = user.status === "Active" ? "Blocked" : "Active";
       await apiService.user.toggleUserStatus(user._id, newStatus);
+      
+      // Update local state
       setUsers(users.map((u) => (u._id === user._id ? { ...u, status: newStatus } : u)));
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to update user status";
+      
+      // Show success message
+      Swal.fire({
+        title: 'Success!',
+        text: `User ${user.name} has been ${newStatus === "Blocked" ? "blocked" : "activated"}`,
+        icon: 'success',
+        confirmButtonText: 'OK',
+        confirmButtonColor: '#3085d6',
+      });
+      
+    } catch (err: any) {
+      const errorMessage = err.response?.data?.message || err.message || "Failed to update user status";
       console.error("Toggle status failed:", err);
+      
+      // Show error message
+      Swal.fire({
+        title: 'Error!',
+        text: errorMessage,
+        icon: 'error',
+        confirmButtonText: 'OK',
+        confirmButtonColor: '#d33',
+      });
+      
       setError(errorMessage);
+    } finally {
+      setBlockingUser(null);
     }
   };
 
@@ -125,6 +240,20 @@ export default function UserManagement() {
     const color =
       status === "Verified" ? "text-blue-500" : status === "Pending" ? "text-orange-500" : "text-red-500";
     return <span className={color}>{status}</span>;
+  };
+
+  const renderOngoingRides = (user: User) => {
+    if (user.hasOngoingRides) {
+      return (
+        <span 
+          className="text-orange-500 font-semibold cursor-help"
+          title="User has ongoing rides - cannot be blocked"
+        >
+          Yes
+        </span>
+      );
+    }
+    return <span className="text-green-500">No</span>;
   };
 
   return (
@@ -164,6 +293,7 @@ export default function UserManagement() {
                 <TableHead className="text-gray-200">Status</TableHead>
                 <TableHead className="text-gray-200">Subscribed</TableHead>
                 <TableHead className="text-gray-200">Govt ID Status</TableHead>
+                <TableHead className="text-gray-200">Ongoing Rides</TableHead>
                 <TableHead className="text-gray-200">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -179,13 +309,16 @@ export default function UserManagement() {
                   <TableCell>{renderStatus(user.status)}</TableCell>
                   <TableCell>{user.subscribed ? "True" : "False"}</TableCell>
                   <TableCell>{renderGovtIdStatus(user.govtIdStatus)}</TableCell>
+                  <TableCell>{renderOngoingRides(user)}</TableCell>
                   <TableCell>
                     <Button
                       onClick={() => handleToggleStatus(user)}
                       variant={user.status === "Active" ? "destructive" : "default"}
                       size="sm"
+                      disabled={blockingUser === user._id || (user.status === "Active" && user.hasOngoingRides)}
+                      title={user.status === "Active" && user.hasOngoingRides ? "Cannot block user with ongoing rides" : ""}
                     >
-                      {user.status === "Active" ? "Block" : "Activate"}
+                      {blockingUser === user._id ? "Processing..." : user.status === "Active" ? "Block" : "Activate"}
                     </Button>
                   </TableCell>
                 </TableRow>

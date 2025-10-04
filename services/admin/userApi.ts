@@ -16,7 +16,7 @@ export const adminUserApi = {
     try {
       const response = await adminApi.get("/users", { params: query });
       console.log("Fetched Users:", response.data);
-      return response.data; // Expecting { success: boolean, data: User[], pagination: { currentPage, totalPages, totalItems, hasNext, hasPrev } }
+      return response.data; 
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.message || "Failed to fetch users");

@@ -5,7 +5,6 @@ import axios from "axios";
 import Cookies from "js-cookie";
 import { createAdminApiInstance } from "../adminInterceptors"; // Adjust path to your adminInterceptors file
 // Assuming you have or extend auth utils for admin; if not, implement getAdminValidToken and getAdminRefreshToken
-import { getRefreshToken, getValidToken } from "../../app/utils/auth"; // Reuse or extend for admin
 
 const API_BASE_URL =  "http://localhost:3001";
 
@@ -178,6 +177,24 @@ export const clientAdminUserApi = {
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.message || "Failed to verify government ID");
+      }
+      throw new Error("An unknown error occurred");
+    }
+  },
+
+  
+  checkUserOngoingRides: async (userId: string): Promise<{ 
+    success: boolean;
+    hasOngoingRides: boolean; 
+    ongoingRides: any[];
+    message: string;
+  }> => {
+    try {
+      const response = await adminClientApi.get(`/admin/users/${userId}/ongoing-rides`);
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.message || "Failed to check user's ongoing rides");
       }
       throw new Error("An unknown error occurred");
     }
