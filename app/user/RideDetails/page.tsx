@@ -17,6 +17,7 @@ import ErrorAlert from "../../features/user/vehicles/ErrorAlert";
 import MainLayout from "../../comp/MainLayout";
 import "leaflet/dist/leaflet.css";
 import Link from "next/link";
+import Swal from "sweetalert2";
 
 interface Ride {
   _id: string;
@@ -87,6 +88,10 @@ export default function RideDetails() {
   const animationIntervals = useRef<{ [key: string]: NodeJS.Timeout | null }>({});
   const lastPositions = useRef<{ [key: string]: [number, number] | null }>({});
   const placeNameCache = useRef<{ [key: string]: string }>({});
+const [emergencyStopModalOpen, setEmergencyStopModalOpen] = useState(false);
+const [selectedRideForStop, setSelectedRideForStop] = useState<Ride | null>(null);
+const [stopReason, setStopReason] = useState("");
+const [isStopping, setIsStopping] = useState(false);
 
   const currentDate = new Date().toLocaleDateString("en-GB", {
     weekday: "short",
@@ -1067,6 +1072,62 @@ export default function RideDetails() {
     }
   };
 
+
+  const handleEmergencyStop = async (ride: Ride) => {
+  setSelectedRideForStop(ride);
+  setEmergencyStopModalOpen(true);
+};
+
+const confirmEmergencyStop = async () => {
+  if (!selectedRideForStop || !stopReason.trim() || !lastPositions.current[selectedRideForStop._id]) {
+    setError("Please provide a reason for stopping the ride");
+    return;
+  }
+
+  try {
+    setIsStopping(true);
+    const currentPosition = lastPositions.current[selectedRideForStop._id]!;
+    
+    await clientApiService.ride.emergencyStopRide(selectedRideForStop._id, {
+      reason: stopReason,
+      currentPosition
+    });
+
+    // Stop simulation if running
+    if (animationIntervals.current[selectedRideForStop._id]) {
+      clearInterval(animationIntervals.current[selectedRideForStop._id]!);
+      animationIntervals.current[selectedRideForStop._id] = null;
+    }
+
+    // Update ride status locally
+    setRides(rides.map(ride => 
+      ride._id === selectedRideForStop._id 
+        ? { ...ride, status: "EmergencyStopped" }
+        : ride
+    ));
+
+    // Clean up map
+    cleanupMap(selectedRideForStop._id);
+
+    // Show success message
+    Swal.fire({
+      title: 'Ride Emergency Stopped',
+      text: 'The ride has been stopped and refunds are being processed for passengers.',
+      icon: 'success',
+      confirmButtonText: 'OK'
+    });
+
+    setEmergencyStopModalOpen(false);
+    setStopReason("");
+    setSelectedRideForStop(null);
+  } catch (error: any) {
+    console.error("Emergency stop failed:", error);
+    setError(`Failed to emergency stop ride: ${error.message}`);
+  } finally {
+    setIsStopping(false);
+  }
+};
+
   const resumeSimulation = async (rideId: string) => {
     try {
       console.log("[RideDetails] Resuming simulation for ride", rideId);
@@ -1252,6 +1313,7 @@ export default function RideDetails() {
     }
   }, [openCollapsible, rides, leafletLoaded, initializeMap, cleanupMap]);
 
+ 
   return (
     <MainLayout activeItem="Rides">
       <div className="mx-auto max-w-5xl p-4">
@@ -1352,14 +1414,17 @@ export default function RideDetails() {
                               <p className="text-sm text-gray-600">
                                 <span className="font-medium">Status:</span>{" "}
                                 <span
-                                  className={`${ride.status === "Pending"
-                                    ? "text-yellow-600"
-                                    : ride.status === "Started"
+                                  className={`${
+                                    ride.status === "Pending"
+                                      ? "text-yellow-600"
+                                      : ride.status === "Started"
                                       ? "text-blue-600"
                                       : ride.status === "Completed"
-                                        ? "text-green-600"
-                                        : "text-red-600"
-                                    } font-medium`}
+                                      ? "text-green-600"
+                                      : ride.status === "EmergencyStopped"
+                                      ? "text-orange-600"
+                                      : "text-red-600"
+                                  } font-medium`}
                                 >
                                   {ride.status}
                                 </span>
@@ -1418,9 +1483,17 @@ export default function RideDetails() {
                                 <Button
                                   variant="destructive"
                                   size="sm"
+                                  onClick={() => handleEmergencyStop(ride)}
+                                  disabled={isStopping}
+                                >
+                                  {isStopping ? "Stopping..." : "Emergency Stop"}
+                                </Button>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
                                   onClick={() => stopRide(ride._id)}
                                 >
-                                  Stop Ride
+                                  Complete Ride
                                 </Button>
                               </>
                             )}
@@ -1570,6 +1643,7 @@ export default function RideDetails() {
         </Card>
       </div>
 
+      {/* Edit Ride Modal */}
       <Dialog open={editModalOpen} onOpenChange={(open) => {
         setEditModalOpen(open);
         if (!open) setModalError(null);
@@ -1615,6 +1689,71 @@ export default function RideDetails() {
               Cancel
             </Button>
             <Button onClick={handleEditRide}>Save Changes</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Emergency Stop Modal */}
+      <Dialog open={emergencyStopModalOpen} onOpenChange={setEmergencyStopModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Emergency Stop Ride</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <Alert variant="destructive">
+              <AlertDescription>
+                <strong>Warning:</strong> This will stop the ride immediately and process partial refunds to passengers based on distance traveled. This action cannot be undone.
+              </AlertDescription>
+            </Alert>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="stopReason">Reason for Emergency Stop</Label>
+              <select
+                id="stopReason"
+                value={stopReason}
+                onChange={(e) => setStopReason(e.target.value)}
+                className="w-full p-2 border rounded-md"
+              >
+                <option value="">Select a reason</option>
+                <option value="Vehicle breakdown">Vehicle breakdown</option>
+                <option value="Tire puncture">Tire puncture</option>
+                <option value="Accident">Accident</option>
+                <option value="Medical emergency">Medical emergency</option>
+                <option value="Weather conditions">Weather conditions</option>
+                <option value="Road blockage">Road blockage</option>
+                <option value="Other">Other</option>
+              </select>
+              
+              {stopReason === "Other" && (
+                <Input
+                  placeholder="Please specify the reason..."
+                  value={stopReason}
+                  onChange={(e) => setStopReason(e.target.value)}
+                />
+              )}
+            </div>
+            
+            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
+              <p className="text-sm text-yellow-800">
+                <strong>Refund Policy:</strong> Passengers will receive partial refunds based on distance traveled:
+                <br />• Less than 25% traveled: 80% refund
+                <br />• 25-50% traveled: 60% refund
+                <br />• 50-75% traveled: 40% refund
+                <br />• More than 75% traveled: 20% refund
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmergencyStopModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive" 
+              onClick={confirmEmergencyStop}
+              disabled={!stopReason.trim() || isStopping}
+            >
+              {isStopping ? "Processing..." : "Confirm Emergency Stop"}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

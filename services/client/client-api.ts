@@ -203,6 +203,10 @@ export const clientApiService = {
     cancelJoinedRide: (rideId: string) => clientApi.api.delete(`/api/join-rides/joined/${rideId}`).then((res) => res.data),
     updateRide: (id: string, updates: { currentPosition?: [number, number]; passengerId: string; action: "picked" | "dropped" }, driverId: string) =>
       clientApi.api.put(`/api/initiate-rides/${id}/update`, updates, { headers: { "Driver-Id": driverId } }).then((res) => res.data),
+
+    emergencyStopRide: (rideId: string, data: { reason: string; currentPosition: [number, number] }) =>
+      clientApi.api.put(`/api/initiate-rides/${rideId}/emergency-stop`, data).then((res) => res.data),
+  
   },
   wallet: {
     getWallet: (userId: string, page: number = 1, limit: number = 10) =>
