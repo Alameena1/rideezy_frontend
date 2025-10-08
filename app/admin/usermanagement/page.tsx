@@ -3,23 +3,11 @@
 import { useState, useEffect } from "react";
 import { adminClientApiService as apiService } from "@/services/api";
 import { Button } from "@/components/ui/button";
+import { DataTable } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Search, Filter, ArrowUpDown } from "lucide-react";
 import Swal from 'sweetalert2';
 
 interface User {
@@ -60,8 +48,11 @@ export default function UserManagement() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
+  const [limit] = useState(10);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<string>("createdAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [hasNext, setHasNext] = useState(false);
@@ -71,13 +62,20 @@ export default function UserManagement() {
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      const response: PaginatedResponse = await apiService.user.getUsers({
+      const params: any = {
         page,
         limit,
         search,
-        sortBy: "createdAt",
-        sortOrder: "desc",
-      });
+        sortBy,
+        sortOrder,
+      };
+
+      if (statusFilter !== "all") {
+        params.status = statusFilter;
+      }
+
+      const response: PaginatedResponse = await apiService.user.getUsers(params);
+      
       const mappedUsers: User[] = response.data.map((user: any) => ({
         _id: user._id.toString(),
         name: user.fullName || "Unknown",
@@ -92,6 +90,7 @@ export default function UserManagement() {
         govtIdStatus: user.govId?.verificationStatus || "Pending",
         hasOngoingRides: user.hasOngoingRides || false,
       }));
+      
       setUsers(mappedUsers);
       setTotalPages(response.pagination.totalPages);
       setTotalItems(response.pagination.totalItems);
@@ -108,7 +107,7 @@ export default function UserManagement() {
 
   useEffect(() => {
     fetchUsers();
-  }, [page, limit, search]);
+  }, [page, limit, search, statusFilter, sortBy, sortOrder]);
 
   const checkOngoingRides = async (userId: string): Promise<OngoingRidesResponse> => {
     try {
@@ -132,12 +131,10 @@ export default function UserManagement() {
     try {
       setBlockingUser(user._id);
       
-      // If trying to block a user, check for ongoing rides first
       if (user.status === "Active") {
         const ongoingRidesCheck = await checkOngoingRides(user._id);
         
         if (ongoingRidesCheck.hasOngoingRides && ongoingRidesCheck.ongoingRides.length > 0) {
-          // Show informative message that blocking is not allowed during ongoing rides
           const rideDetails = ongoingRidesCheck.ongoingRides.map((ride, index) => 
             `• Ride ${index + 1}: ${ride.startPlaceName} to ${ride.endPlaceName} (${ride.status})`
           ).join('\n');
@@ -166,11 +163,10 @@ export default function UserManagement() {
           });
           
           setBlockingUser(null);
-          return; // Prevent blocking
+          return;
         }
       }
       
-      // If no ongoing rides or activating user, proceed with normal confirmation
       const action = user.status === "Active" ? "block" : "activate";
       const actionText = user.status === "Active" ? "Block" : "Activate";
       const confirmColor = user.status === "Active" ? "#d33" : "#3085d6";
@@ -191,14 +187,11 @@ export default function UserManagement() {
         return;
       }
       
-      // Proceed with the status change
       const newStatus = user.status === "Active" ? "Blocked" : "Active";
       await apiService.user.toggleUserStatus(user._id, newStatus);
       
-      // Update local state
       setUsers(users.map((u) => (u._id === user._id ? { ...u, status: newStatus } : u)));
       
-      // Show success message
       Swal.fire({
         title: 'Success!',
         text: `User ${user.name} has been ${newStatus === "Blocked" ? "blocked" : "activated"}`,
@@ -211,7 +204,6 @@ export default function UserManagement() {
       const errorMessage = err.response?.data?.message || err.message || "Failed to update user status";
       console.error("Toggle status failed:", err);
       
-      // Show error message
       Swal.fire({
         title: 'Error!',
         text: errorMessage,
@@ -226,9 +218,24 @@ export default function UserManagement() {
     }
   };
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearch(e.target.value);
-    setPage(1); // Reset to first page on search
+  const handleSearch = (searchValue: string) => {
+    setSearch(searchValue);
+    setPage(1);
+  };
+
+  const handleStatusFilter = (status: string) => {
+    setStatusFilter(status);
+    setPage(1);
+  };
+
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(field);
+      setSortOrder("desc");
+    }
+    setPage(1);
   };
 
   const renderStatus = (status: string) => {
@@ -238,126 +245,145 @@ export default function UserManagement() {
 
   const renderGovtIdStatus = (status: string) => {
     const color =
-      status === "Verified" ? "text-blue-500" : status === "Pending" ? "text-orange-500" : "text-red-500";
+      status === "Verified" ? "text-blue-500" : 
+      status === "Pending" ? "text-orange-500" : "text-red-500";
     return <span className={color}>{status}</span>;
   };
 
-  const renderOngoingRides = (user: User) => {
-    if (user.hasOngoingRides) {
+  const renderOngoingRides = (hasOngoingRides: boolean) => {
+    if (hasOngoingRides) {
       return (
-        <span 
-          className="text-orange-500 font-semibold cursor-help"
-          title="User has ongoing rides - cannot be blocked"
-        >
+        <Badge variant="outline" className="bg-orange-500/20 text-orange-400 border-orange-500">
           Yes
-        </span>
+        </Badge>
       );
     }
-    return <span className="text-green-500">No</span>;
+    return (
+      <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500">
+        No
+      </Badge>
+    );
   };
 
+  const renderSubscribed = (subscribed: boolean) => {
+    return subscribed ? (
+      <Badge variant="outline" className="bg-blue-500/20 text-blue-400 border-blue-500">
+        True
+      </Badge>
+    ) : (
+      <Badge variant="outline" className="bg-gray-500/20 text-gray-400 border-gray-500">
+        False
+      </Badge>
+    );
+  };
+
+  const columns = [
+    { 
+      key: "name", 
+      header: () => (
+        <Button
+          variant="ghost"
+          onClick={() => handleSort("name")}
+          className="flex items-center space-x-1 p-0 hover:bg-transparent text-gray-300"
+        >
+          <span>Name</span>
+          <ArrowUpDown className="h-4 w-4" />
+        </Button>
+      ),
+      render: (name: string) => <span className="text-gray-300 font-medium">{name}</span>
+    },
+    { key: "email", header: "Email", render: (email: string) => <span className="text-gray-300">{email}</span> },
+    { key: "phone", header: "Phone", render: (phone: string) => <span className="text-gray-300">{phone}</span> },
+    { key: "totalRides", header: "Total Rides", render: (totalRides: string) => <span className="text-gray-300">{totalRides}</span> },
+    { key: "registrationDate", header: "Registration Date", render: (date: string) => <span className="text-gray-300">{date}</span> },
+    { 
+      key: "status", 
+      header: "Status",
+      render: (status: string) => renderStatus(status)
+    },
+    { 
+      key: "subscribed", 
+      header: "Subscribed",
+      render: (subscribed: boolean) => renderSubscribed(subscribed)
+    },
+    { 
+      key: "govtIdStatus", 
+      header: "Govt ID Status",
+      render: (status: string) => renderGovtIdStatus(status)
+    },
+    { 
+      key: "hasOngoingRides", 
+      header: "Ongoing Rides",
+      render: (hasOngoingRides: boolean) => renderOngoingRides(hasOngoingRides)
+    },
+  ];
+
+  const renderActions = (user: User) => (
+    <Button
+      onClick={() => handleToggleStatus(user)}
+      variant={user.status === "Active" ? "destructive" : "default"}
+      size="sm"
+      disabled={blockingUser === user._id || (user.status === "Active" && user.hasOngoingRides)}
+      title={user.status === "Active" && user.hasOngoingRides ? "Cannot block user with ongoing rides" : ""}
+      className={user.status === "Active" ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"}
+    >
+      {blockingUser === user._id ? "Processing..." : user.status === "Active" ? "Block" : "Activate"}
+    </Button>
+  );
+
   return (
-    <div className="bg-gray-900 text-white p-6 min-h-screen">
-      <h2 className="text-2xl font-semibold mb-6">User Management</h2>
-
-      {error && (
-        <div className="p-3 bg-red-900/50 text-red-300 rounded-md border border-red-800 mb-4">
-          {error}
+    <div className="bg-gray-900 min-h-screen text-white p-6">
+      <div className="container mx-auto">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-white">User Management</h1>
+            <p className="text-gray-400">Manage and monitor all users in the system</p>
+          </div>
         </div>
-      )}
 
-      <div className="mb-4">
-        <Input
-          placeholder="Search users by name or email..."
-          value={search}
-          onChange={handleSearch}
-          className="max-w-md bg-gray-800 text-white border-gray-600"
+        {/* Enhanced Filters */}
+        <div className="flex flex-col sm:flex-row gap-4 mb-6">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <Input
+              placeholder="Search users by name or email..."
+              value={search}
+              onChange={(e) => handleSearch(e.target.value)}
+              className="pl-10 bg-gray-800 border-gray-600 text-white placeholder-gray-400"
+            />
+          </div>
+          <div className="flex gap-2">
+            <Select value={statusFilter} onValueChange={handleStatusFilter}>
+              <SelectTrigger className="w-[180px] bg-gray-800 border-gray-600 text-white">
+                <Filter className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent className="bg-gray-800 border-gray-600 text-white">
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="Active">Active</SelectItem>
+                <SelectItem value="Blocked">Blocked</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        
+        <DataTable
+          columns={columns}
+          data={users}
+          loading={loading}
+          error={error}
+          pagination={{
+            currentPage: page,
+            totalPages,
+            totalItems,
+            hasNext,
+            hasPrev,
+            onPageChange: setPage,
+          }}
+          emptyMessage="No users found."
+          actions={renderActions}
         />
       </div>
-
-      {loading ? (
-        <div className="text-center text-gray-400">Loading users...</div>
-      ) : users.length === 0 ? (
-        <div className="text-center text-gray-400">No users found.</div>
-      ) : (
-        <>
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-gray-800 hover:bg-gray-800">
-                <TableHead className="text-gray-200">#</TableHead>
-                <TableHead className="text-gray-200">Name</TableHead>
-                <TableHead className="text-gray-200">Email</TableHead>
-                <TableHead className="text-gray-200">Phone</TableHead>
-                <TableHead className="text-gray-200">Total Rides (offered/joined)</TableHead>
-                <TableHead className="text-gray-200">Registration Date</TableHead>
-                <TableHead className="text-gray-200">Status</TableHead>
-                <TableHead className="text-gray-200">Subscribed</TableHead>
-                <TableHead className="text-gray-200">Govt ID Status</TableHead>
-                <TableHead className="text-gray-200">Ongoing Rides</TableHead>
-                <TableHead className="text-gray-200">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.map((user, index) => (
-                <TableRow key={user._id} className="border-gray-700 hover:bg-gray-800">
-                  <TableCell>{index + 1}</TableCell>
-                  <TableCell>{user.name}</TableCell>
-                  <TableCell>{user.email}</TableCell>
-                  <TableCell>{user.phone}</TableCell>
-                  <TableCell>{user.totalRides}</TableCell>
-                  <TableCell>{user.registrationDate}</TableCell>
-                  <TableCell>{renderStatus(user.status)}</TableCell>
-                  <TableCell>{user.subscribed ? "True" : "False"}</TableCell>
-                  <TableCell>{renderGovtIdStatus(user.govtIdStatus)}</TableCell>
-                  <TableCell>{renderOngoingRides(user)}</TableCell>
-                  <TableCell>
-                    <Button
-                      onClick={() => handleToggleStatus(user)}
-                      variant={user.status === "Active" ? "destructive" : "default"}
-                      size="sm"
-                      disabled={blockingUser === user._id || (user.status === "Active" && user.hasOngoingRides)}
-                      title={user.status === "Active" && user.hasOngoingRides ? "Cannot block user with ongoing rides" : ""}
-                    >
-                      {blockingUser === user._id ? "Processing..." : user.status === "Active" ? "Block" : "Activate"}
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <div className="mt-4">
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    onClick={() => hasPrev && setPage(page - 1)}
-                    className={hasPrev ? "" : "pointer-events-none opacity-50"}
-                  />
-                </PaginationItem>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                  <PaginationItem key={p}>
-                    <PaginationLink
-                      onClick={() => setPage(p)}
-                      isActive={p === page}
-                    >
-                      {p}
-                    </PaginationLink>
-                  </PaginationItem>
-                ))}
-                <PaginationItem>
-                  <PaginationNext
-                    onClick={() => hasNext && setPage(page + 1)}
-                    className={hasNext ? "" : "pointer-events-none opacity-50"}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-            <p className="text-sm text-gray-400 mt-2">
-              Showing {users.length} of {totalItems} users
-            </p>
-          </div>
-        </>
-      )}
     </div>
   );
 }

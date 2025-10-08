@@ -159,7 +159,7 @@ export const useRidePayment = ({
         prefill: {
           name: user?.name || "Passenger",
           email: user?.email || "",
-          contact: user?.phoneNumber || "",
+          
         },
         theme: {
           color: "#2563EB",

@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Edit, Trash2, RefreshCcw } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertCircle, Edit, Trash2, RefreshCcw, Car, Users, Gauge, FileText } from "lucide-react";
 import VehicleForm from "./VehicleForm";
 import { clientApiService } from "@/services/client/client-api";
 import Swal from "sweetalert2";
@@ -45,16 +47,27 @@ export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCar
   const [isDeleting, setIsDeleting] = useState(false);
   const { updateVehicle } = useVehicleStore();
 
-  const getStatusBadgeColor = (status: string) => {
+  const getStatusConfig = (status: string) => {
     switch (status) {
       case "Approved":
-        return "bg-green-100 text-green-800 hover:bg-green-200";
+        return { 
+          color: "bg-green-100 text-green-800 border-green-200",
+          icon: "✅"
+        };
       case "Rejected":
-        return "bg-red-100 text-red-800 hover:bg-red-200";
+        return { 
+          color: "bg-red-100 text-red-800 border-red-200",
+          icon: "❌"
+        };
       default:
-        return "bg-yellow-100 text-yellow-800 hover:bg-yellow-200";
+        return { 
+          color: "bg-yellow-100 text-yellow-800 border-yellow-200",
+          icon: "⏳"
+        };
     }
   };
+
+  const statusConfig = getStatusConfig(vehicle.status);
 
   const handleDelete = async () => {
     const result = await Swal.fire({
@@ -62,10 +75,12 @@ export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCar
       text: `You are about to delete ${vehicle.vehicleName}. This action cannot be undone.`,
       icon: "warning",
       showCancelButton: true,
-      confirmButtonColor: "#d33",
-      cancelButtonColor: "#3085d6",
+      confirmButtonColor: "#dc2626",
+      cancelButtonColor: "#6b7280",
       confirmButtonText: "Yes, delete it!",
       cancelButtonText: "Cancel",
+      background: '#fff',
+      color: '#374151',
     });
 
     if (result.isConfirmed) {
@@ -79,6 +94,8 @@ export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCar
           icon: "success",
           timer: 1500,
           showConfirmButton: false,
+          background: '#fff',
+          color: '#374151',
         });
       } catch (error: any) {
         setError(error.message || "Failed to delete vehicle. Please try again.");
@@ -87,6 +104,8 @@ export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCar
           text: error.message || "Failed to delete the vehicle. Please try again.",
           icon: "error",
           confirmButtonColor: "#3085d6",
+          background: '#fff',
+          color: '#374151',
         });
       } finally {
         setIsDeleting(false);
@@ -104,6 +123,8 @@ export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCar
       cancelButtonColor: "#d33",
       confirmButtonText: "Yes, reapply!",
       cancelButtonText: "Cancel",
+      background: '#fff',
+      color: '#374151',
     });
 
     if (result.isConfirmed) {
@@ -112,87 +133,127 @@ export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCar
   };
 
   return (
-    <div className="overflow-hidden border rounded-lg">
-      <div className="flex flex-col sm:flex-row">
-        <div className="sm:w-1/4 h-48 sm:h-auto">
+    <Card className="overflow-hidden border-0 shadow-sm hover:shadow-md transition-all duration-200 bg-gradient-to-r from-gray-50 to-white">
+      <div className="flex flex-col lg:flex-row">
+        {/* Vehicle Image */}
+        <div className="lg:w-1/4 h-48 lg:h-auto relative">
           <img
             src={vehicle.vehicleImage || "/placeholder.svg"}
             alt={vehicle.vehicleName}
             className="w-full h-full object-cover"
           />
-        </div>
-        <div className="flex-1 p-4 sm:p-6 flex flex-col sm:flex-row justify-between">
-          <div className="space-y-4">
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                <h3 className="text-lg font-semibold">{vehicle.vehicleName}</h3>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger>
-                      <Badge className={getStatusBadgeColor(vehicle.status)}>{vehicle.status}</Badge>
-                    </TooltipTrigger>
-                    {vehicle.status === "Rejected" && vehicle.note && (
-                      <TooltipContent>
-                        <p>Reason: {vehicle.note}</p>
-                      </TooltipContent>
-                    )}
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-              <p className="text-sm text-gray-500">{vehicle.vehicleType}</p>
-            </div>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-              <div>
-                <span className="text-gray-500 font-medium">License:</span> {vehicle.licensePlate}
-              </div>
-              <div>
-                <span className="text-gray-500 font-medium">Color:</span> {vehicle.color || "N/A"}
-              </div>
-              <div>
-                <span className="text-gray-500 font-medium">Insurance:</span> {vehicle.insuranceNumber || "N/A"}
-              </div>
-              <div>
-                <span className="text-gray-500 font-medium">Mileage:</span> {vehicle.mileage} km
-              </div>
-            </div>
+          <div className="absolute top-3 left-3">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger>
+                  <Badge className={`${statusConfig.color} font-medium`}>
+                    <span className="mr-1">{statusConfig.icon}</span>
+                    {vehicle.status}
+                  </Badge>
+                </TooltipTrigger>
+                {vehicle.status === "Rejected" && vehicle.note && (
+                  <TooltipContent>
+                    <p className="max-w-xs">Reason: {vehicle.note}</p>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </TooltipProvider>
           </div>
-          <div className="flex sm:flex-col gap-2 mt-4 sm:mt-0">
-            <Button
-              variant="outline"
-              size="sm"
-              className="flex items-center gap-1"
-              onClick={() => setIsEditing(true)}
-            >
-              <Edit className="h-3.5 w-3.5" />
-              <span>Edit</span>
-            </Button>
-            <Button
-              variant="destructive"
-              size="sm"
-              className="flex items-center gap-1"
-              onClick={handleDelete}
-              disabled={isDeleting}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-              <span>{isDeleting ? "Deleting..." : "Delete"}</span>
-            </Button>
-            {vehicle.status === "Rejected" && (
+        </div>
+
+        {/* Vehicle Details */}
+        <div className="flex-1 p-6">
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+            <div className="space-y-4 flex-1">
+              <div>
+                <h3 className="text-xl font-bold text-gray-900 mb-1">{vehicle.vehicleName}</h3>
+                <p className="text-gray-600 flex items-center gap-2">
+                  <Car className="h-4 w-4" />
+                  {vehicle.vehicleType}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
+                <div className="flex items-center gap-2 text-gray-600">
+                  <FileText className="h-4 w-4 text-blue-500" />
+                  <span>
+                    <strong className="text-gray-500">License:</strong> {vehicle.licensePlate}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-gray-600">
+                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: vehicle.color || '#6b7280' }} />
+                  <span>
+                    <strong className="text-gray-500">Color:</strong> {vehicle.color || "N/A"}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-gray-600">
+                  <Gauge className="h-4 w-4 text-green-500" />
+                  <span>
+                    <strong className="text-gray-500">Mileage:</strong> {vehicle.mileage} km
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 text-gray-600">
+                  <Users className="h-4 w-4 text-purple-500" />
+                  <span>
+                    <strong className="text-gray-500">Seats:</strong> {vehicle.seatCapacity}
+                  </span>
+                </div>
+                {vehicle.insuranceNumber && (
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <FileText className="h-4 w-4 text-orange-500" />
+                    <span>
+                      <strong className="text-gray-500">Insurance:</strong> {vehicle.insuranceNumber}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="text-xs text-gray-500">
+                Registered on {new Date(vehicle.createdAt).toLocaleDateString()}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex lg:flex-col gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                className="flex items-center gap-1"
-                onClick={handleReapply}
-                disabled={isReapplying}
+                className="flex items-center gap-2 border-blue-200 text-blue-700 hover:bg-blue-50"
+                onClick={() => setIsEditing(true)}
               >
-                <RefreshCcw className="h-3.5 w-3.5" />
-                <span>{isReapplying ? "Reapplying..." : "Reapply"}</span>
+                <Edit className="h-4 w-4" />
+                Edit
               </Button>
-            )}
+              <Button
+                variant="destructive"
+                size="sm"
+                className="flex items-center gap-2"
+                onClick={handleDelete}
+                disabled={isDeleting}
+              >
+                <Trash2 className="h-4 w-4" />
+                {isDeleting ? "Deleting..." : "Delete"}
+              </Button>
+              {vehicle.status === "Rejected" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex items-center gap-2 border-orange-200 text-orange-700 hover:bg-orange-50"
+                  onClick={handleReapply}
+                  disabled={isReapplying}
+                >
+                  <RefreshCcw className="h-4 w-4" />
+                  {isReapplying ? "Reapplying..." : "Reapply"}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Edit/Reapply Form */}
       {(isEditing || isReapplying) && (
-        <div className="p-4">
+        <div className="border-t border-gray-100 bg-white p-6">
           <VehicleForm
             vehicleId={vehicle._id}
             onSubmit={async (updatedVehicle) => {
@@ -206,6 +267,8 @@ export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCar
                     icon: "success",
                     timer: 1500,
                     showConfirmButton: false,
+                    background: '#fff',
+                    color: '#374151',
                   });
                 } else {
                   await updateVehicle(vehicle._id, updatedVehicle);
@@ -215,6 +278,8 @@ export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCar
                     icon: "success",
                     timer: 1500,
                     showConfirmButton: false,
+                    background: '#fff',
+                    color: '#374151',
                   });
                 }
                 setIsEditing(false);
@@ -226,6 +291,8 @@ export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCar
                   text: error.response?.data?.message || "Failed to save the vehicle. Please try again.",
                   icon: "error",
                   confirmButtonColor: "#3085d6",
+                  background: '#fff',
+                  color: '#374151',
                 });
               }
             }}
@@ -233,11 +300,18 @@ export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCar
               setIsEditing(false);
               setIsReapplying(false);
             }}
-            setError={setError}
           />
         </div>
       )}
-      {error && <div className="p-4 text-red-600">{error}</div>}
-    </div>
+
+      {error && (
+        <Alert variant="destructive" className="m-4 border-red-200 bg-red-50">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription className="text-red-800">
+            {error}
+          </AlertDescription>
+        </Alert>
+      )}
+    </Card>
   );
 }

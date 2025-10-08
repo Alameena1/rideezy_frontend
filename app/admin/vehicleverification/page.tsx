@@ -1,28 +1,15 @@
-// VehicleVerification.tsx
 "use client";
 
 import { useState, useEffect } from "react";
 import { adminClientApiService as apiService } from "@/services/api";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-} from "@/components/ui/pagination";
+import { DataTable } from "@/components/ui/data-table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+import { Search, Filter, ArrowUpDown, Eye, FileText } from "lucide-react";
 
 interface Vehicle {
   _id: string;
@@ -63,8 +50,11 @@ export default function VehicleVerification() {
   const [selectedVehicle, setSelectedVehicle] = useState<string | null>(null);
   const [showRejectionModal, setShowRejectionModal] = useState(false);
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(10);
+  const [limit] = useState(10);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<string>("createdAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [totalPages, setTotalPages] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
   const [hasNext, setHasNext] = useState(false);
@@ -73,13 +63,20 @@ export default function VehicleVerification() {
   const fetchVehicles = async () => {
     try {
       setLoading(true);
-      const response: PaginatedResponse = await apiService.vehicle.getVehicles({
+      const params: any = {
         page,
         limit,
         search,
-        sortBy: "createdAt",
-        sortOrder: "desc",
-      });
+        sortBy,
+        sortOrder,
+      };
+
+      if (statusFilter !== "all") {
+        params.status = statusFilter;
+      }
+
+      const response: PaginatedResponse = await apiService.vehicle.getVehicles(params);
+      
       const mappedVehicles: Vehicle[] = response.data.map((vehicle: any) => ({
         _id: vehicle._id.toString(),
         user: {
@@ -98,6 +95,7 @@ export default function VehicleVerification() {
         createdAt: vehicle.createdAt ? new Date(vehicle.createdAt).toLocaleDateString() : "N/A",
         updatedAt: vehicle.updatedAt ? new Date(vehicle.updatedAt).toLocaleDateString() : undefined,
       }));
+      
       setVehicles(mappedVehicles);
       setTotalPages(response.pagination.totalPages);
       setTotalItems(response.pagination.totalItems);
@@ -115,7 +113,7 @@ export default function VehicleVerification() {
 
   useEffect(() => {
     fetchVehicles();
-  }, [page, limit, search]);
+  }, [page, limit, search, statusFilter, sortBy, sortOrder]);
 
   const handleApproveVehicle = async (vehicleId: string) => {
     try {
@@ -157,15 +155,55 @@ export default function VehicleVerification() {
     }
   };
 
-  const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearch(e.target.value);
-    setPage(1); // Reset to first page on search
+  const handleSearch = (searchValue: string) => {
+    setSearch(searchValue);
+    setPage(1);
+  };
+
+  const handleStatusFilter = (status: string) => {
+    setStatusFilter(status);
+    setPage(1);
+  };
+
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(field);
+      setSortOrder("desc");
+    }
+    setPage(1);
   };
 
   const renderStatus = (status: string) => {
     const color =
-      status === "Approved" ? "text-green-500" : status === "Rejected" ? "text-red-500" : "text-orange-500";
-    return <span className={color}>{status}</span>;
+      status === "Approved" 
+        ? "text-green-500" 
+        : status === "Rejected" 
+        ? "text-red-500" 
+        : "text-orange-500";
+    
+    const badgeVariant = 
+      status === "Approved" 
+        ? "default" 
+        : status === "Rejected" 
+        ? "destructive" 
+        : "secondary";
+    
+    return (
+      <Badge 
+        variant={badgeVariant} 
+        className={
+          status === "Approved" 
+            ? "bg-green-500/20 text-green-400 border-green-500" 
+            : status === "Rejected" 
+            ? "bg-red-500/20 text-red-400 border-red-500"
+            : "bg-orange-500/20 text-orange-400 border-orange-500"
+        }
+      >
+        {status}
+      </Badge>
+    );
   };
 
   const viewDocument = (imageUrl?: string) => {
@@ -176,195 +214,181 @@ export default function VehicleVerification() {
     window.open(imageUrl, "_blank");
   };
 
-  return (
-    <div className="bg-gray-900 text-white p-6 min-h-screen">
-      <h2 className="text-2xl font-semibold mb-6">Vehicle Verification Management</h2>
-
-      {error && (
-        <div className="p-3 bg-red-900/50 text-red-300 rounded-md border border-red-800 mb-4">
-          {error}
+  const columns = [
+    { 
+      key: "user.fullName", 
+      header: () => (
+        <Button
+          variant="ghost"
+          onClick={() => handleSort("user.fullName")}
+          className="flex items-center space-x-1 p-0 hover:bg-transparent text-gray-300"
+        >
+          <span>Owner</span>
+          <ArrowUpDown className="h-4 w-4" />
+        </Button>
+      ),
+      render: (name: string) => <span className="text-gray-300 font-medium">{name}</span>
+    },
+    { key: "vehicleName", header: "Vehicle Name", render: (name: string) => <span className="text-gray-300">{name}</span> },
+    { key: "vehicleType", header: "Type", render: (type: string) => <span className="text-gray-300">{type}</span> },
+    { key: "licensePlate", header: "License Plate", render: (plate: string) => <span className="text-gray-300 font-mono">{plate}</span> },
+    { key: "color", header: "Color", render: (color: string) => <span className="text-gray-300">{color}</span> },
+    { key: "insuranceNumber", header: "Insurance", render: (insurance: string) => <span className="text-gray-300">{insurance}</span> },
+    { key: "createdAt", header: "Submitted On", render: (date: string) => <span className="text-gray-300">{date}</span> },
+    { 
+      key: "status", 
+      header: "Status",
+      render: (status: string) => renderStatus(status)
+    },
+    {
+      key: "documents",
+      header: "Documents",
+      render: (_: any, vehicle: Vehicle) => (
+        <div className="flex space-x-2">
+          {vehicle.vehicleImage && (
+            <Button
+              onClick={() => viewDocument(vehicle.vehicleImage)}
+              variant="outline"
+              size="sm"
+              className="h-8 w-8 p-0 bg-blue-600/20 border-blue-500 text-blue-400 hover:bg-blue-600 hover:text-white"
+              title="View Vehicle Image"
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+          )}
+          {vehicle.documentImage && (
+            <Button
+              onClick={() => viewDocument(vehicle.documentImage)}
+              variant="outline"
+              size="sm"
+              className="h-8 w-8 p-0 bg-green-600/20 border-green-500 text-green-400 hover:bg-green-600 hover:text-white"
+              title="View Document Image"
+            >
+              <FileText className="h-4 w-4" />
+            </Button>
+          )}
         </div>
-      )}
+      )
+    },
+  ];
 
-      <div className="mb-4">
-        <Input
-          placeholder="Search vehicles by license plate or owner name..."
-          value={search}
-          onChange={handleSearch}
-          className="max-w-md bg-gray-800 text-white border-gray-600"
-        />
-      </div>
+  const renderActions = (vehicle: Vehicle) => {
+    if (vehicle.status === "Pending") {
+      return (
+        <div className="flex space-x-2">
+          <Button
+            onClick={() => handleApproveVehicle(vehicle._id)}
+            variant="default"
+            size="sm"
+            className="bg-green-600 hover:bg-green-700 text-white"
+          >
+            Approve
+          </Button>
+          <Button
+            onClick={() => openRejectionModal(vehicle._id)}
+            variant="destructive"
+            size="sm"
+            className="bg-red-600 hover:bg-red-700 text-white"
+          >
+            Reject
+          </Button>
+        </div>
+      );
+    }
+    return null;
+  };
 
-      {loading ? (
-        <div className="text-center text-gray-400">Loading vehicles...</div>
-      ) : vehicles.length === 0 ? (
-        <div className="text-center text-gray-400">No vehicles found for verification.</div>
-      ) : (
-        <>
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-gray-800 hover:bg-gray-800">
-                <TableHead className="text-gray-200">#</TableHead>
-                <TableHead className="text-gray-200">Owner</TableHead>
-                <TableHead className="text-gray-200">Vehicle Name</TableHead>
-                <TableHead className="text-gray-200">Type</TableHead>
-                <TableHead className="text-gray-200">License Plate</TableHead>
-                <TableHead className="text-gray-200">Color</TableHead>
-                <TableHead className="text-gray-200">Insurance</TableHead>
-                <TableHead className="text-gray-200">Submitted On</TableHead>
-                <TableHead className="text-gray-200">Status</TableHead>
-                <TableHead className="text-gray-200">Documents</TableHead>
-                <TableHead className="text-gray-200">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {vehicles.map((vehicle, index) => (
-                <TableRow key={vehicle._id} className="border-gray-700 hover:bg-gray-800">
-                  <TableCell>{index + 1}</TableCell>
-                  <TableCell>{vehicle.user?.fullName || "Unknown"}</TableCell>
-                  <TableCell>{vehicle.vehicleName}</TableCell>
-                  <TableCell>{vehicle.vehicleType}</TableCell>
-                  <TableCell>{vehicle.licensePlate}</TableCell>
-                  <TableCell>{vehicle.color || "N/A"}</TableCell>
-                  <TableCell>{vehicle.insuranceNumber || "N/A"}</TableCell>
-                  <TableCell>{vehicle.createdAt}</TableCell>
-                  <TableCell>{renderStatus(vehicle.status)}</TableCell>
-                  <TableCell>
-                    <div className="flex space-x-2">
-                      {vehicle.vehicleImage && (
-                        <Button
-                          onClick={() => viewDocument(vehicle.vehicleImage)}
-                          variant="outline"
-                          size="sm"
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="h-5 w-5"
-                            viewBox="0 0 20 20"
-                            fill="currentColor"
-                          >
-                            <path d="M10 12a2 2 0 100-4 2 2 0 000 4z" />
-                            <path
-                              fillRule="evenodd"
-                              d="M.458 10C1.732 5.943 5.522 3 10 3s8.268 2.943 9.542 7c-1.274 4.057-5.064 7-9.542 7S1.732 14.057.458 10zM14 10a4 4 0 11-8 0 4 4 0 018 0z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </Button>
-                      )}
-                      {vehicle.documentImage && (
-                        <Button
-                          onClick={() => viewDocument(vehicle.documentImage)}
-                          variant="outline"
-                          size="sm"
-                        >
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            className="h-5 w-5"
-                            viewBox="0 0 20 20"
-                            fill="currentColor"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        </Button>
-                      )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {vehicle.status === "Pending" && (
-                      <div className="flex space-x-2">
-                        <Button
-                          onClick={() => handleApproveVehicle(vehicle._id)}
-                          variant="default"
-                          size="sm"
-                        >
-                          Approve
-                        </Button>
-                        <Button
-                          onClick={() => openRejectionModal(vehicle._id)}
-                          variant="destructive"
-                          size="sm"
-                        >
-                          Reject
-                        </Button>
-                      </div>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <div className="mt-4">
-            <Pagination>
-              <PaginationContent>
-                <PaginationItem>
-                  <PaginationPrevious
-                    onClick={() => hasPrev && setPage(page - 1)}
-                    className={hasPrev ? "" : "pointer-events-none opacity-50"}
-                  />
-                </PaginationItem>
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map((p) => (
-                  <PaginationItem key={p}>
-                    <PaginationLink
-                      onClick={() => setPage(p)}
-                      isActive={p === page}
-                    >
-                      {p}
-                    </PaginationLink>
-                  </PaginationItem>
-                ))}
-                <PaginationItem>
-                  <PaginationNext
-                    onClick={() => hasNext && setPage(page + 1)}
-                    className={hasNext ? "" : "pointer-events-none opacity-50"}
-                  />
-                </PaginationItem>
-              </PaginationContent>
-            </Pagination>
-            <p className="text-sm text-gray-400 mt-2">
-              Showing {vehicles.length} of {totalItems} vehicles
-            </p>
+  return (
+    <div className="bg-gray-900 min-h-screen text-white p-6">
+      <div className="container mx-auto">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-white">Vehicle Verification</h1>
+            <p className="text-gray-400">Manage and verify vehicle submissions</p>
           </div>
-        </>
-      )}
+        </div>
 
-      <Dialog open={showRejectionModal} onOpenChange={setShowRejectionModal}>
-        <DialogContent className="bg-gray-800 text-white">
-          <DialogHeader>
-            <DialogTitle>Rejection Reason</DialogTitle>
-          </DialogHeader>
-          <div className="py-4">
-            <p className="text-gray-300 mb-4">
-              Please provide a reason why this vehicle verification is being rejected:
-            </p>
-            <Textarea
-              className="bg-gray-700 text-white border-gray-600"
-              rows={4}
-              placeholder="Enter rejection reason..."
-              value={rejectionNote}
-              onChange={(e) => setRejectionNote(e.target.value)}
+        {/* Enhanced Filters - REMOVED the search bar from here */}
+        <div className="flex flex-col sm:flex-row gap-4 mb-6">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+            <Input
+              placeholder="Search vehicles by license plate or owner name..."
+              value={search}
+              onChange={(e) => handleSearch(e.target.value)}
+              className="pl-10 bg-gray-800 border-gray-600 text-white placeholder-gray-400"
             />
           </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setShowRejectionModal(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={handleRejectVehicle}
-            >
-              Reject Vehicle
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          <div className="flex gap-2">
+            <Select value={statusFilter} onValueChange={handleStatusFilter}>
+              <SelectTrigger className="w-[180px] bg-gray-800 border-gray-600 text-white">
+                <Filter className="h-4 w-4 mr-2" />
+                <SelectValue placeholder="Filter by status" />
+              </SelectTrigger>
+              <SelectContent className="bg-gray-800 border-gray-600 text-white">
+                <SelectItem value="all">All Status</SelectItem>
+                <SelectItem value="Pending">Pending</SelectItem>
+                <SelectItem value="Approved">Approved</SelectItem>
+                <SelectItem value="Rejected">Rejected</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        
+        {/* DataTable - REMOVED search props to avoid duplicate search bar */}
+        <DataTable
+          columns={columns}
+          data={vehicles}
+          loading={loading}
+          error={error}
+          pagination={{
+            currentPage: page,
+            totalPages,
+            totalItems,
+            hasNext,
+            hasPrev,
+            onPageChange: setPage,
+          }}
+          emptyMessage="No vehicles found for verification."
+          actions={renderActions}
+        />
+
+        <Dialog open={showRejectionModal} onOpenChange={setShowRejectionModal}>
+          <DialogContent className="bg-gray-800 border-gray-600 text-white">
+            <DialogHeader>
+              <DialogTitle className="text-xl font-semibold">Rejection Reason</DialogTitle>
+            </DialogHeader>
+            <div className="py-4">
+              <p className="text-gray-300 mb-4">
+                Please provide a reason why this vehicle verification is being rejected:
+              </p>
+              <Textarea
+                className="bg-gray-700 text-white border-gray-600 placeholder-gray-400 focus:border-blue-500"
+                rows={4}
+                placeholder="Enter rejection reason..."
+                value={rejectionNote}
+                onChange={(e) => setRejectionNote(e.target.value)}
+              />
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setShowRejectionModal(false)}
+                className="border-gray-600 text-gray-300 hover:bg-gray-700"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleRejectVehicle}
+                className="bg-red-600 hover:bg-red-700"
+              >
+                Reject Vehicle
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   );
 }

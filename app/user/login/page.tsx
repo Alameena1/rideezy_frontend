@@ -6,6 +6,24 @@ import Link from "next/link";
 import Image from "next/image";
 import { signIn, useSession } from "next-auth/react";
 import { clientApiService, useApiInterceptors } from "@/services/client/client-api";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { 
+  Car, 
+  Shield, 
+  Users, 
+  Star, 
+  CheckCircle2, 
+  Eye, 
+  EyeOff,
+  ArrowRight,
+  Sparkles
+} from "lucide-react";
 
 export default function LoginPage() {
   const { data: session, status } = useSession();
@@ -22,11 +40,15 @@ export default function LoginPage() {
     general: "",
   });
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
 
   // Apply API interceptors
   useApiInterceptors();
 
   useEffect(() => {
+    setIsMounted(true);
+    
     // Handle error from query params
     const error = searchParams.get("error");
     if (error) {
@@ -39,7 +61,7 @@ export default function LoginPage() {
     // Redirect if authenticated
     if (status === "authenticated" && !loading) {
       console.log("LoginPage: User authenticated, redirecting to /");
-      router.replace("/"); // Use replace to avoid adding to history
+      router.replace("/");
     }
   }, [status, router, searchParams, loading]);
 
@@ -95,7 +117,6 @@ export default function LoginPage() {
         setErrors({ ...errors, general: result.error || "Invalid email or password" });
         setLoading(false);
       }
-      // No need for manual redirect here; useEffect handles it
     } catch (error: any) {
       console.error("Login error:", error.message);
       setErrors({ ...errors, general: error.message || "Login failed" });
@@ -114,213 +135,316 @@ export default function LoginPage() {
     router.push("/user/forgot-password");
   };
 
+  const togglePasswordVisibility = () => {
+    setShowPassword(!showPassword);
+  };
+
   if (status === "authenticated") {
-    return null; // Prevent rendering while redirecting
+    return null;
   }
 
+  const features = [
+    {
+      icon: <Car className="h-5 w-5" />,
+      text: "10K+ Rides Daily"
+    },
+    {
+      icon: <Shield className="h-5 w-5" />,
+      text: "Verified Drivers"
+    },
+    {
+      icon: <Users className="h-5 w-5" />,
+      text: "500K+ Community"
+    },
+    {
+      icon: <Star className="h-5 w-5" />,
+      text: "4.9 Star Rating"
+    }
+  ];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="w-full max-w-4xl bg-white rounded-2xl shadow-xl overflow-hidden flex flex-col md:flex-row">
-        <div className="w-full md:w-1/2 p-8 md:p-10 order-2 md:order-1">
-          <div className="flex items-center justify-center md:justify-start mb-8">
-            <div className="bg-blue-600 text-white p-2 rounded-lg mr-3">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-6 w-6"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M13 10V3L4 14h7v7l9-11h-7z"
-                />
-              </svg>
-            </div>
-            <h1 className="text-2xl font-bold text-gray-800">Rideezy</h1>
-          </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 relative overflow-hidden">
+      {/* Animated Background Elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        {/* Floating Shapes */}
+        <div className="absolute top-1/4 left-1/4 w-72 h-72 bg-purple-500/10 rounded-full blur-3xl animate-float"></div>
+        <div className="absolute top-1/3 right-1/4 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl animate-float-delayed"></div>
+        <div className="absolute bottom-1/4 left-1/3 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl animate-float-slow"></div>
+        
+        {/* Grid Pattern */}
+        <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] bg-[size:50px_50px] [mask-image:radial-gradient(ellipse_80%_50%_at_50%_50%,black,transparent)]"></div>
+      </div>
 
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Welcome back</h2>
-          <p className="text-gray-600 mb-8">Log in to your account to continue</p>
-
-          {errors.general && (
-            <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200 text-red-600 text-sm">
-              {errors.general}
-            </div>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label
-                htmlFor="email"
-                className="block text-sm font-medium text-gray-700 mb-1"
-              >
-                Email Address
-              </label>
-              <input
-                id="email"
-                name="email"
-                type="email"
-                value={formData.email}
-                onChange={handleChange}
-                disabled={loading}
-                className={`w-full px-4 py-3 rounded-lg border ${
-                  errors.email ? "border-red-300 bg-red-50" : "border-gray-300"
-                } text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50`}
-                placeholder="your.email@example.com"
-                autoComplete="email"
-              />
-              {errors.email && (
-                <p className="mt-1 text-sm text-red-600">{errors.email}</p>
-              )}
-            </div>
-
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <label
-                  htmlFor="password"
-                  className="block text-sm font-medium text-gray-700"
-                >
-                  Password
-                </label>
-                <button
-                  type="button"
-                  onClick={handleForgotPassword}
-                  disabled={loading}
-                  className="text-sm text-blue-600 hover:text-blue-800 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Forgot password?
-                </button>
-              </div>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                value={formData.password}
-                onChange={handleChange}
-                disabled={loading}
-                className={`w-full px-4 py-3 rounded-lg border ${
-                  errors.password ? "border-red-300 bg-red-50" : "border-gray-300"
-                } text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all disabled:opacity-50`}
-                placeholder="Enter your password"
-                autoComplete="current-password"
-              />
-              {errors.password && (
-                <p className="mt-1 text-sm text-red-600">{errors.password}</p>
-              )}
-            </div>
-
-            <div className="flex items-center">
-              <input
-                id="rememberMe"
-                name="rememberMe"
-                type="checkbox"
-                checked={formData.rememberMe}
-                onChange={handleChange}
-                disabled={loading}
-                className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded disabled:opacity-50"
-              />
-              <label
-                htmlFor="rememberMe"
-                className="ml-2 block text-sm text-gray-700"
-              >
-                Remember me
-              </label>
-            </div>
-
-            <div className="space-y-6">
-              <button
-                type="submit"
-                className="w-full bg-blue-600 text-white py-3 rounded-lg hover:bg-blue-700 transition-all disabled:opacity-50"
-                disabled={loading}
-              >
-                {loading ? "Logging in..." : "Log In"}
-              </button>
-
-              <div className="flex items-center">
-                <div className="flex-grow border-t border-gray-300"></div>
-                <span className="px-3 text-gray-500 text-sm">OR</span>
-                <div className="flex-grow border-t border-gray-300"></div>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleSignIn}
-                className="w-full py-3 px-4 bg-white border border-gray-300 rounded-lg flex items-center justify-center space-x-3 shadow-sm hover:bg-gray-100 transition-all disabled:opacity-50"
-                disabled={loading}
-              >
-                <Image
-                  src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg"
-                  alt="Google Logo"
-                  width={20}
-                  height={20}
-                />
-                <span className="text-gray-700 font-medium">
-                  Continue with Google
+      {/* Main Content */}
+      <div className="relative z-10 flex items-center justify-center min-h-screen p-4">
+        <div className="w-full max-w-6xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+          {/* Left Side - Brand & Features */}
+          <div className="text-white space-y-8">
+            <div className="space-y-4">
+              <Badge className="bg-white/20 text-white border-0 backdrop-blur-sm px-4 py-2 text-sm">
+                <Sparkles className="h-3 w-3 mr-1" />
+                Welcome to RideEzy
+              </Badge>
+              
+              <h1 className="text-4xl lg:text-6xl font-bold leading-tight">
+                Your Journey
+                <span className="bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent block">
+                  Starts Here
                 </span>
-              </button>
-
-              <p className="text-center text-gray-600">
-                Don't have an account?{" "}
-                <Link href="/user/signup" className="text-blue-600 hover:underline">
-                  Sign up
-                </Link>
+              </h1>
+              
+              <p className="text-xl text-gray-300 leading-relaxed max-w-lg">
+                Join thousands of riders and drivers in our trusted community. Safe, reliable, and affordable rides await.
               </p>
             </div>
-          </form>
-        </div>
 
-        <div className="hidden md:block w-1/2 bg-gradient-to-br from-blue-600 to-indigo-700 p-12 relative order-1 md:order-2">
-          <div className="absolute inset-0 bg-black opacity-20 z-0"></div>
-          <div className="relative z-10 h-full flex flex-col justify-between">
-            <div>
-              <h2 className="text-3xl font-bold text-white mb-6">Welcome Back!</h2>
-              <p className="text-blue-100 mb-8">
-                Log in to continue your ride-sharing journey and connect with fellow travelers.
-              </p>
-
-              <div className="space-y-4">
-                {[
-                  "View your upcoming and past rides",
-                  "Manage your profile and preferences",
-                  "Connect with your regular travel buddies",
-                  "Access exclusive member benefits",
-                ].map((feature, index) => (
-                  <div key={index} className="flex items-center">
-                    <div className="w-6 h-6 rounded-full bg-blue-400 bg-opacity-30 flex items-center justify-center mr-3">
-                      <svg
-                        className="w-4 h-4 text-white"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    </div>
-                    <span className="text-white text-sm">{feature}</span>
+            {/* Features Grid */}
+            <div className="grid grid-cols-2 gap-4 max-w-md">
+              {features.map((feature, index) => (
+                <div key={index} className="flex items-center space-x-3 p-3 bg-white/5 rounded-lg backdrop-blur-sm border border-white/10">
+                  <div className="text-purple-400">
+                    {feature.icon}
                   </div>
+                  <span className="text-sm text-gray-300">{feature.text}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Testimonial */}
+            {/* <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10 max-w-md">
+              <div className="flex items-center space-x-2 text-yellow-400 mb-2">
+                {[...Array(5)].map((_, i) => (
+                  <Star key={i} className="h-4 w-4 fill-current" />
                 ))}
               </div>
-            </div>
-
-            <div className="mt-auto">
-              <div className="bg-white/10 rounded-lg p-4 backdrop-blur-sm">
-                <p className="text-white italic text-sm">
-                  I find the most reliable carpool buddies through this app. It's changed how I commute forever!
-                </p>
-                <p className="text-blue-200 text-sm mt-2">
-                  — Michael T., Active Member
-                </p>
+              <p className="text-gray-300 italic mb-3">
+                "RideEzy transformed my daily commute. The community is amazing and I always feel safe!"
+              </p>
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 bg-gradient-to-br from-purple-400 to-pink-400 rounded-full"></div>
+                <div>
+                  <p className="text-white text-sm font-medium">Sarah Johnson</p>
+                  <p className="text-gray-400 text-xs">Regular Rider</p>
+                </div>
               </div>
-            </div>
+            </div> */}
+          </div>
+
+          {/* Right Side - Login Form */}
+          <div className="flex justify-center lg:justify-end">
+            <Card className="w-full max-w-md bg-white/10 backdrop-blur-md border-white/20 shadow-2xl">
+              <CardHeader className="space-y-4 text-center pb-8">
+                <div className="flex justify-center">
+                  <div className="w-12 h-12 bg-gradient-to-br from-purple-500 to-pink-500 rounded-2xl flex items-center justify-center">
+                    <Car className="h-6 w-6 text-white" />
+                  </div>
+                </div>
+                <div>
+                  <CardTitle className="text-2xl font-bold text-white">
+                    Welcome Back
+                  </CardTitle>
+                  <CardDescription className="text-gray-300 mt-2">
+                    Sign in to your account to continue
+                  </CardDescription>
+                </div>
+              </CardHeader>
+
+              <CardContent className="space-y-6">
+                {errors.general && (
+                  <Alert variant="destructive" className="bg-red-500/20 border-red-500/50">
+                    <AlertDescription className="text-white">
+                      {errors.general}
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                <form onSubmit={handleSubmit} className="space-y-5">
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="email" className="text-white">
+                        Email Address
+                      </Label>
+                      <Input
+                        id="email"
+                        name="email"
+                        type="email"
+                        value={formData.email}
+                        onChange={handleChange}
+                        disabled={loading}
+                        className="bg-white/5 border-white/20 text-white placeholder-gray-400 focus:bg-white/10 focus:border-purple-400 transition-all"
+                        placeholder="your.email@example.com"
+                        autoComplete="email"
+                      />
+                      {errors.email && (
+                        <p className="text-sm text-red-400">{errors.email}</p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <Label htmlFor="password" className="text-white">
+                          Password
+                        </Label>
+                        <Button
+                          type="button"
+                          variant="link"
+                          onClick={handleForgotPassword}
+                          disabled={loading}
+                          className="text-purple-300 hover:text-purple-200 p-0 h-auto text-sm disabled:opacity-50"
+                        >
+                          Forgot password?
+                        </Button>
+                      </div>
+                      <div className="relative">
+                        <Input
+                          id="password"
+                          name="password"
+                          type={showPassword ? "text" : "password"}
+                          value={formData.password}
+                          onChange={handleChange}
+                          disabled={loading}
+                          className="bg-white/5 border-white/20 text-white placeholder-gray-400 focus:bg-white/10 focus:border-purple-400 transition-all pr-10"
+                          placeholder="Enter your password"
+                          autoComplete="current-password"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={togglePasswordVisibility}
+                          className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-white/10 text-gray-400"
+                        >
+                          {showPassword ? (
+                            <EyeOff className="h-4 w-4" />
+                          ) : (
+                            <Eye className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </div>
+                      {errors.password && (
+                        <p className="text-sm text-red-400">{errors.password}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <Checkbox
+                      id="rememberMe"
+                      name="rememberMe"
+                      checked={formData.rememberMe}
+                      onCheckedChange={(checked) => 
+                        setFormData(prev => ({ ...prev, rememberMe: checked as boolean }))
+                      }
+                      disabled={loading}
+                      className="data-[state=checked]:bg-purple-500 data-[state=checked]:border-purple-500"
+                    />
+                    <Label htmlFor="rememberMe" className="text-gray-300 text-sm">
+                      Remember me for 30 days
+                    </Label>
+                  </div>
+
+                  <Button
+                    type="submit"
+                    className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-semibold py-3 rounded-xl transition-all duration-300 transform hover:scale-[1.02] disabled:opacity-50"
+                    disabled={loading}
+                    size="lg"
+                  >
+                    {loading ? (
+                      <div className="flex items-center space-x-2">
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Signing in...</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center space-x-2">
+                        <span>Continue</span>
+                        <ArrowRight className="h-4 w-4" />
+                      </div>
+                    )}
+                  </Button>
+                </form>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-white/20"></div>
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="px-2 bg-transparent text-gray-400">Or continue with</span>
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  onClick={handleSignIn}
+                  variant="outline"
+                  className="w-full bg-white/5 border-white/20 text-white hover:bg-white/10 hover:text-white rounded-xl py-3 transition-all"
+                  disabled={loading}
+                  size="lg"
+                >
+                  <Image
+                    src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg"
+                    alt="Google Logo"
+                    width={20}
+                    height={20}
+                    className="mr-3"
+                  />
+                  <span className="font-medium">Google</span>
+                </Button>
+
+                <div className="text-center">
+                  <p className="text-gray-400">
+                    Don't have an account?{" "}
+                    <Link 
+                      href="/user/signup" 
+                      className="text-purple-300 hover:text-purple-200 font-semibold transition-colors"
+                    >
+                      Sign up now
+                    </Link>
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
+
+      {/* Floating Animation Elements */}
+      {isMounted && (
+        <>
+          <div className="absolute top-20 left-10 animate-bounce">
+            <div className="w-6 h-6 bg-purple-400/30 rounded-full"></div>
+          </div>
+          <div className="absolute top-40 right-20 animate-bounce delay-100">
+            <div className="w-4 h-4 bg-pink-400/30 rounded-full"></div>
+          </div>
+          <div className="absolute bottom-40 left-20 animate-bounce delay-200">
+            <div className="w-5 h-5 bg-blue-400/30 rounded-full"></div>
+          </div>
+        </>
+      )}
+
+      <style jsx global>{`
+        @keyframes float {
+          0%, 100% { transform: translateY(0px) rotate(0deg); }
+          50% { transform: translateY(-20px) rotate(180deg); }
+        }
+        @keyframes float-delayed {
+          0%, 100% { transform: translateY(0px) rotate(0deg); }
+          50% { transform: translateY(-30px) rotate(90deg); }
+        }
+        @keyframes float-slow {
+          0%, 100% { transform: translateY(0px) scale(1); }
+          50% { transform: translateY(-15px) scale(1.1); }
+        }
+        .animate-float {
+          animation: float 6s ease-in-out infinite;
+        }
+        .animate-float-delayed {
+          animation: float-delayed 8s ease-in-out infinite;
+        }
+        .animate-float-slow {
+          animation: float-slow 10s ease-in-out infinite;
+        }
+      `}</style>
     </div>
   );
 }

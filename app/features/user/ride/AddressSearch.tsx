@@ -4,6 +4,11 @@ import React, { useState, useEffect } from 'react';
 import { UseFormRegister, UseFormSetValue } from 'react-hook-form';
 import { clientApiService } from "@/services/client/client-api";
 import Swal from "sweetalert2";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { MapPin, Navigation } from "lucide-react";
 
 interface FormData {
   startPoint: string;
@@ -77,6 +82,8 @@ const AddressSearch: React.FC<AddressSearchProps> = ({
         icon: "error",
         title: "Geolocation Not Supported",
         text: "Your browser does not support location services. Please enter your location manually.",
+        background: '#fff',
+        color: '#374151',
       });
       return;
     }
@@ -110,6 +117,8 @@ const AddressSearch: React.FC<AddressSearchProps> = ({
             Location is being determined using your IP address.<br/>
             <b>Accuracy:</b> about ${Math.round(accuracy / 1000)} km.
           `,
+          background: '#fff',
+          color: '#374151',
         });
       }
 
@@ -142,24 +151,32 @@ const AddressSearch: React.FC<AddressSearchProps> = ({
           icon: "error",
           title: "Permission Denied",
           text: "Location access was denied. Please enable it in your browser settings.",
+          background: '#fff',
+          color: '#374151',
         });
       } else if (error.code === error.POSITION_UNAVAILABLE) {
         await Swal.fire({
           icon: "error",
           title: "Location Unavailable",
           text: "Location services are not available. Please check your device settings.",
+          background: '#fff',
+          color: '#374151',
         });
       } else if (error.code === error.TIMEOUT) {
         await Swal.fire({
           icon: "error",
           title: "Request Timed Out",
           text: "Location request timed out. Try again outdoors or use manual search.",
+          background: '#fff',
+          color: '#374151',
         });
       } else {
         await Swal.fire({
           icon: "error",
           title: "Failed to Get Location",
           text: "Unable to fetch location. Please enter it manually.",
+          background: '#fff',
+          color: '#374151',
         });
       }
     } finally {
@@ -168,51 +185,69 @@ const AddressSearch: React.FC<AddressSearchProps> = ({
   };
 
   return (
-    <div>
-      <label className="block text-sm font-medium text-gray-700">{label}</label>
-      <div className="flex items-center gap-2">
-        <input
-          type="text"
-          {...register(placeNameField, { required: `${label} is required` })}
-          onChange={(e) => handleSearch(e.target.value)}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm p-2 border"
-          placeholder={`Enter ${label.toLowerCase()}...`}
-          suppressHydrationWarning
-          data-1p-ignore
-          data-lpignore="true"
-        />
+    <div className="space-y-2">
+      <Label htmlFor={placeNameField} className="text-sm font-medium flex items-center gap-2">
+        <MapPin className="h-4 w-4 text-blue-600" />
+        {label}
+      </Label>
+      
+      <div className="flex gap-2">
+        <div className="flex-1 relative">
+          <Input
+            id={placeNameField}
+            type="text"
+            {...register(placeNameField, { required: `${label} is required` })}
+            onChange={(e) => handleSearch(e.target.value)}
+            className="w-full"
+            placeholder={`Enter ${label.toLowerCase()}...`}
+            suppressHydrationWarning
+            data-1p-ignore
+            data-lpignore="true"
+          />
+          
+          {suggestions.length > 0 && (
+            <Card className="absolute top-full left-0 right-0 mt-1 z-50 border shadow-lg max-h-60 overflow-y-auto">
+              <CardContent className="p-2">
+                {suggestions.map((suggestion) => (
+                  <div
+                    key={suggestion.place_id}
+                    onClick={() => handleSelect(suggestion)}
+                    className="p-2 cursor-pointer hover:bg-gray-50 rounded-lg transition-colors border-b last:border-b-0"
+                  >
+                    <div className="text-sm font-medium text-gray-900">
+                      {suggestion.display_name.split(',')[0]}
+                    </div>
+                    <div className="text-xs text-gray-500 truncate">
+                      {suggestion.display_name.split(',').slice(1).join(',').trim()}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
         {isClient && allowCurrentLocation && (
-          <button
+          <Button
             type="button"
             onClick={handleUseCurrentLocation}
             disabled={isLoadingLocation}
-            className={`mt-1 px-4 py-2 rounded-md text-sm font-medium ${
-              isLoadingLocation 
-                ? 'bg-gray-400 cursor-not-allowed' 
-                : 'bg-blue-600 hover:bg-blue-700 text-white'
-            }`}
+            variant="outline"
+            size="icon"
+            className="flex-shrink-0"
+            title="Use current location"
           >
-            {isLoadingLocation ? '📡 Locating...' : '📍 Current'}
-          </button>
+            {isLoadingLocation ? (
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+            ) : (
+              <Navigation className="h-4 w-4" />
+            )}
+          </Button>
         )}
       </div>
-      {suggestions.length > 0 && (
-        <ul className="border border-gray-300 mt-1 rounded-md bg-white shadow-lg max-h-60 overflow-y-auto">
-          {suggestions.map((suggestion) => (
-            <li
-              key={suggestion.place_id}
-              onClick={() => handleSelect(suggestion)}
-              className="p-2 cursor-pointer hover:bg-gray-100 border-b border-gray-200 last:border-b-0"
-            >
-              <div className="text-sm font-medium">{suggestion.display_name.split(',')[0]}</div>
-              <div className="text-xs text-gray-500">
-                {suggestion.display_name.split(',').slice(1).join(',').trim()}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+      
       {error && <p className="text-red-600 text-sm mt-1">{error}</p>}
+      
       <input
         type="hidden"
         {...register(field, {

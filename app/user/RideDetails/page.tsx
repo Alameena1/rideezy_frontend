@@ -3,15 +3,48 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import useAuth from "@/app/hooks/useAuth";
 import { clientApiService } from "@/services/client/client-api";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
+import { 
+  Card, 
+  CardHeader, 
+  CardTitle, 
+  CardDescription, 
+  CardContent 
+} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ChevronDown, ChevronUp, RefreshCw, Route } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { 
+  ChevronDown, 
+  ChevronUp, 
+  RefreshCw, 
+  Route,
+  MapPin,
+  Calendar,
+  Clock,
+  Users,
+  Car,
+  Navigation,
+  DollarSign,
+  Fuel,
+  Edit3,
+  X,
+  AlertTriangle,
+  Play,
+  Square,
+  UserCheck,
+  UserX
+} from "lucide-react";
+import { 
+  Dialog, 
+  DialogContent, 
+  DialogHeader, 
+  DialogTitle, 
+  DialogFooter 
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import * as L from "leaflet";
 import ErrorAlert from "../../features/user/vehicles/ErrorAlert";
 import MainLayout from "../../comp/MainLayout";
@@ -38,25 +71,15 @@ interface Ride {
   passengers: { passengerId: string; passengerName: string; pickedUp?: boolean; droppedOff?: boolean }[];
   pickupPoints: { passengerId: string; location: string; placeName: string }[];
   dropoffPoints: { passengerId: string; location: string; placeName: string }[];
-  status: "Pending" | "Started" | "Completed" | "Cancelled";
+  status: "Pending" | "Started" | "Completed" | "Cancelled" | "EmergencyStopped";
   routeGeometry: string;
   currentPosition?: [number, number] | null;
   pendingRequests?: { passengerId: string; passengerName: string; pickupLocation: string; dropoffLocation: string; status: string }[];
 }
 
-interface UpdateRideParams {
-  passengerId: string;
-  action: "picked" | "dropped";
-  currentPosition?: [number, number];
-}
-
 interface PlaceName {
   startPlace: string;
   endPlace: string;
-}
-
-interface TrackingPosition {
-  data: [number, number] | null;
 }
 
 export default function RideDetails() {
@@ -65,7 +88,7 @@ export default function RideDetails() {
   const [error, setError] = useState<string | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [openCollapsible, setOpenCollapsible] = useState<string | null>(null);
+  const [expandedRide, setExpandedRide] = useState<string | null>(null);
   const [placeNames, setPlaceNames] = useState<{ [key: string]: PlaceName }>({});
   const [leafletLoaded, setLeafletLoaded] = useState<typeof L | null>(null);
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -76,7 +99,12 @@ export default function RideDetails() {
   const [dropoffActions, setDropoffActions] = useState<{ [key: string]: { [key: string]: boolean } }>({});
   const [pausedPassengerIds, setPausedPassengerIds] = useState<{ [rideId: string]: string[] }>({});
   const [simulationPaused, setSimulationPaused] = useState<{ [rideId: string]: boolean }>({});
+  const [emergencyStopModalOpen, setEmergencyStopModalOpen] = useState(false);
+  const [selectedRideForStop, setSelectedRideForStop] = useState<Ride | null>(null);
+  const [stopReason, setStopReason] = useState("");
+  const [isStopping, setIsStopping] = useState(false);
 
+  // Add all the missing ref declarations
   const mapRefs = useRef<{ [key: string]: L.Map | null }>({});
   const routeLayers = useRef<{ [key: string]: L.Polyline | null }>({});
   const startMarkerRefs = useRef<{ [key: string]: L.Marker | null }>({});
@@ -88,10 +116,6 @@ export default function RideDetails() {
   const animationIntervals = useRef<{ [key: string]: NodeJS.Timeout | null }>({});
   const lastPositions = useRef<{ [key: string]: [number, number] | null }>({});
   const placeNameCache = useRef<{ [key: string]: string }>({});
-const [emergencyStopModalOpen, setEmergencyStopModalOpen] = useState(false);
-const [selectedRideForStop, setSelectedRideForStop] = useState<Ride | null>(null);
-const [stopReason, setStopReason] = useState("");
-const [isStopping, setIsStopping] = useState(false);
 
   const currentDate = new Date().toLocaleDateString("en-GB", {
     weekday: "short",
@@ -362,16 +386,23 @@ const [isStopping, setIsStopping] = useState(false);
       }
 
       console.log("[RideDetails] Initializing map for ride", ride._id);
-      const map = leafletLoaded.map(mapContainer, { zoomControl: true }).setView([0, 0], 8);
+      
+      // Clear any existing content
+      mapContainer.innerHTML = '';
+      
+      const map = leafletLoaded.map(mapContainer).setView([0, 0], 8);
       if (!map) {
         console.error("[RideDetails] Failed to create Leaflet map for", ride._id);
         return;
       }
+      
       leafletLoaded.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "© OpenStreetMap contributors",
       }).addTo(map);
+      
       mapRefs.current[ride._id] = map;
 
+      // Set container styles
       mapContainer.style.height = "400px";
       mapContainer.style.width = "100%";
       mapContainer.style.position = "relative";
@@ -383,6 +414,7 @@ const [isStopping, setIsStopping] = useState(false);
         const coordinates = routeData.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]);
         const initialPosition = ride.currentPosition || coordinates[0];
 
+        // Create vehicle marker if it doesn't exist
         if (!vehicleMarkerRefs.current[ride._id] && map) {
           vehicleMarkerRefs.current[ride._id] = leafletLoaded.marker(initialPosition, {
             icon: leafletLoaded.icon({
@@ -392,14 +424,22 @@ const [isStopping, setIsStopping] = useState(false);
             }),
           }).addTo(map).bindPopup("Vehicle");
         }
+        
         if (vehicleMarkerRefs.current[ride._id]) {
           vehicleMarkerRefs.current[ride._id].setLatLng(initialPosition);
         }
 
-        routeLayers.current[ride._id] = leafletLoaded.polyline(coordinates, { color: "#3b9ddd", weight: 5 }).addTo(map);
+        // Create route layer
+        routeLayers.current[ride._id] = leafletLoaded.polyline(coordinates, { 
+          color: "#3b82f6", 
+          weight: 5,
+          opacity: 0.7
+        }).addTo(map);
 
+        // Create start and end markers
         const [startLat, startLng] = coordinates[0];
         const [endLat, endLng] = coordinates[coordinates.length - 1];
+        
         startMarkerRefs.current[ride._id] = leafletLoaded.marker([startLat, startLng], {
           icon: leafletLoaded.icon({
             iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png",
@@ -416,6 +456,7 @@ const [isStopping, setIsStopping] = useState(false);
           }),
         }).addTo(map).bindPopup(`End: ${placeNames[ride._id]?.endPlace || ride.endPoint}`);
 
+        // Create pickup markers
         pickupMarkerRefs.current[ride._id] = ride.pickupPoints.map((pickup, index) => {
           const [lat, lng] = pickup.location.split(",").map(Number);
           return leafletLoaded.marker([lat, lng], {
@@ -427,6 +468,7 @@ const [isStopping, setIsStopping] = useState(false);
           }).addTo(map).bindPopup(`Passenger ${index + 1} - Pickup: ${pickup.placeName}`);
         });
 
+        // Create dropoff markers
         dropoffMarkerRefs.current[ride._id] = ride.dropoffPoints.map((dropoff, index) => {
           const [lat, lng] = dropoff.location.split(",").map(Number);
           return leafletLoaded.marker([lat, lng], {
@@ -438,8 +480,25 @@ const [isStopping, setIsStopping] = useState(false);
           }).addTo(map).bindPopup(`Passenger ${index + 1} - Drop-off: ${dropoff.placeName}`);
         });
 
+        // Fit map to show all markers
+        const allCoordinates = [
+          ...coordinates,
+          ...ride.pickupPoints.map(p => {
+            const [lat, lng] = p.location.split(",").map(Number);
+            return [lat, lng] as [number, number];
+          }),
+          ...ride.dropoffPoints.map(d => {
+            const [lat, lng] = d.location.split(",").map(Number);
+            return [lat, lng] as [number, number];
+          })
+        ];
+
+        if (allCoordinates.length > 0) {
+          const bounds = leafletLoaded.latLngBounds(allCoordinates);
+          map.fitBounds(bounds, { padding: [20, 20] });
+        }
+
         map.invalidateSize();
-        map.fitBounds(leafletLoaded.latLngBounds(coordinates), { padding: [50, 50] });
         lastPositions.current[ride._id] = initialPosition;
         console.log("[RideDetails] Map initialized for ride", ride._id);
       } catch (error) {
@@ -451,37 +510,67 @@ const [isStopping, setIsStopping] = useState(false);
   );
 
   const cleanupMap = useCallback((rideId: string) => {
+    console.log("[RideDetails] Cleaning up map for ride", rideId);
+    
     if (mapRefs.current[rideId]) {
       mapRefs.current[rideId]?.remove();
       mapRefs.current[rideId] = null;
     }
-    if (routeLayers.current[rideId]) routeLayers.current[rideId]?.remove();
-    if (startMarkerRefs.current[rideId]) startMarkerRefs.current[rideId]?.remove();
-    if (endMarkerRefs.current[rideId]) endMarkerRefs.current[rideId]?.remove();
+    
+    if (routeLayers.current[rideId]) {
+      routeLayers.current[rideId]?.remove();
+      routeLayers.current[rideId] = null;
+    }
+    
+    if (startMarkerRefs.current[rideId]) {
+      startMarkerRefs.current[rideId]?.remove();
+      startMarkerRefs.current[rideId] = null;
+    }
+    
+    if (endMarkerRefs.current[rideId]) {
+      endMarkerRefs.current[rideId]?.remove();
+      endMarkerRefs.current[rideId] = null;
+    }
+    
     pickupMarkerRefs.current[rideId]?.forEach((marker) => marker?.remove());
     dropoffMarkerRefs.current[rideId]?.forEach((marker) => marker?.remove());
-    if (vehicleMarkerRefs.current[rideId]) vehicleMarkerRefs.current[rideId]?.remove();
-    vehicleMarkerRefs.current[rideId] = null;
-    routeLayers.current[rideId] = null;
-    startMarkerRefs.current[rideId] = null;
-    endMarkerRefs.current[rideId] = null;
+    
+    if (vehicleMarkerRefs.current[rideId]) {
+      vehicleMarkerRefs.current[rideId]?.remove();
+      vehicleMarkerRefs.current[rideId] = null;
+    }
+    
     pickupMarkerRefs.current[rideId] = [];
     dropoffMarkerRefs.current[rideId] = [];
+    
     if (animationIntervals.current[rideId]) {
       clearInterval(animationIntervals.current[rideId]!);
       animationIntervals.current[rideId] = null;
     }
+    
     lastPositions.current[rideId] = null;
     setSimulationPaused((prev) => ({ ...prev, [rideId]: false }));
+    
     console.log("[RideDetails] Map cleaned up for ride", rideId);
   }, []);
 
-  const toggleCollapsible = (rideId: string) => {
-    if (openCollapsible === rideId) {
+  const toggleRideExpansion = (rideId: string) => {
+    if (expandedRide === rideId) {
       cleanupMap(rideId);
-      setOpenCollapsible(null);
+      setExpandedRide(null);
     } else {
-      setOpenCollapsible(rideId);
+      setExpandedRide(rideId);
+      
+      // Initialize map when expanding
+      setTimeout(() => {
+        const ride = rides.find(r => r._id === rideId);
+        const mapContainer = mapContainerRefs.current[rideId];
+        
+        if (ride && mapContainer && leafletLoaded) {
+          console.log("[RideDetails] Initializing map for expanded ride", rideId);
+          initializeMap(ride, mapContainer);
+        }
+      }, 100);
     }
   };
 
@@ -581,7 +670,7 @@ const [isStopping, setIsStopping] = useState(false);
       const updatedRides: Ride[] = rides.map((r) => (r._id === rideId ? updatedRide : r));
       setRides(updatedRides);
 
-      setOpenCollapsible(rideId);
+      setExpandedRide(rideId);
 
       const mapContainer = mapContainerRefs.current[rideId];
       if (mapContainer && leafletLoaded) {
@@ -657,7 +746,7 @@ const [isStopping, setIsStopping] = useState(false);
       const updatedRides: Ride[] = rides.map((r) => (r._id === rideId ? updatedRide : r));
       setRides(updatedRides);
 
-      setOpenCollapsible(rideId);
+      setExpandedRide(rideId);
 
       const mapContainer = mapContainerRefs.current[rideId];
       if (mapContainer && leafletLoaded && updatedRide.currentPosition) {
@@ -928,8 +1017,8 @@ const [isStopping, setIsStopping] = useState(false);
       const updatedRide = { ...ride, currentPosition: backendPosition };
       setRides((prev) => prev.map((r) => (r._id === rideId ? updatedRide : r)));
 
-      if (openCollapsible === rideId) {
-        setOpenCollapsible(null);
+      if (expandedRide === rideId) {
+        setExpandedRide(null);
         cleanupMap(rideId);
       }
 
@@ -999,8 +1088,8 @@ const [isStopping, setIsStopping] = useState(false);
       const updatedRide = { ...ride, currentPosition: backendPosition };
       setRides((prev) => prev.map((r) => (r._id === rideId ? updatedRide : r)));
 
-      if (openCollapsible === rideId) {
-        setOpenCollapsible(null);
+      if (expandedRide === rideId) {
+        setExpandedRide(null);
         cleanupMap(rideId);
       }
 
@@ -1072,62 +1161,6 @@ const [isStopping, setIsStopping] = useState(false);
     }
   };
 
-
-  const handleEmergencyStop = async (ride: Ride) => {
-  setSelectedRideForStop(ride);
-  setEmergencyStopModalOpen(true);
-};
-
-const confirmEmergencyStop = async () => {
-  if (!selectedRideForStop || !stopReason.trim() || !lastPositions.current[selectedRideForStop._id]) {
-    setError("Please provide a reason for stopping the ride");
-    return;
-  }
-
-  try {
-    setIsStopping(true);
-    const currentPosition = lastPositions.current[selectedRideForStop._id]!;
-    
-    await clientApiService.ride.emergencyStopRide(selectedRideForStop._id, {
-      reason: stopReason,
-      currentPosition
-    });
-
-    // Stop simulation if running
-    if (animationIntervals.current[selectedRideForStop._id]) {
-      clearInterval(animationIntervals.current[selectedRideForStop._id]!);
-      animationIntervals.current[selectedRideForStop._id] = null;
-    }
-
-    // Update ride status locally
-    setRides(rides.map(ride => 
-      ride._id === selectedRideForStop._id 
-        ? { ...ride, status: "EmergencyStopped" }
-        : ride
-    ));
-
-    // Clean up map
-    cleanupMap(selectedRideForStop._id);
-
-    // Show success message
-    Swal.fire({
-      title: 'Ride Emergency Stopped',
-      text: 'The ride has been stopped and refunds are being processed for passengers.',
-      icon: 'success',
-      confirmButtonText: 'OK'
-    });
-
-    setEmergencyStopModalOpen(false);
-    setStopReason("");
-    setSelectedRideForStop(null);
-  } catch (error: any) {
-    console.error("Emergency stop failed:", error);
-    setError(`Failed to emergency stop ride: ${error.message}`);
-  } finally {
-    setIsStopping(false);
-  }
-};
-
   const resumeSimulation = async (rideId: string) => {
     try {
       console.log("[RideDetails] Resuming simulation for ride", rideId);
@@ -1178,11 +1211,59 @@ const confirmEmergencyStop = async () => {
     }
   };
 
-  const isRideTimeReached = (ride: Ride) => {
-    if (!ride.date || ride.date === "N/A" || !ride.time || ride.time === "N/A") return false;
-    const rideStartTime = new Date(`${ride.date}T${ride.time}:00`).getTime();
-    const now = new Date().getTime();
-    return now >= rideStartTime && ride.status === "Pending";
+  const handleEmergencyStop = async (ride: Ride) => {
+    setSelectedRideForStop(ride);
+    setEmergencyStopModalOpen(true);
+  };
+
+  const confirmEmergencyStop = async () => {
+    if (!selectedRideForStop || !stopReason.trim() || !lastPositions.current[selectedRideForStop._id]) {
+      setError("Please provide a reason for stopping the ride");
+      return;
+    }
+
+    try {
+      setIsStopping(true);
+      const currentPosition = lastPositions.current[selectedRideForStop._id]!;
+      
+      await clientApiService.ride.emergencyStopRide(selectedRideForStop._id, {
+        reason: stopReason,
+        currentPosition
+      });
+
+      // Stop simulation if running
+      if (animationIntervals.current[selectedRideForStop._id]) {
+        clearInterval(animationIntervals.current[selectedRideForStop._id]!);
+        animationIntervals.current[selectedRideForStop._id] = null;
+      }
+
+      // Update ride status locally
+      setRides(rides.map(ride => 
+        ride._id === selectedRideForStop._id 
+          ? { ...ride, status: "EmergencyStopped" }
+          : ride
+      ));
+
+      // Clean up map
+      cleanupMap(selectedRideForStop._id);
+
+      // Show success message
+      Swal.fire({
+        title: 'Ride Emergency Stopped',
+        text: 'The ride has been stopped and refunds are being processed for passengers.',
+        icon: 'success',
+        confirmButtonText: 'OK'
+      });
+
+      setEmergencyStopModalOpen(false);
+      setStopReason("");
+      setSelectedRideForStop(null);
+    } catch (error: any) {
+      console.error("Emergency stop failed:", error);
+      setError(`Failed to emergency stop ride: ${error.message}`);
+    } finally {
+      setIsStopping(false);
+    }
   };
 
   const handleJoinRequest = async (rideId: string, passengerId: string, action: "accept" | "reject") => {
@@ -1299,348 +1380,535 @@ const confirmEmergencyStop = async () => {
 
     initializeStartedRides();
 
-    const currentRideId = openCollapsible;
+    const currentRideId = expandedRide;
     if (currentRideId) {
       const ride = rides.find((r) => r._id === currentRideId);
       if (ride && mapContainerRefs.current[currentRideId] && !mapRefs.current[currentRideId]) {
-        console.log("[RideDetails] Initializing map for collapsible open", currentRideId);
+        console.log("[RideDetails] Initializing map for expanded ride", currentRideId);
         initializeMap(ride, mapContainerRefs.current[currentRideId]!);
       }
     } else {
       Object.keys(mapRefs.current).forEach((rideId) => {
-        if (mapRefs.current[rideId] && rideId !== openCollapsible) cleanupMap(rideId);
+        if (mapRefs.current[rideId] && rideId !== expandedRide) cleanupMap(rideId);
       });
     }
-  }, [openCollapsible, rides, leafletLoaded, initializeMap, cleanupMap]);
+  }, [expandedRide, rides, leafletLoaded, initializeMap, cleanupMap]);
 
- 
+  const getStatusBadge = (status: string) => {
+    const baseClasses = "flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium";
+    
+    switch (status) {
+      case "Pending":
+        return <Badge className={`${baseClasses} bg-blue-100 text-blue-800 border-blue-200`}>
+          <Clock className="h-3 w-3" />
+          Scheduled
+        </Badge>;
+      case "Started":
+        return <Badge className={`${baseClasses} bg-green-100 text-green-800 border-green-200`}>
+          <Navigation className="h-3 w-3" />
+          In Progress
+        </Badge>;
+      case "Completed":
+        return <Badge className={`${baseClasses} bg-gray-100 text-gray-800 border-gray-200`}>
+          Completed
+        </Badge>;
+      case "EmergencyStopped":
+        return <Badge className={`${baseClasses} bg-orange-100 text-orange-800 border-orange-200`}>
+          <AlertTriangle className="h-3 w-3" />
+          Emergency Stop
+        </Badge>;
+      case "Cancelled":
+        return <Badge className={`${baseClasses} bg-red-100 text-red-800 border-red-200`}>
+          <X className="h-3 w-3" />
+          Cancelled
+        </Badge>;
+      default:
+        return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
+  const isRideTimeReached = (ride: Ride) => {
+    if (!ride.date || ride.date === "N/A" || !ride.time || ride.time === "N/A") return false;
+    const rideStartTime = new Date(`${ride.date}T${ride.time}:00`).getTime();
+    const now = new Date().getTime();
+    return now >= rideStartTime && ride.status === "Pending";
+  };
+
   return (
     <MainLayout activeItem="Rides">
-      <div className="mx-auto max-w-5xl p-4">
-        <Card className="border-none shadow-md">
-          <CardHeader className="pb-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <CardTitle className="text-2xl font-bold">Your Rides</CardTitle>
-                <CardDescription className="text-gray-500">{currentDate}</CardDescription>
-              </div>
-              <Button 
-                onClick={() => fetchRidesWithRetry()} 
-                variant="outline" 
-                disabled={isLoading}
-                className="flex items-center gap-2"
-              >
-                {isLoading ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
-                    Loading...
-                  </>
-                ) : (
-                  <>
-                    <RefreshCw className="h-4 w-4" />
-                    Refresh
-                  </>
-                )}
-              </Button>
-            </div>
-          </CardHeader>
-          <CardContent className="p-6">
-            {error && (
-              <Alert variant="destructive" className="mb-4">
-                <AlertDescription className="flex items-center justify-between">
-                  <span>{error}</span>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => fetchRidesWithRetry()}
-                    className="ml-2"
-                  >
-                    Retry
-                  </Button>
-                </AlertDescription>
-              </Alert>
-            )}
-            
-            {isLoading ? (
-              <div className="flex flex-col items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-                <p className="text-gray-600">Loading your rides...</p>
-              </div>
-            ) : rides.length === 0 ? (
-              <div className="text-center py-12">
-                <div className="w-16 h-16 mx-auto mb-4 bg-gray-100 rounded-full flex items-center justify-center">
-                  <Route className="h-8 w-8 text-gray-400" />
-                </div>
-                <h3 className="text-lg font-medium text-gray-900 mb-2">No rides found</h3>
-                <p className="text-gray-500 mb-4">
-                  {error ? "There was an error loading your rides." : "You haven't created any rides yet."}
-                </p>
-                {!error && (
-                  <Button asChild>
-                    <Link href="/user/ride">Create Your First Ride</Link>
-                  </Button>
-                )}
-              </div>
-            ) : (
-              <div className="grid gap-6">
-                {rides.map((ride) => {
-                  console.log("[RideDetails] Rendering ride:", ride._id, {
-                    totalPeople: ride.totalPeople,
-                    passengerCount: ride.passengerCount,
-                    passengersLength: ride.passengers.length,
-                  });
-                  const seatsLeft = ride.passengerCount - ride.passengers.length;
-                  const place = placeNames[ride._id] || { startPlace: ride.startPoint, endPlace: ride.endPoint };
+      <div className="mx-auto max-w-6xl p-6 space-y-6">
+        {/* Header */}
+        <div className="text-center space-y-2">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            Your Rides
+          </h1>
+          <p className="text-gray-600 text-lg">Manage and track your ride schedules</p>
+          <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+            <Calendar className="h-4 w-4" />
+            <span>{currentDate}</span>
+          </div>
+        </div>
 
-                  return (
-                    <Card key={ride._id} className="p-6 shadow-sm hover:shadow-md transition-shadow">
-                      <div className="flex flex-col gap-4">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h3 className="text-lg font-semibold text-gray-800">
-                              {place.startPlace} to {place.endPlace}
-                            </h3>
-                            <div className="mt-2 space-y-1">
-                              <p className="text-sm text-gray-600">
-                                <span className="font-medium">Date:</span>{" "}
-                                {ride.date !== "N/A" ? new Date(ride.date).toLocaleDateString() : "N/A"}
-                                {ride.time && ride.time !== "N/A" && (
-                                  <>
-                                    {" | "}
-                                    <span className="font-medium">Time:</span> {ride.time}
-                                  </>
-                                )}
-                              </p>
-                              <p className="text-sm text-gray-600">
-                                <span className="font-medium">Status:</span>{" "}
-                                <span
-                                  className={`${
-                                    ride.status === "Pending"
-                                      ? "text-yellow-600"
-                                      : ride.status === "Started"
-                                      ? "text-blue-600"
-                                      : ride.status === "Completed"
-                                      ? "text-green-600"
-                                      : ride.status === "EmergencyStopped"
-                                      ? "text-orange-600"
-                                      : "text-red-600"
-                                  } font-medium`}
-                                >
-                                  {ride.status}
-                                </span>
-                              </p>
-                              <p className="text-sm text-gray-600">
-                                <span className="font-medium">Distance:</span>{" "}
-                                {(ride.distanceKm ?? 0).toFixed(2)} km{" | "}
-                                <span className="font-medium">Cost per Person:</span>{" "}
-                                {(ride.costPerPerson ?? 0).toFixed(2)} INR
-                              </p>
-                              <p className="text-sm text-gray-600">
-                                <span className="font-medium">Seats Left:</span> {seatsLeft}
-                              </p>
-                            </div>
+        {error && <ErrorAlert message={error} />}
+
+        {/* Controls */}
+        <div className="flex justify-between items-center">
+          <Button 
+            onClick={() => fetchRidesWithRetry()} 
+            variant="outline" 
+            disabled={isLoading}
+            className="flex items-center gap-2"
+          >
+            {isLoading ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
+                Loading...
+              </>
+            ) : (
+              <>
+                <RefreshCw className="h-4 w-4" />
+                Refresh
+              </>
+            )}
+          </Button>
+          
+          <Button asChild className="bg-blue-600 hover:bg-blue-700">
+            <Link href="/user/ride" className="flex items-center gap-2">
+              <Route className="h-4 w-4" />
+              Create New Ride
+            </Link>
+          </Button>
+        </div>
+
+        {isLoading ? (
+          <div className="grid gap-6">
+            {[1, 2, 3].map((i) => (
+              <Card key={i} className="p-6">
+                <div className="animate-pulse space-y-4">
+                  <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                  <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                  <div className="h-10 bg-gray-200 rounded"></div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        ) : rides.length === 0 ? (
+          <Card className="text-center py-16">
+            <CardContent>
+              <div className="w-20 h-20 mx-auto mb-6 bg-blue-50 rounded-full flex items-center justify-center">
+                <Car className="h-10 w-10 text-blue-600" />
+              </div>
+              <h3 className="text-2xl font-semibold text-gray-900 mb-3">No Rides Found</h3>
+              <p className="text-gray-600 max-w-md mx-auto mb-6">
+                {error ? "There was an error loading your rides. Please try refreshing." : "You haven't created any rides yet. Start by creating your first ride!"}
+              </p>
+              {!error && (
+                <Button asChild size="lg" className="bg-blue-600 hover:bg-blue-700">
+                  <Link href="/user/ride" className="flex items-center gap-2">
+                    <Route className="h-5 w-5" />
+                    Create Your First Ride
+                  </Link>
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-6">
+            {rides.map((ride) => {
+              const seatsLeft = ride.passengerCount - ride.passengers.length;
+              const place = placeNames[ride._id] || { startPlace: ride.startPoint, endPlace: ride.endPoint };
+              const isExpanded = expandedRide === ride._id;
+              const hasPendingRequests = ride.pendingRequests?.some(req => req.status === "pending");
+
+              return (
+                <Card key={ride._id} className="overflow-hidden border border-gray-200 hover:shadow-lg transition-shadow">
+                  <CardHeader className="pb-4 bg-gradient-to-r from-gray-50 to-blue-50">
+                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="w-12 h-12 bg-blue-500 rounded-xl flex items-center justify-center shadow-sm">
+                            <Car className="h-6 w-6 text-white" />
                           </div>
-                          <div className="flex space-x-2">
-                            {ride.status === "Pending" && (
-                              <>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => openEditModal(ride)}
-                                  disabled={isRideTimeReached(ride)}
-                                >
-                                  Edit
-                                </Button>
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  onClick={() => handleCancelRide(ride.rideId!)}
-                                  disabled={isRideTimeReached(ride)}
-                                >
-                                  Cancel
-                                </Button>
-                              </>
-                            )}
-                            {ride.status === "Pending" && isRideTimeReached(ride) && (
-                              <Button
-                                variant="success"
-                                size="sm"
-                                onClick={() => startRide(ride._id)}
-                              >
-                                Start Ride
-                              </Button>
-                            )}
-                            {ride.status === "Started" && (
-                              <>
-                                <Button
-                                  variant="success"
-                                  size="sm"
-                                  onClick={() => resumeSimulation(ride._id)}
-                                  disabled={!mapRefs.current[ride._id] || !simulationPaused[ride._id]}
-                                >
-                                  Resume Simulation
-                                </Button>
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  onClick={() => handleEmergencyStop(ride)}
-                                  disabled={isStopping}
-                                >
-                                  {isStopping ? "Stopping..." : "Emergency Stop"}
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => stopRide(ride._id)}
-                                >
-                                  Complete Ride
-                                </Button>
-                              </>
-                            )}
-                            <Button variant="outline" size="sm">
-                              View Details
-                            </Button>
+                          <div>
+                            <CardTitle className="text-xl font-bold text-gray-900">
+                              {place.startPlace} → {place.endPlace}
+                            </CardTitle>
+                            <CardDescription className="flex items-center gap-3 mt-2">
+                              <div className="flex items-center gap-1 text-sm">
+                                <Calendar className="h-4 w-4" />
+                                {ride.date !== "N/A" ? new Date(ride.date).toLocaleDateString("en-GB") : "N/A"}
+                              </div>
+                              {ride.time && ride.time !== "N/A" && (
+                                <div className="flex items-center gap-1 text-sm">
+                                  <Clock className="h-4 w-4" />
+                                  {ride.time}
+                                </div>
+                              )}
+                            </CardDescription>
                           </div>
                         </div>
-                        <Collapsible
-                          open={openCollapsible === ride._id}
-                          onOpenChange={() => toggleCollapsible(ride._id)}
-                        >
-                          <CollapsibleTrigger asChild>
-                            <Button variant="ghost" className="flex items-center gap-2">
-                              {openCollapsible === ride._id ? "Hide Details" : "Show More"}
-                              {openCollapsible === ride._id ? (
-                                <ChevronUp className="h-4 w-4" />
-                              ) : (
-                                <ChevronDown className="h-4 w-4" />
-                              )}
-                            </Button>
-                          </CollapsibleTrigger>
-                          <CollapsibleContent className="pt-4">
-                            <Separator className="mb-4" />
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div>
-                                <h4 className="text-md font-semibold text-gray-700 mb-2">
-                                  Additional Details
-                                </h4>
-                                <p className="text-sm text-gray-600">
-                                  <span className="font-medium">Passenger Capacity:</span>{" "}
-                                  {ride.passengerCount}
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                  <span className="font-medium">Current Passengers:</span> {ride.passengers.length}
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                  <span className="font-medium">Fuel Price:</span> {ride.fuelPrice} INR
-                                </p>
-                                <p className="text-sm text-gray-600">
-                                  <span className="font-medium">Total Fuel Cost:</span>{" "}
-                                  {(ride.totalFuelCost ?? 0).toFixed(2)} INR
-                                </p>
-                              </div>
-                              <div>
-                                <h4 className="text-md font-semibold text-gray-700 mb-2">Route Map</h4>
-                                <div
-                                  id={`map-${ride._id}`}
-                                  className="h-64 w-full rounded-lg"
-                                  ref={(el) => {
-                                    if (el) mapContainerRefs.current[ride._id] = el;
-                                  }}
-                                />
-                                {ride.status === "Started" && mapRefs.current[ride._id] && (
-                                  <div className="mt-2">
-                                    {ride.passengers.map((passenger, index) => {
-                                      const pickup = ride.pickupPoints.find((p) => p.passengerId === passenger.passengerId);
-                                      const dropoff = ride.dropoffPoints.find((p) => p.passengerId === passenger.passengerId);
-                                      const isPausedForPickup = pausedPassengerIds[ride._id]?.includes(passenger.passengerId) && !pickupActions[ride._id]?.[passenger.passengerId];
-                                      const isPausedForDropoff = pausedPassengerIds[ride._id]?.includes(passenger.passengerId) && pickupActions[ride._id]?.[passenger.passengerId] && !dropoffActions[ride._id]?.[passenger.passengerId];
+                        
+                        <div className="flex flex-wrap gap-2">
+                          {getStatusBadge(ride.status)}
+                          <Badge variant="outline" className="bg-white border-gray-300">
+                            <Users className="h-3 w-3 mr-1" />
+                            {ride.passengers.length}/{ride.passengerCount} passengers
+                          </Badge>
+                          <Badge variant="outline" className="bg-white border-gray-300">
+                            <MapPin className="h-3 w-3 mr-1" />
+                            {(ride.distanceKm ?? 0).toFixed(1)} km
+                          </Badge>
+                          <Badge variant="outline" className="bg-white border-gray-300">
+                            <DollarSign className="h-3 w-3 mr-1" />
+                            ₹{(ride.costPerPerson ?? 0).toFixed(2)}/person
+                          </Badge>
+                          {hasPendingRequests && (
+                            <Badge className="bg-orange-100 text-orange-800 border-orange-200">
+                              <UserCheck className="h-3 w-3 mr-1" />
+                              Pending Requests
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
 
-                                      return (
-                                        <div key={index} className="mb-2">
-                                          {isPausedForPickup && pickup && (
-                                            <Button
-                                              variant="success"
-                                              size="sm"
-                                              onClick={() => handlePickup(ride._id, passenger.passengerId)}
-                                            >
-                                              Pick up {passenger.passengerName}
-                                            </Button>
-                                          )}
-                                          {isPausedForDropoff && dropoff && (
-                                            <Button
-                                              variant="success"
-                                              size="sm"
-                                              onClick={() => handleDropoff(ride._id, passenger.passengerId)}
-                                            >
-                                              Drop off {passenger.passengerName}
-                                            </Button>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                )}
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        {ride.status === "Pending" && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openEditModal(ride)}
+                              disabled={isRideTimeReached(ride)}
+                              className="flex items-center gap-2"
+                            >
+                              <Edit3 className="h-4 w-4" />
+                              Edit
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleCancelRide(ride.rideId!)}
+                              disabled={isRideTimeReached(ride)}
+                              className="flex items-center gap-2 border-red-300 text-red-600 hover:bg-red-50"
+                            >
+                              <X className="h-4 w-4" />
+                              Cancel
+                            </Button>
+                          </>
+                        )}
+                        {ride.status === "Pending" && isRideTimeReached(ride) && (
+                          <Button
+                            onClick={() => startRide(ride._id)}
+                            className="flex items-center gap-2 bg-green-600 hover:bg-green-700"
+                            size="sm"
+                          >
+                            <Play className="h-4 w-4" />
+                            Start Ride
+                          </Button>
+                        )}
+                        {ride.status === "Started" && (
+                          <>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => resumeSimulation(ride._id)}
+                              disabled={!mapRefs.current[ride._id] || !simulationPaused[ride._id]}
+                              className="flex items-center gap-2"
+                            >
+                              <Navigation className="h-4 w-4" />
+                              Resume
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEmergencyStop(ride)}
+                              disabled={isStopping}
+                              className="flex items-center gap-2 border-orange-300 text-orange-600 hover:bg-orange-50"
+                            >
+                              <AlertTriangle className="h-4 w-4" />
+                              Emergency Stop
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => stopRide(ride._id)}
+                              className="flex items-center gap-2 border-green-300 text-green-600 hover:bg-green-50"
+                            >
+                              <Square className="h-4 w-4" />
+                              Complete
+                            </Button>
+                          </>
+                        )}
+                        
+                        <Button
+                          variant={isExpanded ? "secondary" : "outline"}
+                          size="sm"
+                          onClick={() => toggleRideExpansion(ride._id)}
+                          className="flex items-center gap-2"
+                        >
+                          {isExpanded ? (
+                            <>
+                              <ChevronUp className="h-4 w-4" />
+                              Hide Details
+                            </>
+                          ) : (
+                            <>
+                              <ChevronDown className="h-4 w-4" />
+                              Show Details
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  </CardHeader>
+
+                  {isExpanded && (
+                    <CardContent className="pt-6">
+                      <Separator className="mb-6" />
+                      
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                        {/* Ride Information */}
+                        <div className="space-y-6">
+                          <div>
+                            <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                              <Car className="h-5 w-5 text-blue-600" />
+                              Ride Information
+                            </h4>
+                            
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                              <div className="space-y-4">
+                                <div>
+                                  <p className="text-sm font-medium text-gray-500">Vehicle</p>
+                                  <p className="text-gray-900">{ride.vehicleId}</p>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium text-gray-500">Distance</p>
+                                  <p className="text-gray-900 flex items-center gap-1">
+                                    <MapPin className="h-4 w-4 text-blue-500" />
+                                    {(ride.distanceKm ?? 0).toFixed(2)} km
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium text-gray-500">Fuel Cost</p>
+                                  <p className="text-gray-900 flex items-center gap-1">
+                                    <Fuel className="h-4 w-4 text-orange-500" />
+                                    ₹{(ride.totalFuelCost ?? 0).toFixed(2)}
+                                  </p>
+                                </div>
+                              </div>
+                              
+                              <div className="space-y-4">
+                                <div>
+                                  <p className="text-sm font-medium text-gray-500">Passenger Capacity</p>
+                                  <p className="text-gray-900 flex items-center gap-1">
+                                    <Users className="h-4 w-4 text-green-500" />
+                                    {ride.passengerCount} seats
+                                  </p>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium text-gray-500">Seats Available</p>
+                                  <p className="text-gray-900">{seatsLeft}</p>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium text-gray-500">Cost per Person</p>
+                                  <p className="text-lg font-semibold text-green-600 flex items-center gap-1">
+                                    <DollarSign className="h-4 w-4" />
+                                    ₹{(ride.costPerPerson ?? 0).toFixed(2)}
+                                  </p>
+                                </div>
                               </div>
                             </div>
+                          </div>
+
+                          {/* Action Buttons for Started Rides */}
+                          {ride.status === "Started" && mapRefs.current[ride._id] && (
                             <div>
-                              <h4 className="text-md font-semibold text-gray-700 mb-2 mt-4">Passenger Details</h4>
-                              {ride.passengers.length > 0 || ride.pendingRequests?.length > 0 ? (
-                                <ul className="list-disc pl-5 space-y-2 text-sm text-gray-600">
-                                  {ride.passengers.map((passenger, index) => {
-                                    const pickup = ride.pickupPoints.find((p) => p.passengerId === passenger.passengerId);
-                                    const dropoff = ride.dropoffPoints.find((p) => p.passengerId === passenger.passengerId);
-                                    return (
-                                      <li key={index}>
-                                        <span className="font-medium">Passenger {index + 1}:</span> {passenger.passengerName} (ID: {passenger.passengerId}) <br />
-                                        <span className="font-medium">Pickup Location:</span> {pickup ? pickup.placeName : "N/A"} ({pickup ? pickup.location : "N/A"}) <br />
-                                        <span className="font-medium">Drop-off Location:</span> {dropoff ? dropoff.placeName : "N/A"} ({dropoff ? dropoff.location : "N/A"}) <br />
-                                        <span className="font-medium">Picked Up:</span> {pickupActions[ride._id]?.[passenger.passengerId] ? "Yes" : "No"} <br />
-                                        <span className="font-medium">Dropped Off:</span> {dropoffActions[ride._id]?.[passenger.passengerId] ? "Yes" : "No"}
-                                      </li>
-                                    );
-                                  })}
-                                  {ride.pendingRequests
-                                    ?.filter((request) => request.status === "pending")
-                                    .map((request, index) => (
-                                      <li key={`pending-${index}`}>
-                                        <span className="font-medium">Pending Request {ride.passengers.length + index + 1}:</span> {request.passengerName} (ID: {request.passengerId}) <br />
-                                        <span className="font-medium">Pickup Location:</span> {request.pickupLocation} <br />
-                                        <span className="font-medium">Drop-off Location:</span> {request.dropoffLocation} <br />
+                              <h4 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                                <Navigation className="h-5 w-5 text-green-600" />
+                                Passenger Actions
+                              </h4>
+                              <div className="space-y-2">
+                                {ride.passengers.map((passenger, index) => {
+                                  const pickup = ride.pickupPoints.find((p) => p.passengerId === passenger.passengerId);
+                                  const dropoff = ride.dropoffPoints.find((p) => p.passengerId === passenger.passengerId);
+                                  const isPausedForPickup = pausedPassengerIds[ride._id]?.includes(passenger.passengerId) && !pickupActions[ride._id]?.[passenger.passengerId];
+                                  const isPausedForDropoff = pausedPassengerIds[ride._id]?.includes(passenger.passengerId) && pickupActions[ride._id]?.[passenger.passengerId] && !dropoffActions[ride._id]?.[passenger.passengerId];
+
+                                  return (
+                                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                                      <div>
+                                        <p className="font-medium text-gray-900">{passenger.passengerName}</p>
+                                        <div className="flex gap-4 mt-1 text-sm text-gray-600">
+                                          <span>Pickup: {pickupActions[ride._id]?.[passenger.passengerId] ? "✓" : "Pending"}</span>
+                                          <span>Dropoff: {dropoffActions[ride._id]?.[passenger.passengerId] ? "✓" : "Pending"}</span>
+                                        </div>
+                                      </div>
+                                      <div className="flex gap-2">
+                                        {isPausedForPickup && pickup && (
+                                          <Button
+                                            variant="default"
+                                            size="sm"
+                                            onClick={() => handlePickup(ride._id, passenger.passengerId)}
+                                            className="bg-blue-600 hover:bg-blue-700"
+                                          >
+                                            Pick Up
+                                          </Button>
+                                        )}
+                                        {isPausedForDropoff && dropoff && (
+                                          <Button
+                                            variant="default"
+                                            size="sm"
+                                            onClick={() => handleDropoff(ride._id, passenger.passengerId)}
+                                            className="bg-green-600 hover:bg-green-700"
+                                          >
+                                            Drop Off
+                                          </Button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Map */}
+                        <div>
+                          <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                            <MapPin className="h-5 w-5 text-red-600" />
+                            Route Map
+                          </h4>
+                          <div
+                            ref={(el) => { 
+                              mapContainerRefs.current[ride._id] = el;
+                              // Initialize map when container is available and ride is expanded
+                              if (el && isExpanded && leafletLoaded && ride) {
+                                setTimeout(() => {
+                                  initializeMap(ride, el);
+                                }, 100);
+                              }
+                            }}
+                            className="h-80 w-full rounded-lg border border-gray-200 bg-gray-100"
+                          />
+                          {!leafletLoaded && (
+                            <div className="flex items-center justify-center h-80 bg-gray-100 rounded-lg">
+                              <div className="text-center">
+                                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                                <p className="text-gray-600">Loading map...</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Passengers and Pending Requests */}
+                      <div className="mt-8">
+                        <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                          <Users className="h-5 w-5 text-purple-600" />
+                          Passengers & Requests
+                        </h4>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {/* Confirmed Passengers */}
+                          <div>
+                            <h5 className="font-medium text-gray-700 mb-3">Confirmed Passengers</h5>
+                            {ride.passengers.length > 0 ? (
+                              <div className="space-y-3">
+                                {ride.passengers.map((passenger, index) => {
+                                  const pickup = ride.pickupPoints.find((p) => p.passengerId === passenger.passengerId);
+                                  const dropoff = ride.dropoffPoints.find((p) => p.passengerId === passenger.passengerId);
+                                  
+                                  return (
+                                    <div key={index} className="p-3 bg-green-50 rounded-lg border border-green-200">
+                                      <div className="flex items-center justify-between">
+                                        <div>
+                                          <p className="font-medium text-gray-900">{passenger.passengerName}</p>
+                                          <div className="text-sm text-gray-600 mt-1">
+                                            <p>Pickup: {pickup?.placeName || "N/A"}</p>
+                                            <p>Dropoff: {dropoff?.placeName || "N/A"}</p>
+                                          </div>
+                                        </div>
+                                        <div className="text-right text-sm">
+                                          <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full ${
+                                            pickupActions[ride._id]?.[passenger.passengerId] 
+                                              ? "bg-green-100 text-green-800" 
+                                              : "bg-yellow-100 text-yellow-800"
+                                          }`}>
+                                            {pickupActions[ride._id]?.[passenger.passengerId] ? "✓ Picked" : "Awaiting Pickup"}
+                                          </div>
+                                          <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full mt-1 ${
+                                            dropoffActions[ride._id]?.[passenger.passengerId] 
+                                              ? "bg-green-100 text-green-800" 
+                                              : "bg-gray-100 text-gray-800"
+                                          }`}>
+                                            {dropoffActions[ride._id]?.[passenger.passengerId] ? "✓ Dropped" : "In Transit"}
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <p className="text-gray-500 text-sm">No confirmed passengers yet.</p>
+                            )}
+                          </div>
+
+                          {/* Pending Requests */}
+                          <div>
+                            <h5 className="font-medium text-gray-700 mb-3">Pending Join Requests</h5>
+                            {ride.pendingRequests?.filter(req => req.status === "pending").length > 0 ? (
+                              <div className="space-y-3">
+                                {ride.pendingRequests
+                                  .filter((request) => request.status === "pending")
+                                  .map((request, index) => (
+                                    <div key={index} className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                                      <div className="flex items-center justify-between">
+                                        <div>
+                                          <p className="font-medium text-gray-900">{request.passengerName}</p>
+                                          <div className="text-sm text-gray-600 mt-1">
+                                            <p>From: {request.pickupLocation}</p>
+                                            <p>To: {request.dropoffLocation}</p>
+                                          </div>
+                                        </div>
                                         {user?.driverId === ride.driverId && (
-                                          <div className="flex gap-2 mt-1">
+                                          <div className="flex gap-2">
                                             <Button
-                                              variant="success"
+                                              variant="default"
                                               size="sm"
                                               onClick={() => handleJoinRequest(ride._id, request.passengerId, "accept")}
+                                              className="bg-green-600 hover:bg-green-700"
                                             >
-                                              Accept
+                                              <UserCheck className="h-4 w-4" />
                                             </Button>
                                             <Button
-                                              variant="destructive"
+                                              variant="outline"
                                               size="sm"
                                               onClick={() => handleJoinRequest(ride._id, request.passengerId, "reject")}
+                                              className="border-red-300 text-red-600 hover:bg-red-50"
                                             >
-                                              Reject
+                                              <UserX className="h-4 w-4" />
                                             </Button>
                                           </div>
                                         )}
-                                      </li>
-                                    ))}
-                                </ul>
-                              ) : (
-                                <p className="text-sm text-gray-600">No passengers or pending requests.</p>
-                              )}
-                            </div>
-                          </CollapsibleContent>
-                        </Collapsible>
+                                      </div>
+                                    </div>
+                                  ))}
+                              </div>
+                            ) : (
+                              <p className="text-gray-500 text-sm">No pending requests.</p>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    </Card>
-                  );
-                })}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                    </CardContent>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Edit Ride Modal */}
@@ -1648,81 +1916,95 @@ const confirmEmergencyStop = async () => {
         setEditModalOpen(open);
         if (!open) setModalError(null);
       }}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Edit Ride</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <Edit3 className="h-5 w-5 text-blue-600" />
+              Edit Ride Schedule
+            </DialogTitle>
           </DialogHeader>
+          
           <div className="grid gap-4 py-4">
             {modalError && (
-              <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded relative" role="alert">
-                <span className="block sm:inline">{modalError}</span>
-              </div>
+              <Alert variant="destructive">
+                <AlertDescription>{modalError}</AlertDescription>
+              </Alert>
             )}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="date" className="text-right">
-                Date
+            
+            <div className="space-y-2">
+              <Label htmlFor="date" className="text-sm font-medium">
+                Ride Date
               </Label>
               <Input
                 id="date"
                 type="date"
                 value={editDate}
                 onChange={(e) => setEditDate(e.target.value)}
-                className="col-span-3"
                 min={new Date().toISOString().split("T")[0]}
+                className="w-full"
               />
             </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="time" className="text-right">
-                Time
+            
+            <div className="space-y-2">
+              <Label htmlFor="time" className="text-sm font-medium">
+                Ride Time
               </Label>
               <Input
                 id="time"
                 type="time"
                 value={editTime}
                 onChange={(e) => setEditTime(e.target.value)}
-                className="col-span-3"
+                className="w-full"
               />
             </div>
           </div>
+          
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditModalOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleEditRide}>Save Changes</Button>
+            <Button onClick={handleEditRide} className="bg-blue-600 hover:bg-blue-700">
+              Save Changes
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
       {/* Emergency Stop Modal */}
       <Dialog open={emergencyStopModalOpen} onOpenChange={setEmergencyStopModalOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Emergency Stop Ride</DialogTitle>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <AlertTriangle className="h-5 w-5" />
+              Emergency Stop Ride
+            </DialogTitle>
           </DialogHeader>
-          <div className="grid gap-4 py-4">
+          
+          <div className="space-y-4 py-4">
             <Alert variant="destructive">
-              <AlertDescription>
-                <strong>Warning:</strong> This will stop the ride immediately and process partial refunds to passengers based on distance traveled. This action cannot be undone.
+              <AlertDescription className="text-sm">
+                <strong>Warning:</strong> This will stop the ride immediately and process partial refunds to passengers. This action cannot be undone.
               </AlertDescription>
             </Alert>
             
-            <div className="grid gap-2">
-              <Label htmlFor="stopReason">Reason for Emergency Stop</Label>
-              <select
-                id="stopReason"
-                value={stopReason}
-                onChange={(e) => setStopReason(e.target.value)}
-                className="w-full p-2 border rounded-md"
-              >
-                <option value="">Select a reason</option>
-                <option value="Vehicle breakdown">Vehicle breakdown</option>
-                <option value="Tire puncture">Tire puncture</option>
-                <option value="Accident">Accident</option>
-                <option value="Medical emergency">Medical emergency</option>
-                <option value="Weather conditions">Weather conditions</option>
-                <option value="Road blockage">Road blockage</option>
-                <option value="Other">Other</option>
-              </select>
+            <div className="space-y-3">
+              <Label htmlFor="stopReason" className="text-sm font-medium">
+                Reason for Emergency Stop
+              </Label>
+              <Select value={stopReason} onValueChange={setStopReason}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a reason" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Vehicle breakdown">Vehicle breakdown</SelectItem>
+                  <SelectItem value="Tire puncture">Tire puncture</SelectItem>
+                  <SelectItem value="Accident">Accident</SelectItem>
+                  <SelectItem value="Medical emergency">Medical emergency</SelectItem>
+                  <SelectItem value="Weather conditions">Weather conditions</SelectItem>
+                  <SelectItem value="Road blockage">Road blockage</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
+                </SelectContent>
+              </Select>
               
               {stopReason === "Other" && (
                 <Input
@@ -1733,16 +2015,17 @@ const confirmEmergencyStop = async () => {
               )}
             </div>
             
-            <div className="bg-yellow-50 border border-yellow-200 rounded-md p-3">
-              <p className="text-sm text-yellow-800">
-                <strong>Refund Policy:</strong> Passengers will receive partial refunds based on distance traveled:
-                <br />• Less than 25% traveled: 80% refund
-                <br />• 25-50% traveled: 60% refund
-                <br />• 50-75% traveled: 40% refund
-                <br />• More than 75% traveled: 20% refund
-              </p>
+            <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+              <h4 className="font-medium text-yellow-800 mb-2">Refund Policy</h4>
+              <ul className="text-sm text-yellow-700 space-y-1">
+                <li>• Less than 25% traveled: 80% refund</li>
+                <li>• 25-50% traveled: 60% refund</li>
+                <li>• 50-75% traveled: 40% refund</li>
+                <li>• More than 75% traveled: 20% refund</li>
+              </ul>
             </div>
           </div>
+          
           <DialogFooter>
             <Button variant="outline" onClick={() => setEmergencyStopModalOpen(false)}>
               Cancel
@@ -1751,8 +2034,16 @@ const confirmEmergencyStop = async () => {
               variant="destructive" 
               onClick={confirmEmergencyStop}
               disabled={!stopReason.trim() || isStopping}
+              className="bg-red-600 hover:bg-red-700"
             >
-              {isStopping ? "Processing..." : "Confirm Emergency Stop"}
+              {isStopping ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                  Processing...
+                </>
+              ) : (
+                "Confirm Emergency Stop"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
