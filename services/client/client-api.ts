@@ -110,7 +110,7 @@ export const clientApiService = {
     refreshToken: (data: { refreshToken: string }) =>
       clientApi.api.post("/auth/refresh-token", data).then((res) => res.data),
     verifyOtp: (data: { email: string; otp: string }) =>
-      clientApi.api.post("/auth/verify-otp", data).then((res) => res.data),
+      clientApi.api.post("/api/auth/verify-otp", data).then((res) => res.data),
     resendOtp: (data: { email: string }) =>
       clientApi.api.post("/auth/resend-otp", data).then((res) => res.data),
     forgotPassword: (data: { email: string }) =>
@@ -119,11 +119,9 @@ export const clientApiService = {
       clientApi.api.post("/auth/reset-password", data).then((res) => res.data),
   },
    user: {
-    getProfile: () => clientApi.api.get("/api/user/profile").then((res) => res.data),
-    updateProfile: (data: any) => clientApi.api.put("/api/user/profile", data).then((res) => res.data),
-    submitGovId: (data: any) => clientApi.api.post("/api/user/gov-id", data).then((res) => res.data),
-    getUser: (userId: string) => clientApi.api.get(`/api/user/${userId}`).then((res) => res.data),
-  },
+  getProfile: () => clientApi.api.get("/api/user/profile").then((res) => res.data),
+  updateProfile: (data: any) => clientApi.api.put("/api/user/profile", data).then((res) => res.data),
+},
   notification: {
     getUserNotifications: (userId: string) =>
       clientApi.api.get(`/api/notifications/${userId}`).then((res) => res.data),

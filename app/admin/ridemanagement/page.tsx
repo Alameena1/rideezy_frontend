@@ -72,7 +72,7 @@ export default function RideManagement() {
   const [leafletLoaded, setLeafletLoaded] = useState<typeof L | null>(null);
   const [mapErrors, setMapErrors] = useState<{ [rideId: string]: string }>({});
   const [page, setPage] = useState(1);
-  const [limit] = useState(10);
+  const [limit] = useState(3);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("createdAt");
@@ -735,24 +735,25 @@ export default function RideManagement() {
           </div>
         </div>
         
-        <DataTable
-          columns={columns}
-          data={rides}
-          loading={loading}
-          error={error}
-          pagination={{
-            currentPage: page,
-            totalPages,
-            totalItems,
-            hasNext,
-            hasPrev,
-            onPageChange: setPage,
-          }}
-          emptyMessage="No rides found."
-          actions={renderActions}
-          expandableContent={renderExpandableContent}
-          expandedRows={expandedRows}
-        />
+      
+<DataTable
+  columns={columns}
+  data={rides}
+  loading={loading}
+  error={error}
+  pagination={{
+    currentPage: page,
+    totalPages,
+    totalItems,
+    hasNext,
+    hasPrev,
+  }}
+  onPageChange={setPage} // ← ADD THIS
+  emptyMessage="No rides found."
+  actions={renderActions}
+  expandableContent={renderExpandableContent}
+  expandedRows={expandedRows}
+/>
       </div>
     </div>
   );

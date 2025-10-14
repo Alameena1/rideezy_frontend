@@ -48,7 +48,7 @@ export default function UserManagement() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [limit] = useState(10);
+  const [limit] = useState(2);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<string>("createdAt");
@@ -367,6 +367,7 @@ export default function UserManagement() {
           </div>
         </div>
         
+        {/* FIXED: onPageChange is now a separate prop */}
         <DataTable
           columns={columns}
           data={users}
@@ -378,8 +379,8 @@ export default function UserManagement() {
             totalItems,
             hasNext,
             hasPrev,
-            onPageChange: setPage,
           }}
+          onPageChange={setPage}
           emptyMessage="No users found."
           actions={renderActions}
         />

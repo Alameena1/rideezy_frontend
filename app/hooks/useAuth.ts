@@ -12,6 +12,7 @@ interface User {
   name?: string;
   fullName?: string;
   role: "user" | "admin";
+  status?: "Active" | "Blocked";
 }
 
 interface CustomUser {
@@ -88,10 +89,10 @@ const useAuth = () => {
         try {
           console.log("Fetching user profile...");
           const response = await clientApiService.user.getProfile();
-          const profileData = response.data;
+          const profileData = response.data || response; // Handle both response structures
           console.log("Profile fetch response:", profileData);
 
-          if (profileData && profileData._id) {
+          if (profileData && (profileData._id || profileData.id)) {
             if (profileData.status === "Blocked") {
               console.log("User is blocked, logging out");
               logout();
@@ -99,12 +100,13 @@ const useAuth = () => {
             }
 
             const newUser: User = {
-              _id: profileData._id || customUser.id,
+              _id: profileData._id || profileData.id || customUser.id,
               driverId: customUser.id,
               email: profileData.email || customUser.email,
               name: profileData.fullName || profileData.name || customUser.name,
               fullName: profileData.fullName || profileData.name || customUser.email,
               role: customUser.role,
+              status: profileData.status || "Active",
             };
             console.log("Setting user from profile data:", newUser);
             setUser(newUser);
@@ -119,19 +121,30 @@ const useAuth = () => {
             status: error.response?.status,
             data: error.response?.data,
           });
+          
+          // Don't automatically redirect for profile fetch errors
+          // Just set as unauthenticated and let components handle it
           setIsAuthenticated(false);
           setUser(null);
-          if (error.response?.status === 401) {
+          
+          // Only redirect on specific errors
+          if (error.response?.status === 403) {
+            // Blocked user - redirect to login
+            router.replace("/user/login?error=You%20have%20been%20blocked");
+          } else if (error.response?.status === 401 && window.location.pathname !== "/user/login") {
+            // Only redirect if not already on login page
             router.replace("/user/login?error=Session%20expired");
-          } else {
-            router.replace("/user/login?error=Failed%20to%20fetch%20profile");
           }
+          // For other errors, don't redirect - let the component show the error
         }
       } else if (status === "unauthenticated") {
         console.log("No session, setting unauthenticated");
         setIsAuthenticated(false);
         setUser(null);
-        if (window.location.pathname.startsWith("/admin") || window.location.pathname.startsWith("/user")) {
+        // Only redirect if not already on login page and trying to access protected route
+        const currentPath = window.location.pathname;
+        if ((currentPath.startsWith("/admin") || currentPath.startsWith("/user")) && 
+            !currentPath.includes("/login")) {
           router.replace("/user/login?error=Please%20log%20in%20to%20access%20this%20page");
         }
       }

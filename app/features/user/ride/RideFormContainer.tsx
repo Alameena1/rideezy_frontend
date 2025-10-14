@@ -12,6 +12,7 @@ import { Car, Navigation, MapPin, Calendar } from "lucide-react";
 import MapComponent from "./MapComponent";
 import AddressSearch from "./AddressSearch";
 import RideFormFields from "./RideFormFields";
+import { useRouter } from "next/navigation";
 
 interface FormData {
   driverId: string;
@@ -39,6 +40,7 @@ interface Vehicle {
 }
 
 const RideFormContainer: React.FC = () => {
+  const router = useRouter();
   const [routeData, setRouteData] = useState<RouteData | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [perKmRate, setPerKmRate] = useState<number | null>(null);
@@ -46,6 +48,7 @@ const RideFormContainer: React.FC = () => {
   const [distanceInKm, setDistanceInKm] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSubscribed, setIsSubscribed] = useState<boolean>(false);
+  const [dataLoaded, setDataLoaded] = useState<boolean>(false);
 
   const {
     register,
@@ -81,28 +84,98 @@ const RideFormContainer: React.FC = () => {
     year: "numeric",
   });
 
+  const handleAuthError = (error: any) => {
+    console.error("[RideFormContainer] Authentication error:", error);
+    Swal.fire({
+      icon: "error",
+      title: "Session Expired",
+      text: "Your session has expired. Please log in again.",
+      background: '#fff',
+      color: '#374151',
+      confirmButtonText: "Log In",
+    }).then(() => {
+      router.push("/auth/login");
+    });
+  };
+
   useEffect(() => {
     const fetchData = async () => {
       try {
+        setIsLoading(true);
+        console.log("[RideFormContainer] Starting data fetch...");
+
+        // Fetch user profile
         const userData = await clientApiService.user.getProfile();
         console.log("[RideFormContainer] Fetched user data:", userData);
+        
         const driverId = userData.data?._id || userData._id;
         if (!driverId) {
           throw new Error("Failed to fetch driver ID. Please log in again.");
         }
         setValue("driverId", driverId);
 
-        const vehiclesData = await clientApiService.vehicle.getVehicles();
-        console.log("[RideFormContainer] Fetched vehicles:", vehiclesData);
-        const vehicles = vehiclesData.data?.data || vehiclesData.data || [];
-        setVehicles(vehicles);
-        if (vehicles.length > 0) setValue("vehicleId", vehicles[0]._id);
+        // Fetch vehicles with better error handling
+        let vehiclesData;
+        try {
+          vehiclesData = await clientApiService.vehicle.getVehicles();
+          console.log("[RideFormContainer] Fetched vehicles:", vehiclesData);
+        } catch (vehicleError: any) {
+          console.error("[RideFormContainer] Vehicles fetch error:", vehicleError);
+          if (vehicleError.response?.status === 401) {
+            handleAuthError(vehicleError);
+            return;
+          }
+          // Continue without vehicles if there's an error (other than auth)
+          vehiclesData = { data: [] };
+        }
 
-        const subscriptionData = await clientApiService.subscription.getSubscriptionStatus();
-        console.log("[RideFormContainer] Subscription status:", subscriptionData);
-        setIsSubscribed(subscriptionData.data?.isSubscribed || false);
+        // Handle different possible response structures for vehicles
+        let vehicles = [];
+        if (Array.isArray(vehiclesData)) {
+          vehicles = vehiclesData;
+        } else if (Array.isArray(vehiclesData.data)) {
+          vehicles = vehiclesData.data;
+        } else if (Array.isArray(vehiclesData.data?.data)) {
+          vehicles = vehiclesData.data.data;
+        } else if (vehiclesData.data && typeof vehiclesData.data === 'object') {
+          // Handle case where data is an object with vehicles array
+          vehicles = vehiclesData.data.vehicles || vehiclesData.data.data || [];
+        } else {
+          console.warn("[RideFormContainer] Unexpected vehicles data structure:", vehiclesData);
+          vehicles = [];
+        }
+        
+        setVehicles(vehicles);
+        if (vehicles.length > 0) {
+          setValue("vehicleId", vehicles[0]._id);
+        }
+        console.log("vehicles", vehicles);
+
+        // Fetch subscription status
+        try {
+          const subscriptionData = await clientApiService.subscription.getSubscriptionStatus();
+          console.log("[RideFormContainer] Subscription status:", subscriptionData);
+          setIsSubscribed(subscriptionData.data?.isSubscribed || false);
+        } catch (subscriptionError: any) {
+          console.error("[RideFormContainer] Subscription fetch error:", subscriptionError);
+          if (subscriptionError.response?.status === 401) {
+            handleAuthError(subscriptionError);
+            return;
+          }
+          // Continue with default subscription status if there's an error
+          setIsSubscribed(false);
+        }
+
+        setDataLoaded(true);
+
       } catch (error: any) {
         console.error("[RideFormContainer] Fetch error:", error);
+        
+        if (error.response?.status === 401) {
+          handleAuthError(error);
+          return;
+        }
+
         Swal.fire({
           icon: "error",
           title: "Error",
@@ -110,19 +183,26 @@ const RideFormContainer: React.FC = () => {
           background: '#fff',
           color: '#374151',
         });
+      } finally {
+        setIsLoading(false);
       }
     };
+    
     fetchData();
-  }, [setValue]);
+  }, [setValue, router]);
 
   useEffect(() => {
     if (routeData && vehicleId && passengerCount !== undefined && fuelPrice !== undefined) {
       const distanceInKm = routeData.distance / 1000;
       setDistanceInKm(distanceInKm);
-      const selectedVehicle = vehicles.find((v) => v._id === vehicleId);
+      
+      // Add safety check for vehicles array
+      const selectedVehicle = Array.isArray(vehicles) 
+        ? vehicles.find((v) => v._id === vehicleId)
+        : null;
+        
       const fuelNeeded = distanceInKm / (selectedVehicle?.mileage || 1);
       const totalFuelCost = fuelNeeded * fuelPrice;
-      const totalPeople = passengerCount + 1;
       const platformFee = isSubscribed ? 0 : Math.ceil(totalFuelCost * 0.1);
       setPlatformFee(platformFee);
       const totalRideCost = totalFuelCost + platformFee;
@@ -142,7 +222,11 @@ const RideFormContainer: React.FC = () => {
       return;
     }
 
-    const selectedVehicle = vehicles.find((v) => v._id === data.vehicleId);
+    // Add safety check for vehicles array
+    const selectedVehicle = Array.isArray(vehicles) 
+      ? vehicles.find((v) => v._id === data.vehicleId)
+      : null;
+      
     if (data.passengerCount > (selectedVehicle?.seatCapacity || 0)) {
       Swal.fire({
         icon: "error",
@@ -162,7 +246,7 @@ const RideFormContainer: React.FC = () => {
       passengerCount: Number(data.passengerCount),
       fuelPrice: Number(data.fuelPrice),
       vehicleId: data.vehicleId,
-      fuelCost: (routeData.distance / 1000) * (Number(data.fuelPrice) / (vehicles.find(v => v._id === data.vehicleId)?.mileage || 1)),
+      fuelCost: (routeData.distance / 1000) * (Number(data.fuelPrice) / (selectedVehicle?.mileage || 1)),
       distance: Number(routeData.distance) / 1000,
       routeGeometry: JSON.stringify(routeData.geometry),
       platformFee: platformFee || 0,
@@ -197,6 +281,12 @@ const RideFormContainer: React.FC = () => {
       });
     } catch (error: any) {
       console.error("[RideFormContainer] Ride submit error:", error);
+      
+      if (error.response?.status === 401) {
+        handleAuthError(error);
+        return;
+      }
+      
       const errorMessage = error.response?.data?.message || error.message || "Failed to start ride. Please try again.";
       Swal.fire({
         icon: "error",
@@ -205,13 +295,27 @@ const RideFormContainer: React.FC = () => {
         background: '#fff',
         color: '#374151',
       });
-      if (error.response?.status === 401) {
-        console.log("[RideFormContainer] Unauthorized, redirecting to login");
-      }
     } finally {
       setIsLoading(false);
     }
   };
+
+  // Show loading state while fetching initial data
+  if (!dataLoaded && isLoading) {
+    return (
+      <div className="mx-auto max-w-7xl p-6 space-y-6">
+        <div className="text-center space-y-2">
+          <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+            Create New Ride
+          </h1>
+          <p className="text-gray-600 text-lg">Loading your data...</p>
+        </div>
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-7xl p-6 space-y-6">
@@ -302,7 +406,7 @@ const RideFormContainer: React.FC = () => {
 
               {/* Ride Form Fields */}
               <RideFormFields
-                vehicles={vehicles}
+                vehicles={Array.isArray(vehicles) ? vehicles : []}
                 register={register}
                 errors={errors}
                 distanceInKm={distanceInKm}
@@ -317,7 +421,7 @@ const RideFormContainer: React.FC = () => {
               {/* Submit Button */}
               <Button
                 type="submit"
-                disabled={isLoading || !routeData}
+                disabled={isLoading || !routeData || !dataLoaded}
                 className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 text-lg font-medium shadow-lg transition-all duration-200"
                 size="lg"
               >

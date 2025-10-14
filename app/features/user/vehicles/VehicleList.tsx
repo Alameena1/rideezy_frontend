@@ -1,12 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Search, ChevronLeft, ChevronRight, Car } from "lucide-react";
 import VehicleCard from "./VehicleCard";
 import EmptyState from "./EmptyState";
+import { useVehicleStore } from "../../../stores/vehicleStore";
 
 interface Vehicle {
   _id: string;
@@ -14,36 +18,111 @@ interface Vehicle {
   vehicleType: string;
   licensePlate: string;
   color?: string;
-  insuranceNumber?: string;
+  insurance?: {
+    number: string;
+    image: string;
+    startDate: string;
+    endDate: string;
+    status: 'Active' | 'Expired' | 'Pending';
+  };
+  pollution?: {
+    number: string;
+    image: string;
+    startDate: string;
+    endDate: string;
+    status: 'Active' | 'Expired' | 'Pending';
+  };
   status: "Pending" | "Approved" | "Rejected";
-  imageUrl: string;
+  vehicleImage: string;
   mileage: number;
   seatCapacity: number;
 }
 
 interface VehicleListProps {
-  vehicles: Vehicle[];
-  isLoading: boolean;
   onDelete?: (vehicleId: string) => void;
   onReapply?: (vehicleId: string) => void;
 }
 
-export default function VehicleList({ vehicles, isLoading, onDelete, onReapply }: VehicleListProps) {
+export default function VehicleList({ onDelete, onReapply }: VehicleListProps) {
   const [activeTab, setActiveTab] = useState("all");
+  const [localSearchTerm, setLocalSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  
+  const { 
+    vehicles, 
+    isLoading, 
+    pagination, 
+    searchTerm,
+    fetchVehicles, 
+    setSearchTerm 
+  } = useVehicleStore();
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(localSearchTerm);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [localSearchTerm]);
+
+  // Fetch vehicles when page changes or search term changes
+  useEffect(() => {
+    fetchVehicles(pagination.currentPage, 10, debouncedSearch);
+  }, [pagination.currentPage, debouncedSearch, fetchVehicles]);
+
+  const handlePageChange = (page: number) => {
+    fetchVehicles(page, 10, debouncedSearch);
+  };
+
+  const handleSearch = (search: string) => {
+    setLocalSearchTerm(search);
+    // Reset to first page when searching
+    if (search !== debouncedSearch) {
+      fetchVehicles(1, 10, search);
+    }
+  };
 
   const filteredVehicles =
-    activeTab === "all" ? vehicles : vehicles.filter((vehicle) => vehicle.status.toLowerCase() === activeTab);
+    activeTab === "all" 
+      ? vehicles 
+      : activeTab === "expired"
+      ? vehicles.filter(vehicle => 
+          vehicle.insurance?.status === 'Expired' || 
+          vehicle.pollution?.status === 'Expired'
+        )
+      : vehicles.filter((vehicle) => vehicle.status.toLowerCase() === activeTab);
 
   const getStatusCount = (status: string) => {
     return vehicles.filter(vehicle => vehicle.status.toLowerCase() === status).length;
+  };
+
+  const getExpiredDocumentsCount = () => {
+    return vehicles.filter(vehicle => 
+      vehicle.insurance?.status === 'Expired' || 
+      vehicle.pollution?.status === 'Expired'
+    ).length;
   };
 
   return (
     <div className="space-y-6">
       <Card className="border-0 shadow-lg">
         <CardContent className="p-6">
+          {/* Search Bar */}
+          <div className="mb-6">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+              <Input
+                placeholder="Search by vehicle name, license plate, insurance or pollution number..."
+                value={localSearchTerm}
+                onChange={(e) => setLocalSearchTerm(e.target.value)}
+                className="pl-10 bg-white border-gray-200 focus:border-blue-500"
+              />
+            </div>
+          </div>
+
           <Tabs defaultValue="all" onValueChange={setActiveTab} className="w-full">
-            <TabsList className="grid w-full grid-cols-4 mb-6 bg-gray-100 p-1 rounded-lg">
+            <TabsList className="grid w-full grid-cols-5 mb-6 bg-gray-100 p-1 rounded-lg">
               <TabsTrigger 
                 value="all" 
                 className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
@@ -78,6 +157,15 @@ export default function VehicleList({ vehicles, isLoading, onDelete, onReapply }
                 Rejected
                 <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-red-100 text-red-700">
                   {getStatusCount("rejected")}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="expired" 
+                className="flex items-center gap-2 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+              >
+                Expired Docs
+                <Badge variant="secondary" className="h-5 px-1.5 text-xs bg-orange-100 text-orange-700">
+                  {getExpiredDocumentsCount()}
                 </Badge>
               </TabsTrigger>
             </TabsList>
@@ -115,16 +203,79 @@ export default function VehicleList({ vehicles, isLoading, onDelete, onReapply }
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-4">
-                {filteredVehicles.map((vehicle) => (
-                  <VehicleCard
-                    key={vehicle._id}
-                    vehicle={vehicle}
-                    onDelete={onDelete}
-                    onReapply={onReapply}
-                  />
-                ))}
-              </div>
+              <>
+                <div className="grid gap-4">
+                  {filteredVehicles.map((vehicle) => (
+                    <VehicleCard
+                      key={vehicle._id}
+                      vehicle={vehicle}
+                      onDelete={onDelete}
+                      onReapply={onReapply}
+                    />
+                  ))}
+                </div>
+
+                {/* Pagination */}
+                {pagination.totalPages > 1 && (
+                  <div className="flex items-center justify-between mt-6 pt-6 border-t border-gray-200">
+                    <div className="text-sm text-gray-600">
+                      Showing {((pagination.currentPage - 1) * 10) + 1} to{" "}
+                      {Math.min(pagination.currentPage * 10, pagination.totalCount)} of{" "}
+                      {pagination.totalCount} vehicles
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(pagination.currentPage - 1)}
+                        disabled={!pagination.hasPrevPage}
+                        className="flex items-center gap-1"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        Previous
+                      </Button>
+                      
+                      <div className="flex items-center gap-1">
+                        {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                          let pageNum;
+                          if (pagination.totalPages <= 5) {
+                            pageNum = i + 1;
+                          } else if (pagination.currentPage <= 3) {
+                            pageNum = i + 1;
+                          } else if (pagination.currentPage >= pagination.totalPages - 2) {
+                            pageNum = pagination.totalPages - 4 + i;
+                          } else {
+                            pageNum = pagination.currentPage - 2 + i;
+                          }
+                          
+                          return (
+                            <Button
+                              key={pageNum}
+                              variant={pagination.currentPage === pageNum ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => handlePageChange(pageNum)}
+                              className="w-8 h-8 p-0"
+                            >
+                              {pageNum}
+                            </Button>
+                          );
+                        })}
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(pagination.currentPage + 1)}
+                        disabled={!pagination.hasNextPage}
+                        className="flex items-center gap-1"
+                      >
+                        Next
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </Tabs>
         </CardContent>

@@ -143,7 +143,7 @@ const authOptions: NextAuthOptions = {
           }
           
           // FIX: Use correct Google auth endpoint
-          const response = await fetch(`${backendBaseURL}/api/auth/google-auth`, { // Changed from /auth/google-auth to /api/auth/google-auth
+          const response = await fetch(`${backendBaseURL}/api/auth/google-auth`, { 
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -199,7 +199,7 @@ const authOptions: NextAuthOptions = {
     },
   },
   pages: {
-    signIn: "/auth/login",
+    signIn: "/user/login",
     signOut: "/auth/logout", 
     error: "/auth/error",
   },

@@ -82,7 +82,7 @@ export default function Subscription() {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
-  const [limit] = useState(10);
+  const [limit] = useState(5);
   const [sortBy, setSortBy] = useState<string>("createdAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
 
@@ -474,23 +474,23 @@ export default function Subscription() {
           </div>
         </div>
 
-        <DataTable
-          columns={columns}
-          data={subscriptions}
-          loading={loading}
-          error={error}
-          emptyMessage="No subscription plans found."
-          actions={renderActions}
-          pagination={{
-            currentPage: pagination.currentPage,
-            totalPages: pagination.totalPages,
-            totalItems: pagination.totalItems,
-            hasNext: pagination.hasNext,
-            hasPrev: pagination.hasPrev,
-            onPageChange: handlePageChange,
-          }}
-          keyField="_id"
-        />
+<DataTable
+  columns={columns}
+  data={subscriptions}
+  loading={loading}
+  error={error}
+  emptyMessage="No subscription plans found."
+  actions={renderActions}
+  pagination={{
+    currentPage: currentPage,
+    totalPages: pagination.totalPages,
+    totalItems: pagination.totalItems,
+    hasNext: pagination.hasNext,
+    hasPrev: pagination.hasPrev,
+  }}
+  onPageChange= {handlePageChange}
+  keyField="_id"
+/>
 
         {/* Enhanced Modal */}
         <Dialog open={showModal} onOpenChange={setShowModal}>

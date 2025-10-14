@@ -236,72 +236,108 @@ export default function Profile() {
     }
   }, [isAuthenticated, authLoading, router]);
 
-  const uploadFile = async (file: File): Promise<string> => {
-    const formData = new FormData();
-    formData.append("file", file);
-    const token = Cookies.get("accessToken");
-    if (!token) {
-      throw new Error("No access token available for file upload");
+const handleGovIdSubmit = async (values: GovIdFormValues) => {
+  setError(null);
+  setIsSubmittingGovId(true);
+  try {
+    console.log("🔄 Submitting government ID...");
+
+    // First, check if user is authenticated
+    if (!isAuthenticated) {
+      setError("Please log in to submit government ID");
+      return;
     }
-    const response = await fetch("/api/upload", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-      body: formData,
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "Upload failed");
-    }
-    return data.secure_url;
-  };
 
-  const handleGovIdSubmit = async (values: GovIdFormValues) => {
-    setError(null);
-    setIsSubmittingGovId(true);
-    try {
-      const token = Cookies.get("accessToken");
-      if (!token) {
-        setError("Authentication required. Please log in.");
-        router.push("/user/login");
-        return;
-      }
-
-      const documentUrl = await uploadFile(values.documentImage);
-      const payload = {
-        govId: {
-          idNumber: values.idNumber,
-          documentUrl: documentUrl,
-          verificationStatus: "Pending",
-        },
-      };
-
-      const response = await clientApiService.user.submitGovId(payload);
-      if (!response.data.success) {
-        throw new Error(response.data.message || "Failed to submit government ID");
-      }
-
-      setGovIdData({
+    // Upload file first
+    console.log("📤 Uploading document image...");
+    const documentUrl = await uploadFile(values.documentImage);
+    console.log("✅ Document uploaded:", documentUrl);
+    
+    // Prepare payload
+    const payload = {
+      govId: {
         idNumber: values.idNumber,
         documentUrl: documentUrl,
-        verificationStatus: "Pending",
-        reason: "",
-      });
-      setShowGovIdForm(false);
-      govIdForm.reset();
-      setDocumentImagePreview(null);
-    } catch (error: any) {
+        verificationStatus: "Pending" as const,
+      },
+    };
+
+    console.log("📤 Sending gov ID data to server...");
+    
+    // Use updateProfile for government ID submission
+    const response = await clientApiService.user.updateProfile(payload);
+    
+    console.log("✅ Gov ID submission response:", response);
+
+    // Handle different response structures
+    if (response.success === false) {
+      throw new Error(response.message || "Failed to submit government ID");
+    }
+
+    if (!response.data && !response.user) {
+      throw new Error("Invalid response from server");
+    }
+
+    // Update local state with the response data
+    const userData = response.data || response.user || response;
+    setGovIdData({
+      idNumber: values.idNumber,
+      documentUrl: documentUrl,
+      verificationStatus: "Pending",
+      reason: userData.govId?.reason || "",
+    });
+    
+    setShowGovIdForm(false);
+    govIdForm.reset();
+    setDocumentImagePreview(null);
+    
+    // Show success message
+    setError(null);
+    
+  } catch (error: any) {
+    console.error("❌ Gov ID submission failed:", error);
+    
+    // Handle specific error cases
+    if (error.message === "Unauthenticated" || error.message === "No access token") {
+      setError("Your session has expired. Please log in again.");
+      // Optional: redirect to login after showing error
+      setTimeout(() => {
+        router.push("/user/login");
+      }, 3000);
+    } else if (error.response?.status === 401) {
+      setError("Session expired. Please log in again.");
+    } else if (error.response?.status === 403) {
+      setError("Your account has been blocked. Please contact support.");
+    } else {
       const errorMessage =
         error.response?.data?.message ||
         error.response?.data?.error ||
         error.message ||
         "Failed to submit government ID. Please try again.";
       setError(errorMessage);
-    } finally {
-      setIsSubmittingGovId(false);
     }
-  };
+  } finally {
+    setIsSubmittingGovId(false);
+  }
+};
+
+
+const uploadFile = async (file: File): Promise<string> => {
+  const formData = new FormData();
+  formData.append("file", file);
+  
+  // The interceptor will automatically add the token
+  const response = await fetch("/api/upload", {
+    method: "POST",
+    body: formData,
+  });
+  
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || "Upload failed");
+  }
+  return data.secure_url;
+};
 
   const handleDocumentImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

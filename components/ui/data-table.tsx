@@ -21,9 +21,17 @@ import React from "react";
 
 interface Column {
   key: string;
-  header: string | React.ReactNode; // Allow both string and React nodes
+  header: string | React.ReactNode;
   render?: (value: any, row: any) => React.ReactNode;
   className?: string;
+}
+
+interface PaginationInfo {
+  currentPage: number;
+  totalPages: number;
+  totalItems: number;
+  hasNext: boolean;
+  hasPrev: boolean;
 }
 
 interface DataTableProps {
@@ -34,13 +42,7 @@ interface DataTableProps {
   searchPlaceholder?: string;
   searchValue?: string;
   onSearchChange?: (value: string) => void;
-  pagination?: {
-    currentPage: number;
-    totalPages: number;
-    totalItems: number;
-    hasNext: boolean;
-    hasPrev: boolean;
-  };
+  pagination?: PaginationInfo;
   onPageChange?: (page: number) => void;
   emptyMessage?: string;
   actions?: (row: any) => React.ReactNode;
@@ -70,9 +72,15 @@ export function DataTable({
   keyField = "id",
 }: DataTableProps) {
   const renderCell = (row: any, column: Column) => {
-    const value = row[column.key];
-    return column.render ? column.render(value, row) : value;
+  const getNestedValue = (obj: any, path: string) => {
+    return path.split('.').reduce((current, key) => {
+      return current && current[key] !== undefined ? current[key] : undefined;
+    }, obj);
   };
+  
+  const value = getNestedValue(row, column.key);
+  return column.render ? column.render(value, row) : value;
+};
 
   const handlePageChange = (page: number) => {
     if (onPageChange) {
@@ -82,12 +90,18 @@ export function DataTable({
 
   // Safe header rendering function
   const renderHeader = (header: string | React.ReactNode) => {
+    if (React.isValidElement(header)) {
+      return header;
+    }
     if (typeof header === 'function') {
-      console.warn('Function passed as header. Header should be a string or React node.');
-      return 'Header';
+      const HeaderComponent = header;
+      return <HeaderComponent />;
     }
     return header;
   };
+
+  // Only show pagination if there are multiple pages
+  const shouldShowPagination = pagination && onPageChange && pagination.totalPages > 1;
 
   return (
     <div className={`bg-gray-900 text-white p-6 min-h-screen ${className}`}>
@@ -158,14 +172,14 @@ export function DataTable({
             </TableBody>
           </Table>
 
-          {pagination && onPageChange && (
+          {shouldShowPagination && (
             <div className="mt-4">
               <Pagination>
                 <PaginationContent>
                   <PaginationItem>
                     <PaginationPrevious
                       onClick={() => pagination.hasPrev && handlePageChange(pagination.currentPage - 1)}
-                      className={pagination.hasPrev ? "cursor-pointer" : "pointer-events-none opacity-50"}
+                      className={pagination.hasPrev ? "cursor-pointer hover:bg-gray-700" : "pointer-events-none opacity-50"}
                     />
                   </PaginationItem>
                   {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map((page) => (
@@ -173,7 +187,7 @@ export function DataTable({
                       <PaginationLink
                         onClick={() => handlePageChange(page)}
                         isActive={page === pagination.currentPage}
-                        className="cursor-pointer"
+                        className="cursor-pointer hover:bg-gray-700"
                       >
                         {page}
                       </PaginationLink>
@@ -182,13 +196,22 @@ export function DataTable({
                   <PaginationItem>
                     <PaginationNext
                       onClick={() => pagination.hasNext && handlePageChange(pagination.currentPage + 1)}
-                      className={pagination.hasNext ? "cursor-pointer" : "pointer-events-none opacity-50"}
+                      className={pagination.hasNext ? "cursor-pointer hover:bg-gray-700" : "pointer-events-none opacity-50"}
                     />
                   </PaginationItem>
                 </PaginationContent>
               </Pagination>
-              <p className="text-sm text-gray-400 mt-2">
-                Showing {data.length} of {pagination.totalItems} items
+              <p className="text-sm text-gray-400 mt-2 text-center">
+                Showing {data.length} of {pagination.totalItems} items (Page {pagination.currentPage} of {pagination.totalPages})
+              </p>
+            </div>
+          )}
+
+          {/* Show page info even when there's only one page */}
+          {pagination && !shouldShowPagination && (
+            <div className="mt-4 text-center">
+              <p className="text-sm text-gray-400">
+                Showing all {pagination.totalItems} items
               </p>
             </div>
           )}

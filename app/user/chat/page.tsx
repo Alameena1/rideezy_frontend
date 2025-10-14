@@ -931,18 +931,6 @@ const Chat: React.FC = () => {
             >
               Close
             </Button>
-            <Button
-              variant="default"
-              onClick={() => {
-                if (selectedImageForPreview) {
-                  window.open(selectedImageForPreview, '_blank');
-                }
-              }}
-              className="flex items-center gap-2"
-            >
-              <ExternalLink className="h-4 w-4" />
-              Open Original
-            </Button>
           </div>
         </DialogContent>
       </Dialog>

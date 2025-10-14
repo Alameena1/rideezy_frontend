@@ -1,4 +1,4 @@
-// UserIdVerification.tsx - UPDATED to match User Management style
+// UserIdVerification.tsx - UPDATED with secure document preview
 "use client";
 
 import { useState, useEffect } from "react";
@@ -14,7 +14,22 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { Search, Filter, ArrowUpDown } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Search,
+  Filter,
+  ArrowUpDown,
+  Download,
+  X,
+  ZoomIn,
+  ZoomOut,
+  RotateCw,
+} from "lucide-react";
 import Swal from 'sweetalert2';
 
 interface User {
@@ -39,6 +54,14 @@ interface PaginationData {
   hasPrev: boolean;
 }
 
+interface DocumentPreview {
+  url: string;
+  user: {
+    fullName: string;
+    idNumber: string;
+  };
+}
+
 export default function UserIdVerification() {
   const [users, setUsers] = useState<User[]>([]);
   const [pagination, setPagination] = useState<PaginationData>({
@@ -58,6 +81,11 @@ export default function UserIdVerification() {
   const [limit] = useState(10);
   const [sortBy, setSortBy] = useState<string>("createdAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
+
+  // Document preview states
+  const [documentPreview, setDocumentPreview] = useState<DocumentPreview | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
 
   const [rejectionNote, setRejectionNote] = useState("");
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
@@ -167,6 +195,77 @@ export default function UserIdVerification() {
     }
   };
 
+  // Secure document preview handler
+  const handleViewDocument = (user: User) => {
+    if (!user.govId?.documentUrl) {
+      Swal.fire('Info', 'No document available to view.', 'info');
+      return;
+    }
+
+    setDocumentPreview({
+      url: user.govId.documentUrl,
+      user: {
+        fullName: user.fullName,
+        idNumber: user.govId.idNumber,
+      }
+    });
+    setZoom(1);
+    setRotation(0);
+  };
+
+  // Download document handler
+  const handleDownloadDocument = async () => {
+    if (!documentPreview) return;
+
+    try {
+      const response = await fetch(documentPreview.url);
+      const blob = await response.blob();
+      
+      // Create download link
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Extract filename from URL or use user info
+      const fileName = `ID_Document_${documentPreview.user.fullName}_${documentPreview.user.idNumber}.${getFileExtension(documentPreview.url)}`;
+      link.download = fileName.replace(/\s+/g, '_');
+      
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      Swal.fire('Success!', 'Document downloaded successfully.', 'success');
+    } catch (error) {
+      console.error('Download failed:', error);
+      Swal.fire('Error!', 'Failed to download document.', 'error');
+    }
+  };
+
+  // Helper function to get file extension
+  const getFileExtension = (url: string): string => {
+    const match = url.match(/\.([^.?]+)(?:\?|$)/);
+    return match ? match[1] : 'jpg';
+  };
+
+  // Zoom controls
+  const handleZoomIn = () => {
+    setZoom(prev => Math.min(prev + 0.25, 3));
+  };
+
+  const handleZoomOut = () => {
+    setZoom(prev => Math.max(prev - 0.25, 0.5));
+  };
+
+  const handleRotate = () => {
+    setRotation(prev => (prev + 90) % 360);
+  };
+
+  const resetControls = () => {
+    setZoom(1);
+    setRotation(0);
+  };
+
   const renderStatus = (status: string) => {
     switch (status) {
       case "Verified":
@@ -188,14 +287,6 @@ export default function UserIdVerification() {
           </Badge>
         );
     }
-  };
-
-  const viewDocument = (documentUrl?: string) => {
-    if (!documentUrl) {
-      Swal.fire('Info', 'No document available to view.', 'info');
-      return;
-    }
-    window.open(documentUrl, "_blank");
   };
 
   const columns = [
@@ -253,7 +344,7 @@ export default function UserIdVerification() {
       header: "Document",
       render: (_: any, user: User) => (
         <Button
-          onClick={() => viewDocument(user.govId?.documentUrl)}
+          onClick={() => handleViewDocument(user)}
           variant="outline"
           size="sm"
           disabled={!user.govId?.documentUrl}
@@ -311,7 +402,7 @@ export default function UserIdVerification() {
           </div>
         </div>
 
-        {/* Enhanced Search and Filter Controls - Matching User Management */}
+        {/* Enhanced Search and Filter Controls */}
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
@@ -339,23 +430,120 @@ export default function UserIdVerification() {
           </div>
         </div>
 
-        <DataTable
-          columns={columns}
-          data={users}
-          loading={loading}
-          error={error}
-          emptyMessage="No users found for ID verification."
-          actions={renderActions}
-          pagination={{
-            currentPage: pagination.currentPage,
-            totalPages: pagination.totalPages,
-            totalItems: pagination.totalItems,
-            hasNext: pagination.hasNext,
-            hasPrev: pagination.hasPrev,
-            onPageChange: handlePageChange,
-          }}
-          keyField="_id"
-        />
+
+<DataTable
+  columns={columns}
+  data={users}
+  loading={loading}
+  error={error}
+  emptyMessage="No users found for ID verification."
+  actions={renderActions}
+  pagination={{
+    currentPage: currentPage,
+    totalPages: pagination.totalPages,
+    totalItems: pagination.totalItems,
+    hasNext: pagination.hasNext,
+    hasPrev: pagination.hasPrev,
+    
+  }}
+  onPageChange= {handlePageChange}
+  keyField="_id"
+/>
+
+        {/* Secure Document Preview Dialog */}
+        <Dialog open={!!documentPreview} onOpenChange={() => setDocumentPreview(null)}>
+          <DialogContent className="max-w-4xl max-h-[90vh] bg-gray-800 border-gray-600">
+            <DialogHeader>
+              <DialogTitle className="text-white flex items-center justify-between">
+                <div>
+                  ID Document Preview - {documentPreview?.user.fullName}
+                  <div className="text-sm text-gray-400 mt-1">
+                    ID Number: {documentPreview?.user.idNumber}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDownloadDocument}
+                    className="bg-green-600 text-white hover:bg-green-700 border-green-500"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Download
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setDocumentPreview(null)}
+                    className="text-white hover:bg-gray-700"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </DialogTitle>
+            </DialogHeader>
+            
+            <div className="flex flex-col h-full">
+              {/* Image Controls */}
+              <div className="flex items-center justify-between mb-4 p-3 bg-gray-700 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-300">Controls:</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleZoomOut}
+                    disabled={zoom <= 0.5}
+                    className="h-8 w-8 p-0 bg-gray-600 border-gray-500 text-white"
+                  >
+                    <ZoomOut className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-white min-w-12 text-center">
+                    {Math.round(zoom * 100)}%
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleZoomIn}
+                    disabled={zoom >= 3}
+                    className="h-8 w-8 p-0 bg-gray-600 border-gray-500 text-white"
+                  >
+                    <ZoomIn className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRotate}
+                    className="h-8 w-8 p-0 bg-gray-600 border-gray-500 text-white ml-2"
+                  >
+                    <RotateCw className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={resetControls}
+                    className="h-8 bg-gray-600 border-gray-500 text-white text-xs"
+                  >
+                    Reset
+                  </Button>
+                </div>
+              </div>
+
+              {/* Image Preview */}
+              <div className="flex-1 overflow-auto bg-black rounded-lg flex items-center justify-center p-4">
+                {documentPreview && (
+                  <img
+                    src={documentPreview.url}
+                    alt="ID Document"
+                    className="max-w-full max-h-full object-contain transition-all duration-200"
+                    style={{
+                      transform: `scale(${zoom}) rotate(${rotation}deg)`,
+                    }}
+                  />
+                )}
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
 
         {/* Rejection Modal */}
         {showRejectionModal && (

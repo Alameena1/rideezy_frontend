@@ -8,7 +8,20 @@ interface Vehicle {
   vehicleType: string;
   licensePlate: string;
   color?: string;
-  insuranceNumber?: string;
+  insurance?: {
+    number: string;
+    image: string;
+    startDate: string;
+    endDate: string;
+    status: 'Active' | 'Expired' | 'Pending';
+  };
+  pollution?: {
+    number: string;
+    image: string;
+    startDate: string;
+    endDate: string;
+    status: 'Active' | 'Expired' | 'Pending';
+  };
   status: "Pending" | "Approved" | "Rejected";
   vehicleImage: string;
   documentImage: string;
@@ -25,44 +38,83 @@ interface Vehicle {
   note?: string;
 }
 
+interface PaginationInfo {
+  currentPage: number;
+  totalPages: number;
+  totalCount: number;
+  hasNextPage: boolean;
+  hasPrevPage: boolean;
+}
+
 interface VehicleStore {
   vehicles: Vehicle[];
   isLoading: boolean;
   error: string | null;
-  fetchVehicles: () => Promise<void>;
+  pagination: PaginationInfo;
+  searchTerm: string;
+  fetchVehicles: (page?: number, limit?: number, search?: string) => Promise<void>;
   addVehicle: (vehicle: Vehicle) => void;
   deleteVehicle: (vehicleId: string) => Promise<void>;
   updateVehicle: (vehicleId: string, updatedVehicle: Partial<Vehicle>) => Promise<void>;
+  setSearchTerm: (search: string) => void;
   setupSocketListeners: () => void;
-  addPendingVehicle: (vehicleId: string) => void; // New: Track pending vehicles
-  clearPendingVehicle: (vehicleId: string) => void; // New: Clear pending vehicles
+  addPendingVehicle: (vehicleId: string) => void;
+  clearPendingVehicle: (vehicleId: string) => void;
 }
 
 export const useVehicleStore = create<VehicleStore>((set, get) => {
-  const pendingVehicles = new Set<string>(); // Track pending vehicle IDs
+  const pendingVehicles = new Set<string>();
 
   return {
     vehicles: [],
     isLoading: false,
     error: null,
-    fetchVehicles: async () => {
+    pagination: {
+      currentPage: 1,
+      totalPages: 0,
+      totalCount: 0,
+      hasNextPage: false,
+      hasPrevPage: false,
+    },
+    searchTerm: '',
+    
+    fetchVehicles: async (page: number = 1, limit: number = 10, search: string = '') => {
       set({ isLoading: true, error: null });
       try {
-        const response = await clientApiService.vehicle.getVehicles();
-        const vehiclesData = response?.data || [];
-        const fetchedVehicles = Array.isArray(vehiclesData)
-          ? vehiclesData.map((vehicle: any) => ({
-              ...vehicle,
-              imageUrl: vehicle.vehicleImage || "/placeholder.svg?height=200&width=300",
-            }))
-          : [];
-        set({ vehicles: fetchedVehicles });
+        const response = await clientApiService.vehicle.getVehicles(page, limit, search);
+        
+        if (response?.success && response.data) {
+          const vehiclesData = response.data.vehicles || [];
+          const paginationData = response.data;
+          
+          const fetchedVehicles = Array.isArray(vehiclesData)
+            ? vehiclesData.map((vehicle: any) => ({
+                ...vehicle,
+                imageUrl: vehicle.vehicleImage || "/placeholder.svg?height=200&width=300",
+              }))
+            : [];
+          
+          set({ 
+            vehicles: fetchedVehicles,
+            pagination: {
+              currentPage: paginationData.currentPage || 1,
+              totalPages: paginationData.totalPages || 0,
+              totalCount: paginationData.totalCount || 0,
+              hasNextPage: paginationData.hasNextPage || false,
+              hasPrevPage: paginationData.hasPrevPage || false,
+            },
+            searchTerm: search
+          });
+        } else {
+          set({ error: "Failed to fetch vehicles. Please try again." });
+        }
       } catch (error: any) {
         set({ error: error.response?.data?.message || "Failed to fetch vehicles. Please try again." });
       } finally {
         set({ isLoading: false });
       }
     },
+    
     addVehicle: (vehicle: Vehicle) => {
       set((state) => {
         if (state.vehicles.some((v) => v._id === vehicle._id)) {
@@ -72,9 +124,9 @@ export const useVehicleStore = create<VehicleStore>((set, get) => {
         console.log("[useVehicleStore] Adding vehicle:", vehicle._id);
         return { vehicles: [...state.vehicles, vehicle] };
       });
-      // Clear pending vehicle after adding
       pendingVehicles.delete(vehicle._id);
     },
+    
     deleteVehicle: async (vehicleId: string) => {
       try {
         await clientApiService.vehicle.deleteVehicle(vehicleId);
@@ -85,6 +137,7 @@ export const useVehicleStore = create<VehicleStore>((set, get) => {
         set({ error: error.response?.data?.message || "Failed to delete vehicle. Please try again." });
       }
     },
+    
     updateVehicle: async (vehicleId: string, updatedVehicle: Partial<Vehicle>) => {
       try {
         await clientApiService.vehicle.updateVehicle(vehicleId, updatedVehicle);
@@ -97,14 +150,21 @@ export const useVehicleStore = create<VehicleStore>((set, get) => {
         set({ error: error.response?.data?.message || "Failed to update vehicle. Please try again." });
       }
     },
+    
+    setSearchTerm: (search: string) => {
+      set({ searchTerm: search });
+    },
+    
     addPendingVehicle: (vehicleId: string) => {
       console.log("[useVehicleStore] Adding pending vehicle:", vehicleId);
       pendingVehicles.add(vehicleId);
     },
+    
     clearPendingVehicle: (vehicleId: string) => {
       console.log("[useVehicleStore] Clearing pending vehicle:", vehicleId);
       pendingVehicles.delete(vehicleId);
     },
+    
     setupSocketListeners: () => {
       const { socket } = useSocketStore.getState();
       if (socket) {
@@ -112,6 +172,7 @@ export const useVehicleStore = create<VehicleStore>((set, get) => {
           console.log("[Socket] Vehicle updated:", updatedVehicle._id);
           get().updateVehicle(updatedVehicle._id, updatedVehicle);
         });
+        
         socket.on("vehicle_added", (newVehicle: Vehicle) => {
           console.log("[Socket] Vehicle added event:", newVehicle._id);
           if (pendingVehicles.has(newVehicle._id)) {
@@ -120,6 +181,7 @@ export const useVehicleStore = create<VehicleStore>((set, get) => {
           }
           get().addVehicle(newVehicle);
         });
+        
         socket.on("vehicle_deleted", (vehicleId: string) => {
           console.log("[Socket] Vehicle deleted:", vehicleId);
           get().deleteVehicle(vehicleId);

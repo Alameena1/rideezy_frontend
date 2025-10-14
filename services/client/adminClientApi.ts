@@ -233,39 +233,56 @@ export const clientAdminVehicleApi = {
 // Adapted Subscription API (using adminClientApi)
 export const clientAdminSubscriptionApi = {
     getSubscriptionPlans: async (query: PaginationQuery = {}): Promise<{ 
-    data: SubscriptionPlan[]; 
-    pagination: any 
-  }> => {
-    try {
-      const response = await adminClientApi.get("/admin/subscriptions", { params: query });
-      console.log("Admin Subscription Plans Response:", response.data);
-      
-      // Handle both response formats
-      if (response.data && Array.isArray(response.data)) {
-        // If it's a direct array, wrap it in the expected format
-        return {
-          data: response.data,
-          pagination: {
-            currentPage: 1,
-            totalPages: 1,
-            totalItems: response.data.length,
-            hasNext: false,
-            hasPrev: false,
-          }
-        };
-      } else if (response.data && response.data.data && Array.isArray(response.data.data)) {
-        // If it's already in the paginated format
-        return response.data;
-      } else {
-        throw new Error("Invalid response format from server");
-      }
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        throw new Error(error.response?.data?.message || "Failed to fetch subscription plans");
-      }
-      throw new Error("An unknown error occurred");
+  data: SubscriptionPlan[]; 
+  pagination: any 
+}> => {
+  try {
+    const response = await adminClientApi.get("/admin/subscriptions", { params: query });
+    console.log("Admin Subscription Plans Response:", response.data);
+    
+    // Ensure consistent response format
+    if (response.data && response.data.success !== undefined) {
+      // Standard paginated response
+      return {
+        data: response.data.data || [],
+        pagination: response.data.pagination || {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: response.data.data?.length || 0,
+          hasNext: false,
+          hasPrev: false,
+        }
+      };
+    } else if (Array.isArray(response.data)) {
+      // Direct array response (fallback)
+      return {
+        data: response.data,
+        pagination: {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: response.data.length,
+          hasNext: false,
+          hasPrev: false,
+        }
+      };
+    } else {
+      // Handle other formats
+      return {
+        data: [],
+        pagination: {
+          currentPage: 1,
+          totalPages: 1,
+          totalItems: 0,
+          hasNext: false,
+          hasPrev: false,
+        }
+      };
     }
-  },
+  } catch (error) {
+    console.error("Error fetching subscription plans:", error);
+    throw new Error("Failed to fetch subscription plans");
+  }
+},
 
 
   createSubscriptionPlan: async (planData: Partial<SubscriptionPlan>) => {
