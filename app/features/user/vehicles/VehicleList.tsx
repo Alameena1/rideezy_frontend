@@ -12,36 +12,7 @@ import VehicleCard from "./VehicleCard";
 import EmptyState from "./EmptyState";
 import { useVehicleStore } from "../../../stores/vehicleStore";
 
-interface Vehicle {
-  _id: string;
-  vehicleName: string;
-  vehicleType: string;
-  licensePlate: string;
-  color?: string;
-  insurance?: {
-    number: string;
-    image: string;
-    startDate: string;
-    endDate: string;
-    status: 'Active' | 'Expired' | 'Pending';
-  };
-  pollution?: {
-    number: string;
-    image: string;
-    startDate: string;
-    endDate: string;
-    status: 'Active' | 'Expired' | 'Pending';
-  };
-  status: "Pending" | "Approved" | "Rejected";
-  vehicleImage: string;
-  mileage: number;
-  seatCapacity: number;
-}
-
-interface VehicleListProps {
-  onDelete?: (vehicleId: string) => void;
-  onReapply?: (vehicleId: string) => void;
-}
+// ... keep interfaces the same
 
 export default function VehicleList({ onDelete, onReapply }: VehicleListProps) {
   const [activeTab, setActiveTab] = useState("all");
@@ -51,10 +22,9 @@ export default function VehicleList({ onDelete, onReapply }: VehicleListProps) {
   const { 
     vehicles, 
     isLoading, 
-    pagination, 
-    searchTerm,
-    fetchVehicles, 
-    setSearchTerm 
+    error,
+    pagination,
+    fetchVehicles
   } = useVehicleStore();
 
   // Debounce search input
@@ -66,32 +36,34 @@ export default function VehicleList({ onDelete, onReapply }: VehicleListProps) {
     return () => clearTimeout(timer);
   }, [localSearchTerm]);
 
-  // Fetch vehicles when page changes or search term changes
+  // Fetch vehicles when tab, search, or page changes
   useEffect(() => {
-    fetchVehicles(pagination.currentPage, 10, debouncedSearch);
-  }, [pagination.currentPage, debouncedSearch, fetchVehicles]);
+    fetchVehicles(1, 1, debouncedSearch);
+  }, [debouncedSearch, fetchVehicles]);
+
+  // Handle tab change
+  useEffect(() => {
+    // Note: For server-side filtering, you might need to modify the API
+    // Currently using client-side filtering for tabs
+    fetchVehicles(1, 1, debouncedSearch);
+  }, [activeTab, fetchVehicles, debouncedSearch]);
 
   const handlePageChange = (page: number) => {
-    fetchVehicles(page, 10, debouncedSearch);
+    fetchVehicles(page, 1, debouncedSearch);
   };
 
   const handleSearch = (search: string) => {
     setLocalSearchTerm(search);
-    // Reset to first page when searching
-    if (search !== debouncedSearch) {
-      fetchVehicles(1, 10, search);
-    }
   };
 
-  const filteredVehicles =
-    activeTab === "all" 
-      ? vehicles 
-      : activeTab === "expired"
-      ? vehicles.filter(vehicle => 
-          vehicle.insurance?.status === 'Expired' || 
-          vehicle.pollution?.status === 'Expired'
-        )
-      : vehicles.filter((vehicle) => vehicle.status.toLowerCase() === activeTab);
+  // CLIENT-SIDE FILTERING FOR TABS (since API doesn't support tab filtering)
+  const filteredVehicles = vehicles.filter(vehicle => {
+    if (activeTab === "all") return true;
+    if (activeTab === "expired") {
+      return vehicle.insurance?.status === 'Expired' || vehicle.pollution?.status === 'Expired';
+    }
+    return vehicle.status.toLowerCase() === activeTab;
+  });
 
   const getStatusCount = (status: string) => {
     return vehicles.filter(vehicle => vehicle.status.toLowerCase() === status).length;
@@ -102,6 +74,45 @@ export default function VehicleList({ onDelete, onReapply }: VehicleListProps) {
       vehicle.insurance?.status === 'Expired' || 
       vehicle.pollution?.status === 'Expired'
     ).length;
+  };
+
+  // Generate pagination buttons
+  const generatePaginationButtons = () => {
+    const buttons = [];
+    const { currentPage, totalPages } = pagination;
+    
+    if (totalPages <= 1) return [1];
+    
+    // Always show first page
+    buttons.push(1);
+    
+    // Show pages around current page
+    const startPage = Math.max(2, currentPage - 1);
+    const endPage = Math.min(totalPages - 1, currentPage + 1);
+    
+    // Add ellipsis if needed
+    if (startPage > 2) {
+      buttons.push('...');
+    }
+    
+    // Add middle pages
+    for (let i = startPage; i <= endPage; i++) {
+      if (i !== 1 && i !== totalPages) {
+        buttons.push(i);
+      }
+    }
+    
+    // Add ellipsis if needed
+    if (endPage < totalPages - 1) {
+      buttons.push('...');
+    }
+    
+    // Always show last page if there is more than one page
+    if (totalPages > 1) {
+      buttons.push(totalPages);
+    }
+    
+    return buttons;
   };
 
   return (
@@ -115,7 +126,7 @@ export default function VehicleList({ onDelete, onReapply }: VehicleListProps) {
               <Input
                 placeholder="Search by vehicle name, license plate, insurance or pollution number..."
                 value={localSearchTerm}
-                onChange={(e) => setLocalSearchTerm(e.target.value)}
+                onChange={(e) => handleSearch(e.target.value)}
                 className="pl-10 bg-white border-gray-200 focus:border-blue-500"
               />
             </div>
@@ -198,12 +209,33 @@ export default function VehicleList({ onDelete, onReapply }: VehicleListProps) {
                   </div>
                   <h3 className="text-lg font-semibold text-gray-900 mb-2">No vehicles found</h3>
                   <p className="text-gray-600 max-w-md mx-auto">
-                    No vehicles match the selected filter. Try a different category.
+                    {debouncedSearch 
+                      ? `No vehicles match your search "${debouncedSearch}". Try different keywords.`
+                      : "No vehicles match the selected filter. Try a different category."
+                    }
                   </p>
+                  {debouncedSearch && (
+                    <Button 
+                      variant="outline" 
+                      className="mt-4"
+                      onClick={() => handleSearch("")}
+                    >
+                      Clear Search
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
             ) : (
               <>
+                {/* Search Results Info */}
+                {debouncedSearch && (
+                  <div className="mb-4 p-3 bg-blue-50 rounded-lg">
+                    <p className="text-sm text-blue-700">
+                      Showing {filteredVehicles.length} of {pagination.totalCount} vehicles matching "{debouncedSearch}"
+                    </p>
+                  </div>
+                )}
+
                 <div className="grid gap-4">
                   {filteredVehicles.map((vehicle) => (
                     <VehicleCard
@@ -215,7 +247,7 @@ export default function VehicleList({ onDelete, onReapply }: VehicleListProps) {
                   ))}
                 </div>
 
-                {/* Pagination */}
+                {/* SERVER-SIDE PAGINATION */}
                 {pagination.totalPages > 1 && (
                   <div className="flex items-center justify-between mt-6 pt-6 border-t border-gray-200">
                     <div className="text-sm text-gray-600">
@@ -236,30 +268,23 @@ export default function VehicleList({ onDelete, onReapply }: VehicleListProps) {
                       </Button>
                       
                       <div className="flex items-center gap-1">
-                        {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
-                          let pageNum;
-                          if (pagination.totalPages <= 5) {
-                            pageNum = i + 1;
-                          } else if (pagination.currentPage <= 3) {
-                            pageNum = i + 1;
-                          } else if (pagination.currentPage >= pagination.totalPages - 2) {
-                            pageNum = pagination.totalPages - 4 + i;
-                          } else {
-                            pageNum = pagination.currentPage - 2 + i;
-                          }
-                          
-                          return (
+                        {generatePaginationButtons().map((page, index) => (
+                          page === '...' ? (
+                            <span key={`ellipsis-${index}`} className="px-2 text-gray-500">
+                              ...
+                            </span>
+                          ) : (
                             <Button
-                              key={pageNum}
-                              variant={pagination.currentPage === pageNum ? "default" : "outline"}
+                              key={page}
+                              variant={pagination.currentPage === page ? "default" : "outline"}
                               size="sm"
-                              onClick={() => handlePageChange(pageNum)}
+                              onClick={() => handlePageChange(page as number)}
                               className="w-8 h-8 p-0"
                             >
-                              {pageNum}
+                              {page}
                             </Button>
-                          );
-                        })}
+                          )
+                        ))}
                       </div>
 
                       <Button

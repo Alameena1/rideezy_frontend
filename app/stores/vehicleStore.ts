@@ -81,11 +81,20 @@ export const useVehicleStore = create<VehicleStore>((set, get) => {
     fetchVehicles: async (page: number = 1, limit: number = 10, search: string = '') => {
       set({ isLoading: true, error: null });
       try {
-        const response = await clientApiService.vehicle.getVehicles(page, limit, search);
+        const response = await clientApiService.vehicle.getVehicles({ 
+          page, 
+          limit, 
+          search 
+        });
+        
+        console.log("API Response:", response);
         
         if (response?.success && response.data) {
           const vehiclesData = response.data.vehicles || [];
-          const paginationData = response.data;
+          const paginationData = response.data.pagination || {};
+          
+          console.log("Vehicles data:", vehiclesData);
+          console.log("Pagination data:", paginationData);
           
           const fetchedVehicles = Array.isArray(vehiclesData)
             ? vehiclesData.map((vehicle: any) => ({
@@ -105,10 +114,13 @@ export const useVehicleStore = create<VehicleStore>((set, get) => {
             },
             searchTerm: search
           });
+          
+          console.log("Updated store with vehicles:", fetchedVehicles.length);
         } else {
           set({ error: "Failed to fetch vehicles. Please try again." });
         }
       } catch (error: any) {
+        console.error("Error fetching vehicles:", error);
         set({ error: error.response?.data?.message || "Failed to fetch vehicles. Please try again." });
       } finally {
         set({ isLoading: false });

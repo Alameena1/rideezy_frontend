@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import useAuth from "@/app/hooks/useAuth";
-import { clientApiService } from "@/services/client/client-api";
 import { 
   Card, 
   CardHeader, 
@@ -17,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 import { 
   AlertCircle, 
   Crown, 
@@ -27,11 +27,15 @@ import {
   Zap,
   Shield,
   Users,
-  Car
+  Car,
+  Search,
+  ChevronLeft,
+  ChevronRight
 } from "lucide-react";
 import MainLayout from "@/app/comp/MainLayout";
 import Swal from "sweetalert2";
 import { useRazorpay } from "../../features/user/subscription/useRazorpay";
+import { useSubscriptionStore } from "../../stores/subscriptionStore"; 
 
 // Define types
 interface SubscriptionPlan {
@@ -46,11 +50,6 @@ interface SubscriptionPlan {
   popular?: boolean;
 }
 
-interface SubscriptionStatusResponse {
-  isSubscribed: boolean;
-  subscription: CurrentSubscription | null;
-}
-
 interface CurrentSubscription {
   plan: SubscriptionPlan;
   startDate: string;
@@ -60,10 +59,20 @@ interface CurrentSubscription {
 
 export default function Subscriptions() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
-  const [availablePlans, setAvailablePlans] = useState<SubscriptionPlan[]>([]);
-  const [currentSubscription, setCurrentSubscription] = useState<CurrentSubscription | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  
+  // Use the subscription store for ALL data
+  const { 
+    plans, 
+    isLoading, 
+    error, 
+    pagination,
+    currentSubscription,
+    fetchPlans,
+    fetchCurrentSubscription
+  } = useSubscriptionStore();
+
+  const [localSearchTerm, setLocalSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   const userId = user?._id;
 
@@ -76,9 +85,12 @@ export default function Subscriptions() {
 
   const { handleSubscribe, paymentLoading } = useRazorpay({
     userId: userId || "",
-    onSuccess: (subscriptionResponse: SubscriptionStatusResponse) => {
+    onSuccess: (subscriptionResponse: any) => {
       if (subscriptionResponse.isSubscribed && subscriptionResponse.subscription) {
-        setCurrentSubscription(subscriptionResponse.subscription as CurrentSubscription);
+        // Refresh the current subscription from the store
+        if (userId) {
+          fetchCurrentSubscription(userId);
+        }
         Swal.fire({
           icon: "success",
           title: "Subscription Activated!",
@@ -89,82 +101,43 @@ export default function Subscriptions() {
         });
       }
     },
-    onError: (errorMessage) => setError(errorMessage),
+    onError: (errorMessage) => {
+      // Handle error through store if you have error state there
+      console.error("Subscription error:", errorMessage);
+    },
   });
 
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(localSearchTerm);
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [localSearchTerm]);
+
+  // Fetch plans when search or page changes
   useEffect(() => {
     if (authLoading) return;
-    if (!isAuthenticated) {
-      setError("Please log in to view subscription plans.");
-      setIsLoading(false);
-      return;
+    if (!isAuthenticated || !userId) return;
+
+    fetchPlans(1, 3, debouncedSearch); // 9 plans per page for 3x3 grid
+  }, [debouncedSearch, fetchPlans, authLoading, isAuthenticated, userId]);
+
+  // Fetch current subscription
+  useEffect(() => {
+    if (userId) {
+      fetchCurrentSubscription(userId);
     }
-    if (!userId) {
-      setError("User ID is missing. Please log in again.");
-      setIsLoading(false);
-      return;
-    }
+  }, [userId, fetchCurrentSubscription]);
 
-    const fetchPlansAndSubscription = async () => {
-      setIsLoading(true);
-      setError(null);
-      
-      try {
-        // Fetch plans and subscription in parallel
-        const [plansResponse, subscriptionResponse] = await Promise.all([
-          clientApiService.subscription.getSubscriptionPlans(),
-          clientApiService.subscription.checkSubscription(userId)
-        ]);
+  const handlePageChange = (page: number) => {
+    fetchPlans(page, 3, debouncedSearch);
+  };
 
-        console.log("Plans Response:", plansResponse);
-        console.log("Subscription Response:", subscriptionResponse);
-
-        // Validate and set available plans
-        if (plansResponse && Array.isArray(plansResponse.data)) {
-          setAvailablePlans(plansResponse.data);
-        } else if (plansResponse && Array.isArray(plansResponse)) {
-          // Handle case where response is directly the array
-          setAvailablePlans(plansResponse);
-        } else {
-          console.warn("Unexpected plans response format:", plansResponse);
-          setAvailablePlans([]);
-        }
-        
-        // Validate and set current subscription
-        if (subscriptionResponse && subscriptionResponse.isSubscribed && subscriptionResponse.subscription) {
-          setCurrentSubscription(subscriptionResponse.subscription as CurrentSubscription);
-        } else {
-          setCurrentSubscription(null);
-        }
-
-      } catch (err: any) {
-        console.error("Error fetching subscription data:", err);
-        
-        // Handle different error formats
-        if (err.response?.data?.errors) {
-          const validationErrors = err.response.data.errors;
-          const errorMessages = validationErrors.map((error: any) => 
-            `${error.path?.join('.') || 'unknown'}: ${error.message}`
-          ).join(', ');
-          setError(`Validation error: ${errorMessages}`);
-        } else if (err.response?.data?.message) {
-          setError(err.response.data.message);
-        } else if (err.message) {
-          setError(err.message);
-        } else {
-          setError("Failed to load subscription data. Please try again.");
-        }
-        
-        // Set empty states on error
-        setAvailablePlans([]);
-        setCurrentSubscription(null);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchPlansAndSubscription();
-  }, [userId, authLoading, isAuthenticated]);
+  const handleSearch = (search: string) => {
+    setLocalSearchTerm(search);
+  };
 
   const onSubscribe = (plan: SubscriptionPlan) => {
     if (currentSubscription) {
@@ -201,6 +174,45 @@ export default function Subscriptions() {
       ];
     }
     return plan.features;
+  };
+
+  // Generate pagination buttons
+  const generatePaginationButtons = () => {
+    const buttons = [];
+    const { currentPage, totalPages } = pagination;
+    
+    if (totalPages <= 1) return [1];
+    
+    // Always show first page
+    buttons.push(1);
+    
+    // Show pages around current page
+    const startPage = Math.max(2, currentPage - 1);
+    const endPage = Math.min(totalPages - 1, currentPage + 1);
+    
+    // Add ellipsis if needed
+    if (startPage > 2) {
+      buttons.push('...');
+    }
+    
+    // Add middle pages
+    for (let i = startPage; i <= endPage; i++) {
+      if (i !== 1 && i !== totalPages) {
+        buttons.push(i);
+      }
+    }
+    
+    // Add ellipsis if needed
+    if (endPage < totalPages - 1) {
+      buttons.push('...');
+    }
+    
+    // Always show last page if there is more than one page
+    if (totalPages > 1) {
+      buttons.push(totalPages);
+    }
+    
+    return buttons;
   };
 
   if (authLoading) {
@@ -262,6 +274,29 @@ export default function Subscriptions() {
           </TabsList>
 
           <TabsContent value="plans" className="space-y-6">
+            {/* Search Bar */}
+            <Card className="border-0 shadow-lg">
+              <CardContent className="p-6">
+                <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+                  <div className="relative w-full sm:w-96">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                    <Input
+                      placeholder="Search plans by name, description, or features..."
+                      value={localSearchTerm}
+                      onChange={(e) => handleSearch(e.target.value)}
+                      className="pl-10 bg-white border-gray-200 focus:border-blue-500"
+                    />
+                  </div>
+                  
+                  {/* Results Count */}
+                  <div className="text-sm text-gray-600 whitespace-nowrap">
+                    Showing {plans.length} of {pagination.totalCount} plans
+                    {debouncedSearch && ` for "${debouncedSearch}"`}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
             {isLoading ? (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {[1, 2, 3].map((i) => (
@@ -312,8 +347,8 @@ export default function Subscriptions() {
 
                 {/* Plans Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  {availablePlans && availablePlans.length > 0 ? (
-                    availablePlans.map((plan, index) => {
+                  {plans && plans.length > 0 ? (
+                    plans.map((plan, index) => {
                       const isPopular = plan.popular || index === 1; // Middle card is popular by default
                       const isCurrentPlan = currentSubscription?.plan._id === plan._id;
                       const features = getPlanFeatures(plan);
@@ -445,14 +480,82 @@ export default function Subscriptions() {
                     <div className="col-span-3 text-center py-12">
                       <Crown className="h-16 w-16 text-gray-400 mx-auto mb-4" />
                       <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                        No Subscription Plans Available
+                        No Subscription Plans Found
                       </h3>
                       <p className="text-gray-600 max-w-md mx-auto">
-                        There are currently no subscription plans available. Please check back later or contact support.
+                        {debouncedSearch 
+                          ? `No plans match your search "${debouncedSearch}". Try different keywords.`
+                          : "There are currently no subscription plans available. Please check back later or contact support."
+                        }
                       </p>
+                      {debouncedSearch && (
+                        <Button 
+                          variant="outline" 
+                          className="mt-4"
+                          onClick={() => handleSearch("")}
+                        >
+                          Clear Search
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>
+
+                {/* Pagination */}
+                {pagination.totalPages > 1 && (
+                  <Card className="border-0 shadow-lg">
+                    <CardContent className="p-6">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm text-gray-600">
+                          Page {pagination.currentPage} of {pagination.totalPages}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePageChange(pagination.currentPage - 1)}
+                            disabled={!pagination.hasPrevPage}
+                            className="flex items-center gap-1"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                            Previous
+                          </Button>
+                          
+                          <div className="flex items-center gap-1">
+                            {generatePaginationButtons().map((page, index) => (
+                              page === '...' ? (
+                                <span key={`ellipsis-${index}`} className="px-2 text-gray-500">
+                                  ...
+                                </span>
+                              ) : (
+                                <Button
+                                  key={page}
+                                  variant={pagination.currentPage === page ? "default" : "outline"}
+                                  size="sm"
+                                  onClick={() => handlePageChange(page as number)}
+                                  className="w-8 h-8 p-0"
+                                >
+                                  {page}
+                                </Button>
+                              )
+                            ))}
+                          </div>
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handlePageChange(pagination.currentPage + 1)}
+                            disabled={!pagination.hasNextPage}
+                            className="flex items-center gap-1"
+                          >
+                            Next
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
               </>
             )}
           </TabsContent>

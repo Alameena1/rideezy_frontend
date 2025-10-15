@@ -138,8 +138,6 @@ export default function VehicleDetails() {
               />
             ) : (
               <VehicleList
-                vehicles={vehicles}
-                isLoading={isLoading}
                 onDelete={handleDeleteVehicle}
                 onReapply={handleReapplyVehicle}
               />

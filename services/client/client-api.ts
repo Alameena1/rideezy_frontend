@@ -181,8 +181,10 @@ export const clientApiService = {
     cancelRide: (rideId: string) => clientApi.api.delete(`/api/initiate-rides/${rideId}`).then((res) => res.data),
     startTracking: (rideId: string, driverId: string) =>
       clientApi.api.put(`/api/initiate-rides/${rideId}/start-tracking`, {}, { headers: { "Driver-Id": driverId } }).then((res) => res.data),
-    getJoinedRides: () => clientApi.api.get("/api/join-rides/joined").then((res) => res.data),
-    findNearestRides: (data: { userLocation: string; destination: string }) =>
+getJoinedRides: ({ page = 1, limit = 5, search = '' }: { page?: number; limit?: number; search?: string } = {}) => 
+    clientApi.api.get("/api/join-rides/joined", {
+      params: { page, limit, search }
+    }).then((res) => res.data),    findNearestRides: (data: { userLocation: string; destination: string }) =>
       clientApi.api.post("/api/join-rides/nearest", data).then((res) => res.data),
     joinRide: (rideId: string, passengerId: string, pickupLocation: string, dropoffLocation: string) =>
       clientApi.api.post("/api/join-rides/join", { rideId, passengerId, pickupLocation, dropoffLocation }).then((res) => res.data),
@@ -207,52 +209,65 @@ export const clientApiService = {
   
   },
   wallet: {
-    getWallet: (userId: string, page: number = 1, limit: number = 10) =>
-      clientApi.api.get(`/api/wallet/balance/${userId}`, { params: { page, limit } }).then((res) => res.data),
-    createOrder: (data: { userId: string; amount: number; currency: string }) =>
-      clientApi.api.post("/api/wallet/create-deposit-order", data).then((res) => res.data),
-    addFunds: (data: {
-      userId: string;
-      amount: number;
-      paymentId: string;
-      orderId: string;
-      signature: string;
-    }) => clientApi.api.post("/api/wallet/deposit", data).then((res) => res.data),
-  },
-  vehicle: {
-    getVehicles: () => clientApi.api.get("/api/vehicles").then((res) => res.data),
-    addVehicle: (vehicleData: {
-      vehicleName: string;
-      vehicleType: string;
-      licensePlate: string;
-      color?: string;
-      insuranceNumber?: string;
-      vehicleImage: string;
-      documentImage: string;
-      mileage: number;
-    }) => clientApi.api.post("/api/vehicles", vehicleData).then((res) => res.data),
-    updateVehicle: (vehicleId: string, vehicleData: {
-      vehicleName: string;
-      vehicleType: string;
-      licensePlate: string;
-      color?: string;
-      insuranceNumber?: string;
-      vehicleImage: string;
-      documentImage: string;
-      mileage: number;
-    }) => clientApi.api.put(`/api/vehicles/${vehicleId}`, vehicleData).then((res) => res.data),
-    deleteVehicle: (vehicleId: string) => clientApi.api.delete(`/api/vehicles/${vehicleId}`).then((res) => res.data),
-    reapplyVehicle: (vehicleId: string, vehicleData: {
-      vehicleName: string;
-      vehicleType: string;
-      licensePlate: string;
-      color?: string;
-      insuranceNumber?: string;
-      vehicleImage: string;
-      documentImage: string;
-      mileage: number;
-    }) => clientApi.api.post(`/api/vehicles/${vehicleId}/reapply`, vehicleData).then((res) => res.data),
-  },
+  getWallet: (userId: string, page: number = 1, limit: number = 10, search: string = "", filter: string = "all") =>
+    clientApi.api.get(`/api/wallet/transactions/${userId}`, { 
+      params: { page, limit, search, filter } 
+    }).then((res) => res.data),
+  createOrder: (data: { userId: string; amount: number; currency: string }) =>
+    clientApi.api.post("/api/wallet/create-deposit-order", data).then((res) => res.data),
+  addFunds: (data: {
+    userId: string;
+    amount: number;
+    paymentId: string;
+    orderId: string;
+    signature: string;
+  }) => clientApi.api.post("/api/wallet/deposit", data).then((res) => res.data),
+},
+vehicle: {
+  getVehicles: ({ page = 1, limit = 10, search = '' }: { page?: number; limit?: number; search?: string } = {}) => 
+    clientApi.api.get("/api/vehicles", {
+      params: {
+        page,
+        limit, 
+        search
+      }
+    }).then((res) => res.data),
+  
+  addVehicle: (vehicleData: {
+    vehicleName: string;
+    vehicleType: string;
+    licensePlate: string;
+    color?: string;
+    insuranceNumber?: string;
+    vehicleImage: string;
+    documentImage: string;
+    mileage: number;
+  }) => clientApi.api.post("/api/vehicles", vehicleData).then((res) => res.data),
+  
+  updateVehicle: (vehicleId: string, vehicleData: {
+    vehicleName: string;
+    vehicleType: string;
+    licensePlate: string;
+    color?: string;
+    insuranceNumber?: string;
+    vehicleImage: string;
+    documentImage: string;
+    mileage: number;
+  }) => clientApi.api.put(`/api/vehicles/${vehicleId}`, vehicleData).then((res) => res.data),
+  
+  deleteVehicle: (vehicleId: string) => clientApi.api.delete(`/api/vehicles/${vehicleId}`).then((res) => res.data),
+  
+  reapplyVehicle: (vehicleId: string, vehicleData: {
+    vehicleName: string;
+    vehicleType: string;
+    licensePlate: string;
+    color?: string;
+    insuranceNumber?: string;
+    vehicleImage: string;
+    documentImage: string;
+    mileage: number;
+  }) => clientApi.api.post(`/api/vehicles/${vehicleId}/reapply`, vehicleData).then((res) => res.data),
+},
    tracking: {
     startTracking: (rideId: string, driverId: string, initialPosition: [number, number]) =>
       clientApi.api.post(`/api/tracking/${rideId}/start`, { driverId, initialPosition }).then((res) => res.data),
@@ -263,8 +278,11 @@ export const clientApiService = {
     stopTracking: (rideId: string) => clientApi.api.put(`/api/tracking/${rideId}/stop`, {}).then((res) => res.data),
   },
   subscription: {
-    getSubscriptionPlans: () => clientApi.api.get("/api/subscriptions/plans").then((res) => res.data),
-    checkSubscription: (userId: string) => clientApi.api.get(`/api/subscriptions/check/${userId}`).then((res) => res.data),
+getSubscriptionPlans: ({ page = 1, limit = 10, search = '' }: { page?: number; limit?: number; search?: string } = {}) => 
+    clientApi.api.get("/api/subscriptions/plans", {
+      params: { page, limit, search }
+    }).then((res) => res.data),
+        checkSubscription: (userId: string) => clientApi.api.get(`/api/subscriptions/check/${userId}`).then((res) => res.data),
     createOrder: (planId: string) => clientApi.api.post("/api/subscriptions/create-order", { planId }).then((res) => res.data),
     verifyAndSubscribe: (data: {
       userId: string;
@@ -344,7 +362,6 @@ export const clientApiService = {
   },
 };
 
-// Export useTokenInterceptor as useApiInterceptors for consistency
 export const useApiInterceptors = clientApi.useTokenInterceptor;
 
 export default clientApiService;
