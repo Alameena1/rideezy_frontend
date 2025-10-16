@@ -175,8 +175,10 @@ export const clientApiService = {
       routeGeometry: string;
       platformFee?: number;
     }) => clientApi.api.post("/api/initiate-rides/start", data).then((res) => res.data),
-    getRides: () => clientApi.api.get("/api/initiate-rides/rides").then((res) => res.data),
-    editRide: (rideId: string, driverId: string, dto: any) =>
+getRides: ({ page = 1, limit = 10, search = '' }: { page?: number; limit?: number; search?: string } = {}) => 
+    clientApi.api.get("/api/initiate-rides/rides", {
+      params: { page, limit, search }
+    }).then((res) => res.data),    editRide: (rideId: string, driverId: string, dto: any) =>
       clientApi.api.put(`/api/initiate-rides/${rideId}`, dto, { headers: { "Driver-Id": driverId } }).then((res) => res.data),
     cancelRide: (rideId: string) => clientApi.api.delete(`/api/initiate-rides/${rideId}`).then((res) => res.data),
     startTracking: (rideId: string, driverId: string) =>

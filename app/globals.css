@@ -120,3 +120,26 @@
     @apply bg-background text-foreground;
   }
 }
+
+
+/* Fix for Leaflet in Next.js */
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+  z-index: 1;
+}
+
+.leaflet-control-container {
+  z-index: 2;
+}
+
+/* Ensure map container has proper dimensions */
+.h-96 {
+  min-height: 24rem;
+}
+
+/* Fix for marker icons */
+.leaflet-marker-icon {
+  margin-left: -12px !important;
+  margin-top: -41px !important;
+}
