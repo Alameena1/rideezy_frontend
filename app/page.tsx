@@ -1,6 +1,8 @@
 "use client";
 
 import { useSession } from "next-auth/react";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import ClientNavbarWrapper from "./comp/ClientNavbarWrapper";
 import ServiceSection from "./comp/ServiceSection";
 import Footer from "./comp/Footer";
@@ -25,6 +27,41 @@ import {
 
 export default function Home() {
   const { data: session, status } = useSession();
+  const router = useRouter();
+
+  useEffect(() => {
+    // Add a small delay to ensure session is properly loaded
+    if (status === "unauthenticated") {
+      const timer = setTimeout(() => {
+        router.push("/user/login");
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [status, router]);
+
+  // Show loading state while checking authentication
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render content if not authenticated
+  if (status === "unauthenticated") {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 to-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Redirecting to login...</p>
+        </div>
+      </div>
+    );
+  }
 
   const features = [
     {
@@ -359,58 +396,6 @@ export default function Home() {
           </div>
         </div>
       </section>
-
-      {/* Testimonials */}
-      {/* <section className="py-20 bg-gray-50">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-16">
-            <Badge variant="outline" className="mb-4 bg-white text-gray-700 border-gray-200">
-              ❤️ Testimonials
-            </Badge>
-            <h2 className="text-3xl lg:text-4xl font-bold text-gray-900 mb-4">
-              What Our Users Say
-            </h2>
-          </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              {
-                name: "Sarah Johnson",
-                role: "Regular Rider",
-                content: "I use RideEzy for my daily commute. The drivers are always professional and the prices are very reasonable.",
-                rating: 5
-              },
-              {
-                name: "Mike Chen",
-                role: "Driver Partner",
-                content: "The flexibility is amazing. I can drive when I want and the earnings are consistently good.",
-                rating: 5
-              },
-              {
-                name: "Emily Davis",
-                role: "Business User",
-                content: "Perfect for our corporate travel needs. Reliable service and great customer support.",
-                rating: 5
-              }
-            ].map((testimonial, index) => (
-              <Card key={index} className="border-0 shadow-lg bg-white">
-                <CardContent className="p-6">
-                  <div className="flex mb-4">
-                    {[...Array(testimonial.rating)].map((_, i) => (
-                      <Star key={i} className="h-5 w-5 fill-yellow-400 text-yellow-400" />
-                    ))}
-                  </div>
-                  <p className="text-gray-600 mb-6 italic">"{testimonial.content}"</p>
-                  <div>
-                    <div className="font-semibold text-gray-900">{testimonial.name}</div>
-                    <div className="text-gray-500 text-sm">{testimonial.role}</div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section> */}
 
       {/* Final CTA */}
       <section className="py-20 bg-gradient-to-r from-blue-600 to-purple-700 text-white">

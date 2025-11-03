@@ -13,6 +13,7 @@ import MapComponent from "./MapComponent";
 import AddressSearch from "./AddressSearch";
 import RideFormFields from "./RideFormFields";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 
 interface FormData {
   driverId: string;
@@ -41,6 +42,7 @@ interface Vehicle {
 
 const RideFormContainer: React.FC = () => {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const [routeData, setRouteData] = useState<RouteData | null>(null);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [perKmRate, setPerKmRate] = useState<number | null>(null);
@@ -49,6 +51,8 @@ const RideFormContainer: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSubscribed, setIsSubscribed] = useState<boolean>(false);
   const [dataLoaded, setDataLoaded] = useState<boolean>(false);
+  const [authReady, setAuthReady] = useState<boolean>(false);
+  const [hasValidRoute, setHasValidRoute] = useState<boolean>(false);
 
   const {
     register,
@@ -94,15 +98,40 @@ const RideFormContainer: React.FC = () => {
       color: '#374151',
       confirmButtonText: "Log In",
     }).then(() => {
-      router.push("/auth/login");
+      router.push("/user/login");
     });
   };
 
+  // Wait for authentication to be ready
+  useEffect(() => {
+    if (status === "authenticated" && session?.user) {
+      console.log("[RideFormContainer] Auth ready, session:", session);
+      setAuthReady(true);
+    } else if (status === "unauthenticated") {
+      console.log("[RideFormContainer] User not authenticated");
+      router.push("/user/login");
+    }
+  }, [status, session, router]);
+
   useEffect(() => {
     const fetchData = async () => {
+      // Don't fetch data until auth is ready
+      if (!authReady || status !== "authenticated") {
+        console.log("[RideFormContainer] Auth not ready yet, skipping fetch");
+        return;
+      }
+
       try {
         setIsLoading(true);
         console.log("[RideFormContainer] Starting data fetch...");
+
+        // Check if we have access token
+        const accessToken = (session?.user as any)?.accessToken;
+        if (!accessToken) {
+          console.error("[RideFormContainer] No access token available");
+          handleAuthError(new Error("No access token"));
+          return;
+        }
 
         // Fetch user profile
         const userData = await clientApiService.user.getProfile();
@@ -176,6 +205,12 @@ const RideFormContainer: React.FC = () => {
           return;
         }
 
+        // Don't show error for development mode network issues
+        if (process.env.NODE_ENV === 'development' && error.code === 'ERR_NETWORK') {
+          console.log("[RideFormContainer] Development network error, ignoring");
+          return;
+        }
+
         Swal.fire({
           icon: "error",
           title: "Error",
@@ -189,7 +224,17 @@ const RideFormContainer: React.FC = () => {
     };
     
     fetchData();
-  }, [setValue, router]);
+  }, [authReady, status, session, setValue, router]);
+
+  // Update hasValidRoute when both start and end points are provided
+  useEffect(() => {
+    if (startPoint && endPoint) {
+      setHasValidRoute(true);
+    } else {
+      setHasValidRoute(false);
+      setRouteData(null); // Reset route data when points are cleared
+    }
+  }, [startPoint, endPoint]);
 
   useEffect(() => {
     if (routeData && vehicleId && passengerCount !== undefined && fuelPrice !== undefined) {
@@ -300,8 +345,8 @@ const RideFormContainer: React.FC = () => {
     }
   };
 
-  // Show loading state while fetching initial data
-  if (!dataLoaded && isLoading) {
+  // Show loading state while checking authentication or fetching initial data
+  if (status === "loading" || (!dataLoaded && isLoading)) {
     return (
       <div className="mx-auto max-w-7xl p-6 space-y-6">
         <div className="text-center space-y-2">
@@ -315,6 +360,11 @@ const RideFormContainer: React.FC = () => {
         </div>
       </div>
     );
+  }
+
+  // Redirect if not authenticated
+  if (status === "unauthenticated") {
+    return null; // The useEffect will handle the redirect
   }
 
   return (
@@ -332,28 +382,45 @@ const RideFormContainer: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-        {/* Map Section */}
+        {/* Map Section - Always render MapComponent when both points are provided */}
         <Card className="border-0 shadow-lg">
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center gap-2 text-xl">
               <MapPin className="h-5 w-5 text-blue-600" />
               Route Map
+              {routeData && (
+                <Badge className="bg-green-100 text-green-800 ml-2">
+                  {distanceInKm ? `${distanceInKm.toFixed(2)} km` : 'Calculated'}
+                </Badge>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <MapComponent 
-              startPoint={startPoint} 
-              endPoint={endPoint} 
-              routeData={routeData} 
-              setRouteData={setRouteData} 
-            />
-            {routeData && (
-              <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-green-800">Route Calculated</span>
-                  <Badge className="bg-green-100 text-green-800">
-                    {distanceInKm ? `${distanceInKm.toFixed(2)} km` : 'Ready'}
-                  </Badge>
+            {hasValidRoute ? (
+              <>
+                <MapComponent 
+                  startPoint={startPoint} 
+                  endPoint={endPoint} 
+                  routeData={routeData} 
+                  setRouteData={setRouteData} 
+                />
+                {routeData && (
+                  <div className="mt-4 p-3 bg-green-50 rounded-lg border border-green-200">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-green-800">Route Calculated</span>
+                      <Badge className="bg-green-100 text-green-800">
+                        {distanceInKm ? `${distanceInKm.toFixed(2)} km` : 'Ready'}
+                      </Badge>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="h-96 flex items-center justify-center bg-gray-50 rounded-lg border-2 border-dashed border-gray-300">
+                <div className="text-center text-gray-500">
+                  <MapPin className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+                  <p className="text-lg font-medium">Enter start and end locations</p>
+                  <p className="text-sm">The map will calculate the route once you set both locations</p>
                 </div>
               </div>
             )}
@@ -438,7 +505,13 @@ const RideFormContainer: React.FC = () => {
                 )}
               </Button>
 
-              {!routeData && (
+              {!routeData && hasValidRoute && (
+                <p className="text-center text-sm text-orange-600">
+                  Calculating route... Please wait a moment
+                </p>
+              )}
+
+              {!hasValidRoute && (
                 <p className="text-center text-sm text-orange-600">
                   Please set both start and end points to calculate route
                 </p>

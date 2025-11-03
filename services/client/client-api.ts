@@ -161,7 +161,7 @@ export const clientApiService = {
     getOrCreateRideConversation: (data: { rideId: string; driverId: string; userId: string }) =>
       clientApi.api.post("/api/chat/ride-conversation", data).then((res) => res.data),
   },
-  ride: {
+ride: {
     startRide: (data: {
       date: string;
       time: string;
@@ -175,18 +175,31 @@ export const clientApiService = {
       routeGeometry: string;
       platformFee?: number;
     }) => clientApi.api.post("/api/initiate-rides/start", data).then((res) => res.data),
-getRides: ({ page = 1, limit = 10, search = '' }: { page?: number; limit?: number; search?: string } = {}) => 
-    clientApi.api.get("/api/initiate-rides/rides", {
-      params: { page, limit, search }
-    }).then((res) => res.data),    editRide: (rideId: string, driverId: string, dto: any) =>
+    
+    // Updated getRides method with pagination
+    getRides: ({ page = 1, limit = 10, search = '' }: { page?: number; limit?: number; search?: string } = {}) => 
+      clientApi.api.get("/api/initiate-rides/rides", {
+        params: { page, limit, search }
+      }).then((res) => res.data),
+    
+    // Keep the old method for backward compatibility
+    getRidesWithPagination: ({ page = 1, limit = 10, search = '' }: { page?: number; limit?: number; search?: string } = {}) => 
+      clientApi.api.get("/api/initiate-rides/rides", {
+        params: { page, limit, search }
+      }).then((res) => res.data),
+
+    editRide: (rideId: string, driverId: string, dto: any) =>
       clientApi.api.put(`/api/initiate-rides/${rideId}`, dto, { headers: { "Driver-Id": driverId } }).then((res) => res.data),
     cancelRide: (rideId: string) => clientApi.api.delete(`/api/initiate-rides/${rideId}`).then((res) => res.data),
     startTracking: (rideId: string, driverId: string) =>
       clientApi.api.put(`/api/initiate-rides/${rideId}/start-tracking`, {}, { headers: { "Driver-Id": driverId } }).then((res) => res.data),
-getJoinedRides: ({ page = 1, limit = 5, search = '' }: { page?: number; limit?: number; search?: string } = {}) => 
-    clientApi.api.get("/api/join-rides/joined", {
-      params: { page, limit, search }
-    }).then((res) => res.data),    findNearestRides: (data: { userLocation: string; destination: string }) =>
+    
+    getJoinedRides: ({ page = 1, limit = 5, search = '' }: { page?: number; limit?: number; search?: string } = {}) => 
+      clientApi.api.get("/api/join-rides/joined", {
+        params: { page, limit, search }
+      }).then((res) => res.data),
+      
+    findNearestRides: (data: { userLocation: string; destination: string }) =>
       clientApi.api.post("/api/join-rides/nearest", data).then((res) => res.data),
     joinRide: (rideId: string, passengerId: string, pickupLocation: string, dropoffLocation: string) =>
       clientApi.api.post("/api/join-rides/join", { rideId, passengerId, pickupLocation, dropoffLocation }).then((res) => res.data),
@@ -208,8 +221,7 @@ getJoinedRides: ({ page = 1, limit = 5, search = '' }: { page?: number; limit?: 
 
     emergencyStopRide: (rideId: string, data: { reason: string; currentPosition: [number, number] }) =>
       clientApi.api.put(`/api/initiate-rides/${rideId}/emergency-stop`, data).then((res) => res.data),
-  
-  },
+},
   wallet: {
   getWallet: (userId: string, page: number = 1, limit: number = 10, search: string = "", filter: string = "all") =>
     clientApi.api.get(`/api/wallet/transactions/${userId}`, { 

@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 
 export default function LoginPage() {
-  const { data: session, status } = useSession();
+  const { data: session, status, update } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [formData, setFormData] = useState({
@@ -59,11 +59,12 @@ export default function LoginPage() {
     }
 
     // Redirect if authenticated
-    if (status === "authenticated" && !loading) {
+    if (status === "authenticated" && session && !loading) {
       console.log("LoginPage: User authenticated, redirecting to /");
-      router.replace("/");
+      const callbackUrl = searchParams.get("callbackUrl") || "/";
+      router.replace(callbackUrl);
     }
-  }, [status, router, searchParams, loading]);
+  }, [status, session, router, searchParams, loading]);
 
   const validateEmail = (email: string) => {
     const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -110,12 +111,17 @@ export default function LoginPage() {
         redirect: false,
         email: formData.email.trim(),
         password: formData.password.trim(),
+        callbackUrl: "/"
       });
 
       if (result?.error) {
         console.error("Next-auth signIn error:", result.error);
         setErrors({ ...errors, general: result.error || "Invalid email or password" });
         setLoading(false);
+      } else if (result?.url) {
+        // Success - manually update session and redirect
+        await update();
+        router.replace(result.url);
       }
     } catch (error: any) {
       console.error("Login error:", error.message);
@@ -139,8 +145,28 @@ export default function LoginPage() {
     setShowPassword(!showPassword);
   };
 
+  // Show loading state while checking authentication
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="text-white text-center">
+          <div className="w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p>Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Don't render login form if authenticated (will redirect)
   if (status === "authenticated") {
-    return null;
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="text-white text-center">
+          <div className="w-16 h-16 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p>Redirecting to home page...</p>
+        </div>
+      </div>
+    );
   }
 
   const features = [
@@ -209,25 +235,6 @@ export default function LoginPage() {
                 </div>
               ))}
             </div>
-
-            {/* Testimonial */}
-            {/* <div className="bg-white/5 backdrop-blur-sm rounded-2xl p-6 border border-white/10 max-w-md">
-              <div className="flex items-center space-x-2 text-yellow-400 mb-2">
-                {[...Array(5)].map((_, i) => (
-                  <Star key={i} className="h-4 w-4 fill-current" />
-                ))}
-              </div>
-              <p className="text-gray-300 italic mb-3">
-                "RideEzy transformed my daily commute. The community is amazing and I always feel safe!"
-              </p>
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-gradient-to-br from-purple-400 to-pink-400 rounded-full"></div>
-                <div>
-                  <p className="text-white text-sm font-medium">Sarah Johnson</p>
-                  <p className="text-gray-400 text-xs">Regular Rider</p>
-                </div>
-              </div>
-            </div> */}
           </div>
 
           {/* Right Side - Login Form */}

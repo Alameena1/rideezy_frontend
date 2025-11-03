@@ -40,8 +40,7 @@ const authOptions: NextAuthOptions = {
 
           const backendBaseURL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3001';
           
-          // FIX: Use correct endpoints based on your server routes
-          const endpoint = isAdmin ? "/admin/login" : "/api/auth/login"; // Changed from /auth/login to /api/auth/login
+          const endpoint = isAdmin ? "/admin/login" : "/api/auth/login"; 
           const url = `${backendBaseURL}${endpoint}`;
           
           console.log("📤 Calling backend:", url);

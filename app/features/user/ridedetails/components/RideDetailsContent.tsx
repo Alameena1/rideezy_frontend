@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRideDetails } from "../context/RideDetailsContext";
 import RideHeader from "./RideHeader";
 import RideCard from "./RideCard";
@@ -13,33 +13,23 @@ import { Input } from "@/components/ui/input";
 import { RefreshCw, Route, Search, ChevronLeft, ChevronRight } from "lucide-react";
 import Link from "next/link";
 
-interface PaginationInfo {
-  currentPage: number;
-  totalPages: number;
-  totalCount: number;
-  hasNextPage: boolean;
-  hasPrevPage: boolean;
-}
-
 export default function RideDetailsContent() {
   const {
     rides,
     isLoading,
     error,
     fetchRides,
+    pagination,
+    searchTerm,
+    itemsPerPage,
+    setSearchTerm,
+    setItemsPerPage,
+    handlePageChange,
   } = useRideDetails();
 
-  // Pagination and Search states
-  const [pagination, setPagination] = useState<PaginationInfo>({
-    currentPage: 1,
-    totalPages: 0,
-    totalCount: 0,
-    hasNextPage: false,
-    hasPrevPage: false,
-  });
-  const [localSearchTerm, setLocalSearchTerm] = useState("");
-  const [debouncedSearch, setDebouncedSearch] = useState("");
-  const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [localSearchTerm, setLocalSearchTerm] = useState(searchTerm);
+  const [debouncedSearch, setDebouncedSearch] = useState(searchTerm);
+  const isInitialMount = useRef(true);
 
   const currentDate = new Date().toLocaleDateString("en-GB", {
     weekday: "short",
@@ -47,6 +37,12 @@ export default function RideDetailsContent() {
     month: "short",
     year: "numeric",
   });
+
+  // Initialize on component mount
+  useEffect(() => {
+    console.log("[RideDetailsContent] Component mounted, fetching rides...");
+    fetchRides(1, itemsPerPage, "");
+  }, []); // Only run once on mount
 
   // Debounce search input
   useEffect(() => {
@@ -57,62 +53,17 @@ export default function RideDetailsContent() {
     return () => clearTimeout(timer);
   }, [localSearchTerm]);
 
+  // Handle search and pagination changes
   useEffect(() => {
-    fetchRidesWithPagination(1, itemsPerPage, debouncedSearch);
-  }, [debouncedSearch, itemsPerPage]);
-
-  const fetchRidesWithPagination = async (page: number = 1, limit: number = itemsPerPage, search: string = "") => {
-    try {
-      // Update your fetchRides function to accept pagination and search parameters
-      // This assumes you'll modify your backend API to support these parameters
-      await fetchRides(); // You'll need to modify this function
-
-      // For now, we'll handle pagination and search on the frontend
-      // until you update your backend
-      let filteredRides = rides;
-
-      // Apply search filter
-      if (search.trim()) {
-        filteredRides = rides.filter(ride => 
-          ride.startPoint.toLowerCase().includes(search.toLowerCase()) ||
-          ride.endPoint.toLowerCase().includes(search.toLowerCase()) ||
-          ride.status.toLowerCase().includes(search.toLowerCase()) ||
-          ride.vehicleId.toLowerCase().includes(search.toLowerCase()) ||
-          (ride.passengers.some(p => 
-            p.passengerName.toLowerCase().includes(search.toLowerCase())
-          ))
-        );
-      }
-
-      // Calculate pagination
-      const totalCount = filteredRides.length;
-      const totalPages = Math.ceil(totalCount / limit);
-      const startIndex = (page - 1) * limit;
-      const endIndex = startIndex + limit;
-      const paginatedRides = filteredRides.slice(startIndex, endIndex);
-
-      // Update context with filtered rides (optional)
-      // You might want to create a separate state for displayed rides
-
-      setPagination({
-        currentPage: page,
-        totalPages,
-        totalCount,
-        hasNextPage: page < totalPages,
-        hasPrevPage: page > 1,
-      });
-
-      // Update the rides in context to show only paginated results
-      // This is a temporary solution - you might want to handle this differently
-      // by creating a separate state for displayed rides
-    } catch (error) {
-      console.error("Error fetching rides with pagination:", error);
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
     }
-  };
 
-  const handlePageChange = (page: number) => {
-    fetchRidesWithPagination(page, itemsPerPage, debouncedSearch);
-  };
+    console.log("[RideDetailsContent] Search/pagination change detected");
+    setSearchTerm(debouncedSearch);
+    fetchRides(1, itemsPerPage, debouncedSearch);
+  }, [debouncedSearch, itemsPerPage, setSearchTerm, fetchRides]);
 
   const handleSearch = (search: string) => {
     setLocalSearchTerm(search);
@@ -120,7 +71,10 @@ export default function RideDetailsContent() {
 
   const handleItemsPerPageChange = (newItemsPerPage: number) => {
     setItemsPerPage(newItemsPerPage);
-    fetchRidesWithPagination(1, newItemsPerPage, debouncedSearch);
+  };
+
+  const handleRefresh = () => {
+    fetchRides(pagination.currentPage, itemsPerPage, debouncedSearch);
   };
 
   // Generate pagination buttons
@@ -130,31 +84,25 @@ export default function RideDetailsContent() {
     
     if (totalPages <= 1) return [1];
     
-    // Always show first page
     buttons.push(1);
     
-    // Show pages around current page
     const startPage = Math.max(2, currentPage - 1);
     const endPage = Math.min(totalPages - 1, currentPage + 1);
     
-    // Add ellipsis if needed
     if (startPage > 2) {
       buttons.push('...');
     }
     
-    // Add middle pages
     for (let i = startPage; i <= endPage; i++) {
       if (i !== 1 && i !== totalPages) {
         buttons.push(i);
       }
     }
     
-    // Add ellipsis if needed
     if (endPage < totalPages - 1) {
       buttons.push('...');
     }
     
-    // Always show last page if there is more than one page
     if (totalPages > 1) {
       buttons.push(totalPages);
     }
@@ -162,53 +110,18 @@ export default function RideDetailsContent() {
     return buttons;
   };
 
-  // Get displayed rides (for frontend filtering - temporary solution)
-  const getDisplayedRides = () => {
-    let filteredRides = rides;
-
-    // Apply search filter
-    if (debouncedSearch.trim()) {
-      filteredRides = rides.filter(ride => 
-        ride.startPoint.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-        ride.endPoint.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-        ride.status.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-        ride.vehicleId.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-        (ride.passengers.some(p => 
-          p.passengerName.toLowerCase().includes(debouncedSearch.toLowerCase())
-        ))
-      );
-    }
-
-    // Apply pagination
-    const startIndex = (pagination.currentPage - 1) * itemsPerPage;
-    const endIndex = startIndex + itemsPerPage;
-    
-    return filteredRides.slice(startIndex, endIndex);
-  };
-
-  // Calculate total count for display
-  const getTotalFilteredCount = () => {
-    if (!debouncedSearch.trim()) return rides.length;
-    
-    return rides.filter(ride => 
-      ride.startPoint.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-      ride.endPoint.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-      ride.status.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-      ride.vehicleId.toLowerCase().includes(debouncedSearch.toLowerCase()) ||
-      (ride.passengers.some(p => 
-        p.passengerName.toLowerCase().includes(debouncedSearch.toLowerCase())
-      ))
-    ).length;
-  };
-
-  const displayedRides = getDisplayedRides();
-  const totalFilteredCount = getTotalFilteredCount();
+  console.log("[RideDetailsContent] Render - rides:", rides.length, "loading:", isLoading, "error:", error);
 
   return (
     <div className="mx-auto max-w-6xl p-6 space-y-6">
       <RideHeader currentDate={currentDate} />
       
-      {error && <ErrorAlert message={error} />}
+      {error && (
+        <ErrorAlert 
+          message={error} 
+          onRetry={() => fetchRides(1, itemsPerPage, debouncedSearch)}
+        />
+      )}
 
       {/* Controls */}
       <div className="flex flex-col lg:flex-row gap-4 items-center justify-between">
@@ -241,7 +154,7 @@ export default function RideDetailsContent() {
 
         <div className="flex gap-2 w-full lg:w-auto">
           <Button 
-            onClick={() => fetchRidesWithPagination(1, itemsPerPage, debouncedSearch)} 
+            onClick={handleRefresh}
             variant="outline" 
             disabled={isLoading}
             className="flex items-center gap-2 whitespace-nowrap"
@@ -269,15 +182,16 @@ export default function RideDetailsContent() {
       </div>
 
       {/* Results Count */}
-      <Card className="border-0 shadow-sm">
-        <CardContent className="p-4">
-          <div className="text-sm text-gray-600">
-            Showing {displayedRides.length} of {totalFilteredCount} rides
-            {debouncedSearch && ` for "${debouncedSearch}"`}
-            {totalFilteredCount !== rides.length && ` (filtered from ${rides.length} total)`}
-          </div>
-        </CardContent>
-      </Card>
+      {!isLoading && (
+        <Card className="border-0 shadow-sm">
+          <CardContent className="p-4">
+            <div className="text-sm text-gray-600">
+              Showing {rides.length} of {pagination.totalCount} rides
+              {debouncedSearch && ` for "${debouncedSearch}"`}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {isLoading ? (
         <div className="grid gap-6">
@@ -291,7 +205,7 @@ export default function RideDetailsContent() {
             </Card>
           ))}
         </div>
-      ) : displayedRides.length === 0 ? (
+      ) : rides.length === 0 ? (
         <Card className="text-center py-16">
           <CardContent>
             <div className="w-20 h-20 mx-auto mb-6 bg-blue-50 rounded-full flex items-center justify-center">
@@ -327,7 +241,7 @@ export default function RideDetailsContent() {
         <>
           {/* Rides List */}
           <div className="grid gap-6">
-            {displayedRides.map((ride) => (
+            {rides.map((ride) => (
               <RideCard key={ride._id} ride={ride} />   
             ))}
           </div>
@@ -340,8 +254,8 @@ export default function RideDetailsContent() {
                   <div className="text-sm text-gray-600">
                     Page {pagination.currentPage} of {pagination.totalPages} • 
                     Showing {((pagination.currentPage - 1) * itemsPerPage) + 1} to{" "}
-                    {Math.min(pagination.currentPage * itemsPerPage, totalFilteredCount)} of{" "}
-                    {totalFilteredCount} rides
+                    {Math.min(pagination.currentPage * itemsPerPage, pagination.totalCount)} of{" "}
+                    {pagination.totalCount} rides
                   </div>
                   <div className="flex items-center gap-2">
                     <Button

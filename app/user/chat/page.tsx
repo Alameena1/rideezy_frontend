@@ -118,17 +118,14 @@ const Chat: React.FC = () => {
 
   const { error: socketError, socket } = useSocketStore();
 
-  // Improved auto-scroll to bottom
   const scrollToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
     if (scrollAreaRef.current) {
       const viewport = scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]') as HTMLDivElement | null;
       if (viewport) {
-        // Clear any existing timeout
         if (scrollTimeoutRef.current) {
           clearTimeout(scrollTimeoutRef.current);
         }
         
-        // Use timeout to ensure DOM is updated
         scrollTimeoutRef.current = setTimeout(() => {
           viewport.scrollTo({
             top: viewport.scrollHeight,
@@ -141,7 +138,6 @@ const Chat: React.FC = () => {
     }
   }, []);
 
-  // Handle scroll events to detect when user scrolls up
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
     const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
@@ -207,9 +203,16 @@ const Chat: React.FC = () => {
         }
         
         const convs = convsResponse.conversations as Conversation[];
-        const uniqueConvs = Array.from(new Map(convs.map(c => [c._id, c])).values());
         
-        // Fetch last message for each conversation to populate lastMessage and lastMessageTime
+        const uniqueConvsMap = new Map();
+        convs.forEach(conv => {
+          if (conv._id && !uniqueConvsMap.has(conv._id)) {
+            uniqueConvsMap.set(conv._id, conv);
+          }
+        });
+        
+        const uniqueConvs = Array.from(uniqueConvsMap.values());
+        
         const updatedConvs = await Promise.all(uniqueConvs.map(async (conv) => {
           try {
             const msgResponse = await clientApiService.chat.getMessages(conv._id);
@@ -262,9 +265,15 @@ const Chat: React.FC = () => {
           }
           
           convId = response.conversation?._id || response.conversation;
-          setConversation(response.conversation);
-          const newConvs = [...updatedConvs.filter(c => c._id !== convId), response.conversation];
-          setConversations(newConvs);
+          if (response.conversation) {
+            setConversation(response.conversation);
+            // FIX: Ensure we don't add duplicate conversations
+            const newConvs = [
+              ...updatedConvs.filter(c => c._id !== convId), 
+              response.conversation
+            ];
+            setConversations(newConvs);
+          }
           router.replace(`/user/chat?conversationId=${convId}`);
         }
 
@@ -457,7 +466,7 @@ const Chat: React.FC = () => {
 
             return (
               <div
-                key={conv._id}
+                key={`conv-${conv._id}`} 
                 className={`flex items-center p-3 rounded-lg cursor-pointer transition-colors ${
                   isActive ? "bg-accent" : "hover:bg-accent/50"
                 }`}
@@ -575,7 +584,7 @@ const Chat: React.FC = () => {
 
                         return (
                           <div
-                            key={conv._id}
+                            key={`desktop-conv-${conv._id}`} 
                             className={`flex items-center p-3 rounded-lg cursor-pointer transition-colors ${
                               isActive ? "bg-accent" : "hover:bg-accent/50"
                             }`}
@@ -757,7 +766,7 @@ const Chat: React.FC = () => {
                         <div className="space-y-4 pb-4">
                           {messages.map((msg) => (
                             <div
-                              key={msg._id}
+                              key={`msg-${msg._id}`} 
                               className={`flex ${msg.senderId._id === userId ? "justify-end" : "justify-start"}`}
                             >
                               <div className="flex flex-col max-w-[85%]">

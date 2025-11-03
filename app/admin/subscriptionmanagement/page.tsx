@@ -204,6 +204,9 @@ export default function Subscription() {
     if (!currentPlan.price || currentPlan.price < 0) {
       return "Price must be a non-negative number";
     }
+    if (currentPlan.name.length > 10) {
+      return "Plan name must be lessthan 10";
+    }
     if (!currentPlan.maxStartingRides || currentPlan.maxStartingRides < 0) {
       return "Max starting rides must be a non-negative number";
     }

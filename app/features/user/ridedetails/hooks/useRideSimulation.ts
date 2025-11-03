@@ -1,22 +1,22 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { clientApiService } from "@/services/client/client-api";
-import useAuth from "@/app/hooks/useAuth";
 import { useRideDetails } from "../context/RideDetailsContext";
 import { calculateHaversineDistance } from "../utils/rideUtils";
 
 export function useRideSimulation() {
-  const { user, updateRide, rides } = useRideDetails();
-  const { isAuthenticated } = useAuth();
+  const { updateRide, rides } = useRideDetails();
   
   const [pickupActions, setPickupActions] = useState<{ [key: string]: { [key: string]: boolean } }>({});
   const [dropoffActions, setDropoffActions] = useState<{ [key: string]: { [key: string]: boolean } }>({});
   const [pausedPassengerIds, setPausedPassengerIds] = useState<{ [rideId: string]: string[] }>({});
   const [simulationPaused, setSimulationPaused] = useState<{ [rideId: string]: boolean }>({});
   const [activeSimulations, setActiveSimulations] = useState<{ [key: string]: boolean }>({});
+  const [currentPausedPassenger, setCurrentPausedPassenger] = useState<{ [rideId: string]: string | null }>({});
+  const [manualPause, setManualPause] = useState<{ [rideId: string]: boolean }>({});
 
-  // Refs for map and simulation
+  // Refs for everything to avoid dependencies
   const mapRefs = useRef<{ [key: string]: any }>({});
   const routeLayers = useRef<{ [key: string]: any }>({});
   const vehicleMarkerRefs = useRef<{ [key: string]: any }>({});
@@ -25,9 +25,54 @@ export function useRideSimulation() {
   const animationIntervals = useRef<{ [key: string]: NodeJS.Timeout | null }>({});
   const lastPositions = useRef<{ [key: string]: [number, number] | null }>({});
   const currentIndices = useRef<{ [key: string]: number }>({});
+  const isPausedRef = useRef<{ [key: string]: boolean }>({});
+  const lastTrackingUpdate = useRef<{ [rideId: string]: number }>({});
+  const simulationInitialized = useRef<{ [rideId: string]: boolean }>({});
 
-  // Load persisted simulation state from localStorage on mount
+  // FIXED: Use refs for ALL state and functions to avoid dependencies
+  const ridesRef = useRef(rides);
+  const pickupActionsRef = useRef(pickupActions);
+  const dropoffActionsRef = useRef(dropoffActions);
+  const manualPauseRef = useRef(manualPause);
+  const updateRideRef = useRef(updateRide);
+
+  const isClient = typeof window !== 'undefined';
+
+  // Update refs when state changes
   useEffect(() => {
+    ridesRef.current = rides;
+  }, [rides]);
+
+  useEffect(() => {
+    pickupActionsRef.current = pickupActions;
+  }, [pickupActions]);
+
+  useEffect(() => {
+    dropoffActionsRef.current = dropoffActions;
+  }, [dropoffActions]);
+
+  useEffect(() => {
+    manualPauseRef.current = manualPause;
+  }, [manualPause]);
+
+  useEffect(() => {
+    updateRideRef.current = updateRide;
+  }, [updateRide]);
+
+  // Rate limiting for API calls
+  const canUpdateTracking = useCallback((rideId: string): boolean => {
+    const now = Date.now();
+    const lastUpdate = lastTrackingUpdate.current[rideId] || 0;
+    if (now - lastUpdate < 5000) {
+      return false;
+    }
+    lastTrackingUpdate.current[rideId] = now;
+    return true;
+  }, []);
+
+  useEffect(() => {
+    if (!isClient) return;
+    
     try {
       const persistedState = localStorage.getItem('rideSimulationState');
       if (persistedState) {
@@ -38,42 +83,40 @@ export function useRideSimulation() {
         if (state.lastPositions) {
           lastPositions.current = state.lastPositions;
         }
-        console.log("[RideSimulation] Loaded persisted state:", state);
       }
     } catch (error) {
       console.error("[RideSimulation] Error loading persisted state:", error);
     }
-  }, []);
+  }, [isClient]);
 
   // Persist simulation state to localStorage
   const persistSimulationState = useCallback(() => {
+    if (!isClient) return;
+    
     try {
       const state = {
         currentIndices: currentIndices.current,
         lastPositions: lastPositions.current,
-        pickupActions,
-        dropoffActions,
+        pickupActions: pickupActionsRef.current,
+        dropoffActions: dropoffActionsRef.current,
         lastUpdated: new Date().toISOString()
       };
       localStorage.setItem('rideSimulationState', JSON.stringify(state));
     } catch (error) {
       console.error("[RideSimulation] Error persisting state:", error);
     }
-  }, [pickupActions, dropoffActions]);
+  }, [isClient]);
 
   // Sync pickup/dropoff actions with backend data
   const syncPickupDropoffActions = useCallback(() => {
-    console.log("[RideSimulation] Syncing pickup/dropoff actions with backend");
-    
     const newPickupActions: { [key: string]: { [key: string]: boolean } } = {};
     const newDropoffActions: { [key: string]: { [key: string]: boolean } } = {};
 
-    rides.forEach(ride => {
+    ridesRef.current.forEach(ride => {
       if (ride.status === "Started" || ride.status === "Completed") {
         newPickupActions[ride._id] = {};
         newDropoffActions[ride._id] = {};
 
-        // Sync from passengers array
         ride.passengers.forEach(passenger => {
           if (passenger.pickedUp) {
             newPickupActions[ride._id][passenger.passengerId] = true;
@@ -87,167 +130,121 @@ export function useRideSimulation() {
 
     setPickupActions(newPickupActions);
     setDropoffActions(newDropoffActions);
-    
-    console.log("[RideSimulation] Synced actions from backend:", { newPickupActions, newDropoffActions });
-  }, [rides]);
-
-  // Initialize simulation for already started rides and sync state
-  useEffect(() => {
-    console.log("[RideSimulation] Initializing simulations and syncing state");
-    
-    // First sync with backend data
-    syncPickupDropoffActions();
-    
-    // Then initialize simulations
-    rides.forEach(ride => {
-      if (ride.status === "Started" && !activeSimulations[ride._id]) {
-        console.log("[RideSimulation] Found started ride, initializing simulation:", ride._id);
-        initializeSimulationForStartedRide(ride);
-      }
-    });
-  }, [rides, activeSimulations, syncPickupDropoffActions]);
-
-  const initializeSimulationForStartedRide = useCallback(async (ride: any) => {
-    try {
-      const routeData = JSON.parse(ride.routeGeometry);
-      const coordinates = routeData.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]);
-      
-      // Use persisted current position or ride's currentPosition or start from beginning
-      let startIndex = 0;
-      let initialPosition = coordinates[0];
-      
-      // Check if we have a persisted index for this ride
-      if (currentIndices.current[ride._id] !== undefined) {
-        startIndex = Math.min(currentIndices.current[ride._id], coordinates.length - 1);
-        initialPosition = coordinates[startIndex];
-        console.log("[RideSimulation] Using persisted index:", startIndex);
-      } 
-      // Otherwise use the ride's currentPosition from database
-      else if (ride.currentPosition) {
-        // Find the closest coordinate to the saved currentPosition
-        let minDistance = Infinity;
-        coordinates.forEach((coord, index) => {
-          const distance = calculateHaversineDistance(coord, ride.currentPosition);
-          if (distance < minDistance) {
-            minDistance = distance;
-            startIndex = index;
-          }
-        });
-        initialPosition = coordinates[startIndex];
-        console.log("[RideSimulation] Using ride currentPosition, found index:", startIndex);
-      }
-      
-      console.log("[RideSimulation] Starting simulation from index:", startIndex, "total points:", coordinates.length);
-      startSimulation(ride._id, coordinates, ride.distanceKm, initialPosition, startIndex);
-      setActiveSimulations(prev => ({ ...prev, [ride._id]: true }));
-    } catch (error) {
-      console.error("[RideSimulation] Error initializing simulation for started ride:", error);
-    }
   }, []);
 
-  const startRide = useCallback(async (rideId: string) => {
-    try {
-      const ride = rides.find((r) => r._id === rideId);
-      if (!ride || !ride.rideId) {
-        throw new Error("Ride or rideId not found");
-      }
+  // Memoized started rides
+  const startedRides = useMemo(() => {
+    return rides.filter(ride => ride.status === "Started");
+  }, [rides]);
 
-      console.log("[RideSimulation] Starting ride:", rideId);
-      
-      // Parse route geometry
-      const routeData = JSON.parse(ride.routeGeometry);
-      const coordinates = routeData.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]);
-      const initialPosition = coordinates[0] as [number, number];
+  // FIXED: Pause detection with NO dependencies
+  const checkForPausePoints = useCallback((rideId: string, currentPosition: [number, number]) => {
+    const ride = ridesRef.current.find((r) => r._id === rideId);
+    if (!ride) {
+      return { shouldPause: false, passengerId: null, action: null };
+    }
 
-      // Start tracking with retry logic
-      let trackingStarted = false;
-      let retries = 3;
-      
-      while (retries > 0 && !trackingStarted) {
+    const DISTANCE_THRESHOLD_KM = 0.1;
+
+    // Check pickup points
+    if (ride.pickupPoints && ride.pickupPoints.length > 0) {
+      for (const pickup of ride.pickupPoints) {
         try {
-          await clientApiService.tracking.startTracking(ride._id, ride.driverId, initialPosition);
-          trackingStarted = true;
-          console.log("[RideSimulation] Tracking started successfully");
-        } catch (trackingError: any) {
-          retries--;
-          if (retries === 0) {
-            console.warn("[RideSimulation] Tracking start failed after retries, continuing without tracking:", trackingError);
-          } else {
-            console.warn(`[RideSimulation] Tracking start failed, ${retries} retries left:`, trackingError);
-            await new Promise(resolve => setTimeout(resolve, 1000));
+          const [pickupLat, pickupLng] = pickup.location.split(",").map(Number);
+          if (isNaN(pickupLat) || isNaN(pickupLng)) continue;
+          
+          const pickupCoord: [number, number] = [pickupLat, pickupLng];
+          const distance = calculateHaversineDistance(currentPosition, pickupCoord);
+          
+          const passenger = ride.passengers.find(p => p.passengerId === pickup.passengerId);
+          const isPickupCompleted = pickupActionsRef.current[rideId]?.[pickup.passengerId] || passenger?.pickedUp;
+          
+          if (distance <= DISTANCE_THRESHOLD_KM && !isPickupCompleted) {
+            return { shouldPause: true, passengerId: pickup.passengerId, action: 'pickup' };
           }
+        } catch (error) {
+          continue;
         }
       }
-
-      // Update ride status to Started and set initial position
-      await clientApiService.ride.updateRide(ride._id, { 
-        status: "Started",
-        currentPosition: initialPosition 
-      }, ride.driverId);
-      
-      // Update local state
-      updateRide(rideId, { 
-        status: "Started", 
-        currentPosition: initialPosition 
-      });
-
-      // Clear any previous state for this ride and set initial index
-      currentIndices.current[rideId] = 0;
-      lastPositions.current[rideId] = initialPosition;
-      persistSimulationState();
-
-      // Start simulation immediately
-      console.log("[RideSimulation] Starting simulation after ride start");
-      startSimulation(rideId, coordinates, ride.distanceKm, initialPosition, 0);
-      setActiveSimulations(prev => ({ ...prev, [rideId]: true }));
-
-      console.log("[RideSimulation] Ride started successfully with simulation");
-
-    } catch (error: any) {
-      console.error("[RideSimulation] Error starting ride:", error);
-      throw error;
     }
-  }, [rides, updateRide, persistSimulationState]);
 
+    // Check dropoff points
+    if (ride.dropoffPoints && ride.dropoffPoints.length > 0) {
+      for (const dropoff of ride.dropoffPoints) {
+        try {
+          const [dropoffLat, dropoffLng] = dropoff.location.split(",").map(Number);
+          if (isNaN(dropoffLat) || isNaN(dropoffLng)) continue;
+          
+          const dropoffCoord: [number, number] = [dropoffLat, dropoffLng];
+          const distance = calculateHaversineDistance(currentPosition, dropoffCoord);
+          
+          const passenger = ride.passengers.find(p => p.passengerId === dropoff.passengerId);
+          const isPickupCompleted = pickupActionsRef.current[rideId]?.[dropoff.passengerId] || passenger?.pickedUp;
+          const isDropoffCompleted = dropoffActionsRef.current[rideId]?.[dropoff.passengerId] || passenger?.droppedOff;
+          
+          if (distance <= DISTANCE_THRESHOLD_KM && isPickupCompleted && !isDropoffCompleted) {
+            return { shouldPause: true, passengerId: dropoff.passengerId, action: 'dropoff' };
+          }
+        } catch (error) {
+          continue;
+        }
+      }
+    }
+
+    return { shouldPause: false, passengerId: null, action: null };
+  }, []);
+
+  // Cleanup simulation
+  const cleanupSimulation = useCallback((rideId: string) => {
+    if (animationIntervals.current[rideId]) {
+      clearInterval(animationIntervals.current[rideId]!);
+      animationIntervals.current[rideId] = null;
+    }
+    
+    if (currentIndices.current[rideId]) {
+      delete currentIndices.current[rideId];
+    }
+    
+    delete isPausedRef.current[rideId];
+    delete lastTrackingUpdate.current[rideId];
+    delete simulationInitialized.current[rideId];
+    
+    setActiveSimulations(prev => {
+      const newState = { ...prev };
+      delete newState[rideId];
+      return newState;
+    });
+  }, []);
+
+  // FIXED: startSimulation with NO dependencies that change
   const startSimulation = useCallback((rideId: string, coordinates: [number, number][], distanceKm: number, startPosition: [number, number], startIndex: number = 0) => {
-    // Clear existing interval if any
+    if (!isClient) return;
+    
     if (animationIntervals.current[rideId]) {
       clearInterval(animationIntervals.current[rideId]!);
       animationIntervals.current[rideId] = null;
     }
 
-    const stepDuration = 3000; // 3 seconds per step for better visibility
+    const stepDuration = 1000;
     
-    // Set the current index
     currentIndices.current[rideId] = startIndex;
+    isPausedRef.current[rideId] = false;
 
-    console.log("[RideSimulation] Starting simulation from index:", startIndex, "total points:", coordinates.length);
-
-    // Initialize vehicle marker if not exists
-    if (mapRefs.current[rideId] && !vehicleMarkerRefs.current[rideId]) {
-      console.log("[RideSimulation] Creating vehicle marker for simulation");
-      const L = require('leaflet');
-      vehicleMarkerRefs.current[rideId] = L.marker(startPosition, {
-        icon: L.icon({
-          iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-gold.png",
-          iconSize: [25, 41],
-          iconAnchor: [12, 41],
-        }),
-      }).addTo(mapRefs.current[rideId]).bindPopup("Your Vehicle - Moving");
-    }
+    let isRunning = true;
 
     const simulationInterval = setInterval(async () => {
+      if (!isRunning) return;
+
       try {
-        const ride = rides.find((r) => r._id === rideId);
+        const ride = ridesRef.current.find((r) => r._id === rideId);
         if (!ride || ride.status !== "Started") {
-          console.log("[RideSimulation] Stopping simulation - ride not found or not started:", rideId);
           cleanupSimulation(rideId);
+          isRunning = false;
           return;
         }
 
         // Check if simulation is paused
-        if (simulationPaused[rideId]) {
-          console.log("[RideSimulation] Simulation paused for ride:", rideId);
+        if (isPausedRef.current[rideId] || manualPauseRef.current[rideId]) {
           return;
         }
 
@@ -256,19 +253,16 @@ export function useRideSimulation() {
         
         if (currentIndex >= coordinates.length) {
           // Simulation completed
-          console.log("[RideSimulation] Simulation completed for ride:", rideId);
           cleanupSimulation(rideId);
+          isRunning = false;
           
-          // Update ride status to completed
           await clientApiService.ride.updateRide(ride._id, { status: "Completed" }, ride.driverId);
-          updateRide(rideId, { status: "Completed" });
+          updateRideRef.current(rideId, { status: "Completed" });
           
-          // Clear persisted state for this ride
           delete currentIndices.current[rideId];
           delete lastPositions.current[rideId];
           persistSimulationState();
           
-          // Stop tracking
           try {
             await clientApiService.tracking.stopTracking(ride._id);
           } catch (error) {
@@ -281,196 +275,253 @@ export function useRideSimulation() {
         const currentPosition = coordinates[currentIndex];
         lastPositions.current[rideId] = currentPosition;
 
-        console.log("[RideSimulation] Moving to position:", currentPosition, "index:", currentIndex, "/", coordinates.length);
-
         // Update vehicle marker on map
         if (vehicleMarkerRefs.current[rideId] && mapRefs.current[rideId]) {
           vehicleMarkerRefs.current[rideId].setLatLng(currentPosition);
-          // Smooth pan to vehicle position
-          mapRefs.current[rideId].panTo(currentPosition, {
-            animate: true,
-            duration: 0.5
-          });
+          if (currentIndex % 10 === 0) {
+            mapRefs.current[rideId].panTo(currentPosition, {
+              animate: true,
+              duration: 0.5
+            });
+          }
         }
 
-        // Update tracking position with error handling
-        try {
-          await clientApiService.tracking.updateTrackingPosition(ride._id, currentPosition);
-          console.log("[RideSimulation] Tracking position updated");
-        } catch (error) {
-          console.warn("[RideSimulation] Error updating tracking position, continuing simulation:", error);
-          // Continue simulation even if tracking update fails
-        }
-
-        // Update ride with current position in database
-        try {
-          await clientApiService.ride.updateRide(ride._id, { 
-            currentPosition: currentPosition 
-          }, ride.driverId);
-        } catch (error) {
-          console.warn("[RideSimulation] Error updating ride position in database:", error);
-        }
-
-        // Update local state
-        updateRide(rideId, { currentPosition });
-
-        // Persist current state
-        persistSimulationState();
-
-        // Check if we should pause for pickup/dropoff AFTER updating position
-        const shouldPause = checkForPausePoints(rideId, currentPosition);
-        if (shouldPause) {
+        // Check for pause points
+        const pauseResult = checkForPausePoints(rideId, currentPosition);
+        if (pauseResult.shouldPause && pauseResult.passengerId && pauseResult.action) {
           setSimulationPaused(prev => ({ ...prev, [rideId]: true }));
-          console.log("[RideSimulation] Pausing simulation at point:", currentIndex);
+          isPausedRef.current[rideId] = true;
+          setCurrentPausedPassenger(prev => ({ ...prev, [rideId]: pauseResult.passengerId }));
+          
+          if (!pausedPassengerIds[rideId]?.includes(pauseResult.passengerId)) {
+            setPausedPassengerIds(prev => ({
+              ...prev,
+              [rideId]: [...(prev[rideId] || []), pauseResult.passengerId!]
+            }));
+          }
+          
           return;
         }
 
+        // Update tracking and position with rate limiting
+        if (canUpdateTracking(rideId)) {
+          try {
+            await clientApiService.tracking.updateTrackingPosition(ride._id, currentPosition);
+          } catch (error) {
+            console.warn("[RideSimulation] Error updating tracking position:", error);
+          }
+
+          try {
+            await clientApiService.ride.updateRide(ride._id, { 
+              currentPosition: currentPosition 
+            }, ride.driverId);
+          } catch (error) {
+            console.warn("[RideSimulation] Error updating ride position:", error);
+          }
+        }
+
+        // FIXED: Use ref to avoid dependency on updateRide
+        updateRideRef.current(rideId, { currentPosition });
+        persistSimulationState();
+
       } catch (error) {
         console.error("[RideSimulation] Simulation error:", error);
+        isRunning = false;
       }
     }, stepDuration);
 
     animationIntervals.current[rideId] = simulationInterval;
-    console.log("[RideSimulation] Simulation started for ride:", rideId);
-  }, [rides, updateRide, simulationPaused, persistSimulationState]);
 
-  const cleanupSimulation = useCallback((rideId: string) => {
-    if (animationIntervals.current[rideId]) {
-      clearInterval(animationIntervals.current[rideId]!);
-      animationIntervals.current[rideId] = null;
+    return () => {
+      isRunning = false;
+      if (animationIntervals.current[rideId]) {
+        clearInterval(animationIntervals.current[rideId]!);
+        animationIntervals.current[rideId] = null;
+      }
+    };
+  }, [isClient, cleanupSimulation, persistSimulationState, checkForPausePoints, canUpdateTracking]);
+
+  // Initialize simulation for a ride that's already started
+  const initializeSimulationForStartedRide = useCallback(async (ride: any) => {
+    try {
+      const routeData = JSON.parse(ride.routeGeometry);
+      const coordinates = routeData.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]);
+      
+      let startIndex = 0;
+      let initialPosition = coordinates[0];
+      
+      if (currentIndices.current[ride._id] !== undefined) {
+        startIndex = Math.min(currentIndices.current[ride._id], coordinates.length - 1);
+        initialPosition = coordinates[startIndex];
+      } else if (ride.currentPosition) {
+        let minDistance = Infinity;
+        coordinates.forEach((coord, index) => {
+          const distance = calculateHaversineDistance(coord, ride.currentPosition);
+          if (distance < minDistance) {
+            minDistance = distance;
+            startIndex = index;
+          }
+        });
+        initialPosition = coordinates[startIndex];
+      }
+      
+      startSimulation(ride._id, coordinates, ride.distanceKm, initialPosition, startIndex);
+      setActiveSimulations(prev => ({ ...prev, [ride._id]: true }));
+    } catch (error) {
+      console.error("[RideSimulation] Error initializing simulation for started ride:", error);
     }
+  }, [startSimulation]);
+
+  // Initialize simulations
+  useEffect(() => {
+    syncPickupDropoffActions();
     
-    // Clear current index
-    if (currentIndices.current[rideId]) {
-      delete currentIndices.current[rideId];
-    }
-    
-    setActiveSimulations(prev => {
-      const newState = { ...prev };
-      delete newState[rideId];
-      return newState;
+    startedRides.forEach(ride => {
+      if (!activeSimulations[ride._id] && !simulationInitialized.current[ride._id]) {
+        simulationInitialized.current[ride._id] = true;
+        initializeSimulationForStartedRide(ride);
+      }
     });
-    
-    console.log("[RideSimulation] Simulation cleaned up for ride:", rideId);
+  }, [startedRides, activeSimulations, syncPickupDropoffActions, initializeSimulationForStartedRide]);
+
+  // Manual pause function
+  const toggleManualPause = useCallback((rideId: string) => {
+    setManualPause(prev => {
+      const newPauseState = !prev[rideId];
+      
+      if (newPauseState) {
+        setSimulationPaused(prevSim => ({ ...prevSim, [rideId]: true }));
+        isPausedRef.current[rideId] = true;
+      } else {
+        setSimulationPaused(prevSim => ({ ...prevSim, [rideId]: false }));
+        isPausedRef.current[rideId] = false;
+      }
+      
+      return { ...prev, [rideId]: newPauseState };
+    });
   }, []);
 
-  const checkForPausePoints = (rideId: string, currentPosition: [number, number]): boolean => {
-    const ride = rides.find((r) => r._id === rideId);
-    if (!ride) return false;
-
-    // Check pickup points
-    for (const pickup of ride.pickupPoints) {
-      const [pickupLat, pickupLng] = pickup.location.split(",").map(Number);
-      const pickupCoord: [number, number] = [pickupLat, pickupLng];
-      const distance = calculateHaversineDistance(currentPosition, pickupCoord);
-      
-      console.log(`[RideSimulation] Distance to pickup ${pickup.passengerId}:`, (distance * 1000).toFixed(1), "meters");
-      
-      // Check if pickup is not completed in both frontend AND backend
-      const passenger = ride.passengers.find(p => p.passengerId === pickup.passengerId);
-      const isPickupCompleted = pickupActions[rideId]?.[pickup.passengerId] || passenger?.pickedUp;
-      
-      if (distance < 0.05 && !isPickupCompleted) {
-        if (!pausedPassengerIds[rideId]?.includes(pickup.passengerId)) {
-          setPausedPassengerIds(prev => ({
-            ...prev,
-            [rideId]: [...(prev[rideId] || []), pickup.passengerId]
-          }));
-          console.log("[RideSimulation] Pausing for pickup:", pickup.passengerId, "distance:", (distance * 1000).toFixed(1), "m");
-        }
-        return true;
+  // Start a new ride
+  const startRide = useCallback(async (rideId: string) => {
+    try {
+      const ride = ridesRef.current.find((r) => r._id === rideId);
+      if (!ride || !ride.rideId) {
+        throw new Error("Ride or rideId not found");
       }
-    }
 
-    // Check dropoff points
-    for (const dropoff of ride.dropoffPoints) {
-      const [dropoffLat, dropoffLng] = dropoff.location.split(",").map(Number);
-      const dropoffCoord: [number, number] = [dropoffLat, dropoffLng];
-      const distance = calculateHaversineDistance(currentPosition, dropoffCoord);
+      const routeData = JSON.parse(ride.routeGeometry);
+      const coordinates = routeData.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]);
+      const initialPosition = coordinates[0] as [number, number];
+
+      // Start tracking
+      let trackingStarted = false;
+      let retries = 3;
       
-      console.log(`[RideSimulation] Distance to dropoff ${dropoff.passengerId}:`, (distance * 1000).toFixed(1), "meters");
-      
-      // Check if pickup is done but dropoff is not completed in both frontend AND backend
-      const passenger = ride.passengers.find(p => p.passengerId === dropoff.passengerId);
-      const isPickupCompleted = pickupActions[rideId]?.[dropoff.passengerId] || passenger?.pickedUp;
-      const isDropoffCompleted = dropoffActions[rideId]?.[dropoff.passengerId] || passenger?.droppedOff;
-      
-      if (distance < 0.05 && isPickupCompleted && !isDropoffCompleted) {
-        if (!pausedPassengerIds[rideId]?.includes(dropoff.passengerId)) {
-          setPausedPassengerIds(prev => ({
-            ...prev,
-            [rideId]: [...(prev[rideId] || []), dropoff.passengerId]
-          }));
-          console.log("[RideSimulation] Pausing for dropoff:", dropoff.passengerId, "distance:", (distance * 1000).toFixed(1), "m");
+      while (retries > 0 && !trackingStarted) {
+        try {
+          await clientApiService.tracking.startTracking(ride._id, ride.driverId, initialPosition);
+          trackingStarted = true;
+        } catch (trackingError: any) {
+          retries--;
+          if (retries === 0) {
+            console.warn("[RideSimulation] Tracking start failed after retries, continuing without tracking:", trackingError);
+          } else {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+          }
         }
-        return true;
       }
+
+      // Update ride status
+      await clientApiService.ride.updateRide(ride._id, { 
+        status: "Started",
+        currentPosition: initialPosition 
+      }, ride.driverId);
+      
+      updateRideRef.current(rideId, { 
+        status: "Started", 
+        currentPosition: initialPosition 
+      });
+
+      // Clear any previous state
+      currentIndices.current[rideId] = 0;
+      lastPositions.current[rideId] = initialPosition;
+      isPausedRef.current[rideId] = false;
+      simulationInitialized.current[rideId] = true;
+      persistSimulationState();
+
+      // Start simulation
+      startSimulation(rideId, coordinates, ride.distanceKm, initialPosition, 0);
+      setActiveSimulations(prev => ({ ...prev, [rideId]: true }));
+
+    } catch (error: any) {
+      console.error("[RideSimulation] Error starting ride:", error);
+      throw error;
     }
+  }, [persistSimulationState, startSimulation]);
 
-    return false;
-  };
-
+  // Stop a ride
   const stopRide = useCallback(async (rideId: string) => {
     try {
-      const ride = rides.find((r) => r._id === rideId);
+      const ride = ridesRef.current.find((r) => r._id === rideId);
       if (!ride) return;
 
-      console.log("[RideSimulation] Stopping ride:", rideId);
-      
-      // Clean up simulation
       cleanupSimulation(rideId);
       
-      // Clear persisted state
       delete currentIndices.current[rideId];
       delete lastPositions.current[rideId];
+      delete isPausedRef.current[rideId];
+      delete lastTrackingUpdate.current[rideId];
+      delete simulationInitialized.current[rideId];
+      
+      setManualPause(prev => {
+        const newState = { ...prev };
+        delete newState[rideId];
+        return newState;
+      });
+      
       persistSimulationState();
       
-      // Update ride status
       await clientApiService.ride.updateRide(ride._id, { status: "Completed" }, ride.driverId);
-      updateRide(rideId, { status: "Completed" });
+      updateRideRef.current(rideId, { status: "Completed" });
       
-      // Stop tracking
       try {
         await clientApiService.tracking.stopTracking(ride._id);
       } catch (error) {
         console.warn("[RideSimulation] Error stopping tracking:", error);
       }
       
-      console.log("[RideSimulation] Ride stopped successfully");
     } catch (error) {
       console.error("[RideSimulation] Error stopping ride:", error);
       throw error;
     }
-  }, [rides, updateRide, cleanupSimulation, persistSimulationState]);
+  }, [cleanupSimulation, persistSimulationState]);
 
+  // Resume simulation after pause
   const resumeSimulation = useCallback((rideId: string) => {
-    console.log("[RideSimulation] Resuming simulation for ride:", rideId);
     setSimulationPaused(prev => ({ ...prev, [rideId]: false }));
+    isPausedRef.current[rideId] = false;
+    setCurrentPausedPassenger(prev => ({ ...prev, [rideId]: null }));
     
-    // Clear paused passenger IDs for this ride
     setPausedPassengerIds(prev => ({
       ...prev,
       [rideId]: []
     }));
   }, []);
 
+  // Handle passenger pickup
   const handlePickup = useCallback(async (rideId: string, passengerId: string) => {
-    console.log("[RideSimulation] Handling pickup for:", passengerId, "in ride:", rideId);
-    
     try {
-      const ride = rides.find((r) => r._id === rideId);
+      const ride = ridesRef.current.find((r) => r._id === rideId);
       if (!ride) {
         throw new Error("Ride not found");
       }
 
-      // Use updateRide instead of updatePassengerStatus
       await clientApiService.ride.updateRide(ride._id, { 
         passengerId: passengerId,
         action: "picked",
         currentPosition: lastPositions.current[rideId]
       }, ride.driverId);
 
-      // Then update frontend state
       setPickupActions(prev => {
         const newActions = {
           ...prev,
@@ -482,8 +533,7 @@ export function useRideSimulation() {
         return newActions;
       });
 
-      // Update local state
-      updateRide(rideId, {
+      updateRideRef.current(rideId, {
         passengers: ride.passengers.map(p => 
           p.passengerId === passengerId 
             ? { ...p, pickedUp: true }
@@ -491,43 +541,34 @@ export function useRideSimulation() {
         )
       });
 
-      // Remove from paused passengers
       setPausedPassengerIds(prev => ({
         ...prev,
         [rideId]: prev[rideId]?.filter(id => id !== passengerId) || []
       }));
 
-      // Persist state after pickup
       persistSimulationState();
-
-      // Resume simulation
       resumeSimulation(rideId);
-
-      console.log("[RideSimulation] Pickup completed successfully for:", passengerId);
 
     } catch (error) {
       console.error("[RideSimulation] Error handling pickup:", error);
       throw error;
     }
-  }, [rides, updateRide, resumeSimulation, persistSimulationState]);
+  }, [resumeSimulation, persistSimulationState]);
 
+  // Handle passenger dropoff
   const handleDropoff = useCallback(async (rideId: string, passengerId: string) => {
-    console.log("[RideSimulation] Handling dropoff for:", passengerId, "in ride:", rideId);
-    
     try {
-      const ride = rides.find((r) => r._id === rideId);
+      const ride = ridesRef.current.find((r) => r._id === rideId);
       if (!ride) {
         throw new Error("Ride not found");
       }
 
-      // Use updateRide instead of updatePassengerStatus
       await clientApiService.ride.updateRide(ride._id, { 
         passengerId: passengerId,
         action: "dropped",
         currentPosition: lastPositions.current[rideId]
       }, ride.driverId);
 
-      // Then update frontend state
       setDropoffActions(prev => {
         const newActions = {
           ...prev,
@@ -539,8 +580,7 @@ export function useRideSimulation() {
         return newActions;
       });
 
-      // Update local state
-      updateRide(rideId, {
+      updateRideRef.current(rideId, {
         passengers: ride.passengers.map(p => 
           p.passengerId === passengerId 
             ? { ...p, droppedOff: true }
@@ -548,80 +588,44 @@ export function useRideSimulation() {
         )
       });
 
-      // Remove from paused passengers
       setPausedPassengerIds(prev => ({
         ...prev,
         [rideId]: prev[rideId]?.filter(id => id !== passengerId) || []
       }));
 
-      // Persist state after dropoff
       persistSimulationState();
-
-      // Resume simulation
       resumeSimulation(rideId);
-
-      console.log("[RideSimulation] Dropoff completed successfully for:", passengerId);
 
     } catch (error) {
       console.error("[RideSimulation] Error handling dropoff:", error);
       throw error;
     }
-  }, [rides, updateRide, resumeSimulation, persistSimulationState]);
+  }, [resumeSimulation, persistSimulationState]);
 
-  const handleEditRide = useCallback((rideId: string) => {
-    console.log("[RideSimulation] Editing ride:", rideId);
-    // Implementation depends on your edit modal logic
-  }, []);
-
-  const handleEmergencyStop = useCallback(async (rideId: string) => {
-    try {
-      const ride = rides.find((r) => r._id === rideId);
-      if (!ride) return;
-
-      console.log("[RideSimulation] Emergency stop for ride:", rideId);
-      
-      // Pause simulation
-      setSimulationPaused(prev => ({ ...prev, [rideId]: true }));
-      
-      // Update ride status to indicate emergency
-      await clientApiService.ride.updateRide(ride._id, { status: "Emergency" }, ride.driverId);
-      updateRide(rideId, { status: "Emergency" });
-      
-      console.log("[RideSimulation] Emergency stop activated");
-    } catch (error) {
-      console.error("[RideSimulation] Error during emergency stop:", error);
-      throw error;
-    }
-  }, [rides, updateRide]);
-
-  const handleJoinRequest = useCallback((rideId: string, passengerId: string) => {
-    console.log("[RideSimulation] Handling join request for ride:", rideId, "passenger:", passengerId);
-    // Implementation depends on your join request logic
-  }, []);
-
+  // Other functions remain the same but use refs...
   const initializeMap = useCallback(async (ride: any, mapContainer: HTMLDivElement) => {
-    if (!mapContainer || mapRefs.current[ride._id]) return;
+    if (!isClient || !mapContainer || mapRefs.current[ride._id]) return;
 
     try {
-      // Dynamically import Leaflet
       const L = await import('leaflet');
-      await import('leaflet/dist/leaflet.css');
+      
+      try {
+        await import('leaflet/dist/leaflet.css');
+      } catch (cssError) {
+        console.warn("[RideSimulation] Could not load Leaflet CSS:", cssError);
+      }
 
-      // Clean up existing map
       if (mapRefs.current[ride._id]) {
         mapRefs.current[ride._id].remove();
       }
 
-      // Create map
-      const map = L.default.map(mapContainer).setView([0, 0], 10);
+      const map = L.default.map(mapContainer).setView([20.5937, 78.9629], 5);
       mapRefs.current[ride._id] = map;
 
-      // Add tile layer
       L.default.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         attribution: "© OpenStreetMap contributors",
       }).addTo(map);
 
-      // Set container styles
       mapContainer.style.height = "400px";
       mapContainer.style.width = "100%";
 
@@ -629,18 +633,15 @@ export function useRideSimulation() {
         const routeData = JSON.parse(ride.routeGeometry);
         const coordinates = routeData.coordinates.map(([lng, lat]: [number, number]) => [lat, lng]);
 
-        // Create route polyline
         routeLayers.current[ride._id] = L.default.polyline(coordinates, {
           color: "#3b82f6",
           weight: 5,
           opacity: 0.7
         }).addTo(map);
 
-        // Create start and end markers
         const [startLat, startLng] = coordinates[0];
         const [endLat, endLng] = coordinates[coordinates.length - 1];
 
-        // Start marker
         L.default.marker([startLat, startLng], {
           icon: L.default.icon({
             iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-green.png",
@@ -649,7 +650,6 @@ export function useRideSimulation() {
           }),
         }).addTo(map).bindPopup(`<strong>Start:</strong> ${ride.startPoint}`);
 
-        // End marker
         L.default.marker([endLat, endLng], {
           icon: L.default.icon({
             iconUrl: "https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png",
@@ -658,12 +658,10 @@ export function useRideSimulation() {
           }),
         }).addTo(map).bindPopup(`<strong>End:</strong> ${ride.endPoint}`);
 
-        // Create pickup and dropoff markers
         pickupMarkerRefs.current[ride._id] = [];
         dropoffMarkerRefs.current[ride._id] = [];
 
-        // Add pickup points
-        ride.pickupPoints.forEach((pickup: any, index: number) => {
+        ride.pickupPoints?.forEach((pickup: any, index: number) => {
           const [pickupLat, pickupLng] = pickup.location.split(",").map(Number);
           const marker = L.default.marker([pickupLat, pickupLng], {
             icon: L.default.icon({
@@ -675,8 +673,7 @@ export function useRideSimulation() {
           pickupMarkerRefs.current[ride._id].push(marker);
         });
 
-        // Add dropoff points
-        ride.dropoffPoints.forEach((dropoff: any, index: number) => {
+        ride.dropoffPoints?.forEach((dropoff: any, index: number) => {
           const [dropoffLat, dropoffLng] = dropoff.location.split(",").map(Number);
           const marker = L.default.marker([dropoffLat, dropoffLng], {
             icon: L.default.icon({
@@ -688,17 +685,13 @@ export function useRideSimulation() {
           dropoffMarkerRefs.current[ride._id].push(marker);
         });
 
-        // Determine initial position for vehicle marker
         let initialPosition = coordinates[0];
         if (ride.status === "Started") {
-          // Use persisted position if available, otherwise use ride's currentPosition
           if (currentIndices.current[ride._id] !== undefined) {
             const persistedIndex = Math.min(currentIndices.current[ride._id], coordinates.length - 1);
             initialPosition = coordinates[persistedIndex];
-            console.log("[RideSimulation] Using persisted position for vehicle:", persistedIndex);
           } else if (ride.currentPosition) {
             initialPosition = ride.currentPosition;
-            console.log("[RideSimulation] Using ride currentPosition for vehicle");
           }
           
           vehicleMarkerRefs.current[ride._id] = L.default.marker(initialPosition, {
@@ -710,14 +703,13 @@ export function useRideSimulation() {
           }).addTo(map).bindPopup("Your Vehicle - Ready");
         }
 
-        // Fit map to show all points
         const allPoints = [
           ...coordinates,
-          ...ride.pickupPoints.map((p: any) => {
+          ...(ride.pickupPoints || []).map((p: any) => {
             const [lat, lng] = p.location.split(",").map(Number);
             return [lat, lng];
           }),
-          ...ride.dropoffPoints.map((d: any) => {
+          ...(ride.dropoffPoints || []).map((d: any) => {
             const [lat, lng] = d.location.split(",").map(Number);
             return [lat, lng];
           })
@@ -728,33 +720,29 @@ export function useRideSimulation() {
           map.fitBounds(bounds, { padding: [20, 20] });
         }
 
-        map.invalidateSize();
+        setTimeout(() => {
+          map.invalidateSize();
+        }, 100);
+
         lastPositions.current[ride._id] = initialPosition;
         
-        console.log("[RideSimulation] Map initialized for ride:", ride._id);
-        
-        // If ride is already started, start simulation from current position
         if (ride.status === "Started" && !activeSimulations[ride._id]) {
-          console.log("[RideSimulation] Starting simulation for already started ride after map init");
           const startIndex = currentIndices.current[ride._id] || 0;
           startSimulation(ride._id, coordinates, ride.distanceKm, initialPosition, startIndex);
           setActiveSimulations(prev => ({ ...prev, [ride._id]: true }));
         }
       } catch (error) {
         console.error("[RideSimulation] Error rendering route:", error);
+        map.setView([20.5937, 78.9629], 5);
       }
     } catch (error) {
       console.error("[RideSimulation] Error initializing map:", error);
     }
-  }, [startSimulation, activeSimulations]);
+  }, [startSimulation, activeSimulations, isClient]);
 
   const cleanupMap = useCallback((rideId: string) => {
-    console.log("[RideSimulation] Cleaning up map for ride:", rideId);
-    
-    // Stop simulation
     cleanupSimulation(rideId);
 
-    // Remove map and markers
     if (mapRefs.current[rideId]) {
       mapRefs.current[rideId].remove();
       delete mapRefs.current[rideId];
@@ -770,7 +758,6 @@ export function useRideSimulation() {
       delete routeLayers.current[rideId];
     }
 
-    // Cleanup pickup and dropoff markers
     if (pickupMarkerRefs.current[rideId]) {
       pickupMarkerRefs.current[rideId].forEach((marker: any) => marker.remove());
       delete pickupMarkerRefs.current[rideId];
@@ -784,17 +771,65 @@ export function useRideSimulation() {
     if (lastPositions.current[rideId]) {
       delete lastPositions.current[rideId];
     }
+    
+    if (isPausedRef.current[rideId]) {
+      delete isPausedRef.current[rideId];
+    }
+    
+    if (lastTrackingUpdate.current[rideId]) {
+      delete lastTrackingUpdate.current[rideId];
+    }
+    
+    if (simulationInitialized.current[rideId]) {
+      delete simulationInitialized.current[rideId];
+    }
   }, [cleanupSimulation]);
 
+  const handleEditRide = useCallback((rideId: string) => {
+    console.log("[RideSimulation] Editing ride:", rideId);
+  }, []);
+
+  const handleEmergencyStop = useCallback(async (rideId: string) => {
+    try {
+      const ride = ridesRef.current.find((r) => r._id === rideId);
+      if (!ride) return;
+
+      setSimulationPaused(prev => ({ ...prev, [rideId]: true }));
+      isPausedRef.current[rideId] = true;
+      
+      await clientApiService.ride.updateRide(ride._id, { status: "Emergency" }, ride.driverId);
+      updateRideRef.current(rideId, { status: "Emergency" });
+      
+    } catch (error) {
+      console.error("[RideSimulation] Error during emergency stop:", error);
+      throw error;
+    }
+  }, []);
+
+  const handleJoinRequest = useCallback(async (rideId: string, passengerId: string, action: "accept" | "reject") => {
+    try {
+      const ride = ridesRef.current.find((r) => r._id === rideId);
+      if (!ride) {
+        throw new Error("Ride not found");
+      }
+
+      await clientApiService.ride.handleJoinRequest(rideId, ride.driverId, passengerId, action);
+      
+    } catch (error) {
+      console.error("[RideSimulation] Error handling join request:", error);
+      throw error;
+    }
+  }, []);
+
   return {
-    // State
     pickupActions,
     dropoffActions,
     pausedPassengerIds,
     simulationPaused,
     activeSimulations,
+    currentPausedPassenger,
+    manualPause,
     
-    // Actions
     startRide,
     stopRide,
     resumeSimulation,
@@ -803,6 +838,7 @@ export function useRideSimulation() {
     handleEditRide,
     handleEmergencyStop,
     handleJoinRequest,
+    toggleManualPause,
     initializeMap,
     cleanupMap,
   };

@@ -31,6 +31,7 @@ const useAuth = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
 
   useApiInterceptors();
 
@@ -55,6 +56,12 @@ const useAuth = () => {
 
   useEffect(() => {
     const checkAuth = async () => {
+      // Skip if we've already checked auth during this session
+      if (authChecked && isAuthenticated) {
+        console.log("Auth already checked and authenticated, skipping...");
+        return;
+      }
+
       console.log("Checking auth, sessionStatus:", status, { session: session ? "present" : "missing" });
 
       if (status === "loading") {
@@ -89,7 +96,7 @@ const useAuth = () => {
         try {
           console.log("Fetching user profile...");
           const response = await clientApiService.user.getProfile();
-          const profileData = response.data || response; // Handle both response structures
+          const profileData = response.data || response;
           console.log("Profile fetch response:", profileData);
 
           if (profileData && (profileData._id || profileData.id)) {
@@ -111,6 +118,7 @@ const useAuth = () => {
             console.log("Setting user from profile data:", newUser);
             setUser(newUser);
             setIsAuthenticated(true);
+            setAuthChecked(true); // Mark auth as checked
           } else {
             console.warn("Invalid profile data response:", profileData);
             throw new Error("Invalid profile data");
@@ -122,29 +130,43 @@ const useAuth = () => {
             data: error.response?.data,
           });
           
-          // Don't automatically redirect for profile fetch errors
-          // Just set as unauthenticated and let components handle it
-          setIsAuthenticated(false);
-          setUser(null);
-          
-          // Only redirect on specific errors
-          if (error.response?.status === 403) {
-            // Blocked user - redirect to login
-            router.replace("/user/login?error=You%20have%20been%20blocked");
-          } else if (error.response?.status === 401 && window.location.pathname !== "/user/login") {
-            // Only redirect if not already on login page
-            router.replace("/user/login?error=Session%20expired");
+          // Don't automatically redirect for profile fetch errors during development
+          if (process.env.NODE_ENV === 'development') {
+            console.log("Development mode: Not redirecting for profile fetch error");
+            setIsAuthenticated(true); // Assume authenticated in dev mode
+            setUser({
+              _id: customUser.id,
+              driverId: customUser.id,
+              email: customUser.email || '',
+              name: customUser.name || '',
+              fullName: customUser.name || customUser.email || '',
+              role: customUser.role,
+              status: "Active",
+            });
+            setAuthChecked(true);
+          } else {
+            setIsAuthenticated(false);
+            setUser(null);
+            
+            // Only redirect on specific errors in production
+            if (error.response?.status === 403) {
+              router.replace("/user/login?error=You%20have%20been%20blocked");
+            } else if (error.response?.status === 401 && window.location.pathname !== "/user/login") {
+              router.replace("/user/login?error=Session%20expired");
+            }
           }
-          // For other errors, don't redirect - let the component show the error
         }
       } else if (status === "unauthenticated") {
         console.log("No session, setting unauthenticated");
         setIsAuthenticated(false);
         setUser(null);
+        setAuthChecked(true);
+        
         // Only redirect if not already on login page and trying to access protected route
         const currentPath = window.location.pathname;
         if ((currentPath.startsWith("/admin") || currentPath.startsWith("/user")) && 
-            !currentPath.includes("/login")) {
+            !currentPath.includes("/login") && 
+            !currentPath.includes("/signup")) {
           router.replace("/user/login?error=Please%20log%20in%20to%20access%20this%20page");
         }
       }
@@ -153,9 +175,9 @@ const useAuth = () => {
     };
 
     checkAuth();
-  }, [status, session, router]);
+  }, [status, session, router, authChecked, isAuthenticated]);
 
   return { user, isAuthenticated, isLoading, logout };
 };
 
-export default useAuth;
+export default useAuth;``

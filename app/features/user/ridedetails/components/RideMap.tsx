@@ -11,41 +11,44 @@ interface RideMapProps {
 export default function RideMap({ ride }: RideMapProps) {
   const [mapInitialized, setMapInitialized] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const { initializeMap, cleanupMap, simulationPaused } = useRideSimulation();
+  const { initializeMap, cleanupMap, simulationPaused, activeSimulations } = useRideSimulation();
+  const initializationAttempted = useRef(false);
 
   useEffect(() => {
-    if (!mapContainerRef.current) return;
+    if (!mapContainerRef.current || initializationAttempted.current) return;
 
     const initMap = async () => {
       try {
         console.log("[RideMap] Initializing map for ride:", ride._id);
+        console.log("[RideMap] Ride status:", ride.status);
+        console.log("[RideMap] Route geometry available:", !!ride.routeGeometry);
+        
+        setIsLoading(true);
+        initializationAttempted.current = true;
         await initializeMap(ride, mapContainerRef.current!);
         setMapInitialized(true);
         setMapError(null);
-      } catch (error) {
+      } catch (error: any) {
         console.error("[RideMap] Error initializing map:", error);
-        setMapError("Failed to load map. Please try again.");
+        setMapError(`Failed to load map: ${error.message}`);
+      } finally {
+        setIsLoading(false);
       }
     };
 
-    // Only initialize if not already initialized
-    if (!mapInitialized) {
-      initMap();
-    }
+    initMap();
 
     return () => {
-      // Only cleanup when component unmounts or ride changes
-      console.log("[RideMap] Cleanup triggered for ride:", ride._id);
+      if (mapInitialized) {
+        console.log("[RideMap] Cleanup triggered for ride:", ride._id);
+        cleanupMap(ride._id);
+        initializationAttempted.current = false;
+        setMapInitialized(false);
+      }
     };
-  }, [ride, initializeMap, mapInitialized]);
-
-  // Separate effect for handling ride status changes
-  useEffect(() => {
-    if (mapInitialized && ride.status === "Started") {
-      console.log("[RideMap] Ride is started, simulation should be running");
-    }
-  }, [ride.status, mapInitialized]);
+  }, [ride, initializeMap, cleanupMap, mapInitialized]);
 
   return (
     <div className="w-full">
@@ -68,7 +71,7 @@ export default function RideMap({ ride }: RideMapProps) {
         className="h-80 w-full rounded-lg border border-gray-200 bg-gray-100"
       />
       
-      {!mapInitialized && !mapError && (
+      {isLoading && (
         <div className="flex items-center justify-center h-80 bg-gray-100 rounded-lg">
           <div className="text-center">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
@@ -84,8 +87,13 @@ export default function RideMap({ ride }: RideMapProps) {
             {simulationPaused[ride._id] && " - PAUSED for passenger action"}
           </p>
           <p className="text-blue-700 text-xs mt-1">
-            Vehicle position updates every 3 seconds. Look for the gold marker moving along the blue route.
+            Vehicle position updates every 2 seconds. Look for the gold marker moving along the blue route.
           </p>
+          {activeSimulations[ride._id] && (
+            <p className="text-green-700 text-xs mt-1">
+              ✅ Simulation is running automatically
+            </p>
+          )}
         </div>
       )}
     </div>

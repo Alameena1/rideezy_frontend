@@ -1,9 +1,12 @@
 "use client";
 
+import { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, UserCheck, UserX } from "lucide-react";
-import { useRideDetails } from "../context/RideDetailsContext";
+import { Badge } from "@/components/ui/badge";
+import { Users, MapPin, Clock, Check, X, User } from "lucide-react";
 import { useRideSimulation } from "../hooks/useRideSimulation";
+import { useRideDetails } from "../context/RideDetailsContext";
 import type { Ride } from "../context/RideDetailsContext";
 
 interface PendingRequestsProps {
@@ -11,108 +14,136 @@ interface PendingRequestsProps {
 }
 
 export default function PendingRequests({ ride }: PendingRequestsProps) {
-  const { user } = useRideDetails();
-  const { handleJoinRequest, pickupActions, dropoffActions } = useRideSimulation();
+  const { handleJoinRequest } = useRideSimulation();
+  const { updateRide, fetchRides } = useRideDetails();
+  const [processingRequest, setProcessingRequest] = useState<string | null>(null);
+
+  if (!ride.pendingRequests || ride.pendingRequests.length === 0) {
+    return null;
+  }
+
+  // FIXED: Remove duplicates by passengerId
+  const uniquePendingRequests = ride.pendingRequests.filter((req, index, self) => 
+    index === self.findIndex(r => r.passengerId === req.passengerId)
+  );
+
+  const pendingRequests = uniquePendingRequests.filter(req => req.status === "pending");
+
+  if (pendingRequests.length === 0) {
+    return null;
+  }
+
+  const handleRequestAction = async (passengerId: string, action: "accept" | "reject") => {
+    setProcessingRequest(passengerId);
+    try {
+      await handleJoinRequest(ride._id, passengerId, action);
+      
+      // FIXED: Update local state immediately
+      const updatedRequests = ride.pendingRequests?.filter(req => 
+        !(req.passengerId === passengerId && req.status === "pending")
+      ) || [];
+      
+      updateRide(ride._id, {
+        pendingRequests: updatedRequests
+      });
+
+      console.log(`Successfully ${action}ed request for passenger ${passengerId}`);
+      
+      // Refresh rides to get updated data
+      setTimeout(() => {
+        fetchRides();
+      }, 1000);
+      
+    } catch (error) {
+      console.error(`Failed to ${action} request:`, error);
+      alert(`Failed to ${action} request: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setProcessingRequest(null);
+    }
+  };
 
   return (
-    <div className="mt-8">
-      <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-        <Users className="h-5 w-5 text-purple-600" />
-        Passengers & Requests
-      </h4>
-      
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Confirmed Passengers */}
-        <div>
-          <h5 className="font-medium text-gray-700 mb-3">Confirmed Passengers</h5>
-          {ride.passengers.length > 0 ? (
-            <div className="space-y-3">
-              {ride.passengers.map((passenger, index) => {
-                const pickup = ride.pickupPoints.find((p) => p.passengerId === passenger.passengerId);
-                const dropoff = ride.dropoffPoints.find((p) => p.passengerId === passenger.passengerId);
+    <Card className="mt-6 border-orange-200">
+      <CardHeader className="pb-3 bg-orange-50">
+        <CardTitle className="text-lg font-semibold text-orange-800 flex items-center gap-2">
+          <Users className="h-5 w-5" />
+          Pending Join Requests ({pendingRequests.length})
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="pt-4">
+        <div className="space-y-4">
+          {pendingRequests.map((request, index) => (
+            <div
+              key={`${request.passengerId}-${index}`}
+              className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-orange-200 rounded-lg bg-orange-50"
+            >
+              <div className="flex-1 mb-3 sm:mb-0">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-8 h-8 bg-orange-100 rounded-full flex items-center justify-center">
+                    <User className="h-4 w-4 text-orange-600" />
+                  </div>
+                  <div>
+                    <h4 className="font-medium text-gray-900">{request.passengerName}</h4>
+                    <Badge variant="outline" className="bg-orange-100 text-orange-800 border-orange-200 text-xs">
+                      Waiting for approval
+                    </Badge>
+                  </div>
+                </div>
                 
-                return (
-                  <div key={index} className="p-3 bg-green-50 rounded-lg border border-green-200">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-gray-900">{passenger.passengerName}</p>
-                        <div className="text-sm text-gray-600 mt-1">
-                          <p>Pickup: {pickup?.placeName || "N/A"}</p>
-                          <p>Dropoff: {dropoff?.placeName || "N/A"}</p>
-                        </div>
-                      </div>
-                      <div className="text-right text-sm">
-                        <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full ${
-                          pickupActions[ride._id]?.[passenger.passengerId] 
-                            ? "bg-green-100 text-green-800" 
-                            : "bg-yellow-100 text-yellow-800"
-                        }`}>
-                          {pickupActions[ride._id]?.[passenger.passengerId] ? "✓ Picked" : "Awaiting Pickup"}
-                        </div>
-                        <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-full mt-1 ${
-                          dropoffActions[ride._id]?.[passenger.passengerId] 
-                            ? "bg-green-100 text-green-800" 
-                            : "bg-gray-100 text-gray-800"
-                        }`}>
-                          {dropoffActions[ride._id]?.[passenger.passengerId] ? "✓ Dropped" : "In Transit"}
-                        </div>
-                      </div>
-                    </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-gray-600">
+                  <div className="flex items-center gap-1">
+                    <MapPin className="h-3 w-3 text-blue-500" />
+                    <span className="font-medium">Pickup:</span>
+                    <span className="truncate">{request.pickupPlaceName || request.pickupLocation}</span>
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="text-gray-500 text-sm">No confirmed passengers yet.</p>
-          )}
-        </div>
+                  <div className="flex items-center gap-1">
+                    <MapPin className="h-3 w-3 text-green-500" />
+                    <span className="font-medium">Dropoff:</span>
+                    <span className="truncate">{request.dropoffPlaceName || request.dropoffLocation}</span>
+                  </div>
+                </div>
+                
+                {request.requestedAt && (
+                  <div className="flex items-center gap-1 mt-2 text-xs text-gray-500">
+                    <Clock className="h-3 w-3" />
+                    Requested: {new Date(request.requestedAt).toLocaleString()}
+                  </div>
+                )}
+              </div>
 
-        {/* Pending Requests */}
-        <div>
-          <h5 className="font-medium text-gray-700 mb-3">Pending Join Requests</h5>
-          {ride.pendingRequests?.filter(req => req.status === "pending").length > 0 ? (
-            <div className="space-y-3">
-              {ride.pendingRequests
-                .filter((request) => request.status === "pending")
-                .map((request, index) => (
-                  <div key={index} className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium text-gray-900">{request.passengerName}</p>
-                        <div className="text-sm text-gray-600 mt-1">
-                          <p>From: {request.pickupLocation}</p>
-                          <p>To: {request.dropoffLocation}</p>
-                        </div>
-                      </div>
-                      {user?.driverId === ride.driverId && (
-                        <div className="flex gap-2">
-                          <Button
-                            variant="default"
-                            size="sm"
-                            onClick={() => handleJoinRequest(ride._id, request.passengerId, "accept")}
-                            className="bg-green-600 hover:bg-green-700"
-                          >
-                            <UserCheck className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleJoinRequest(ride._id, request.passengerId, "reject")}
-                            className="border-red-300 text-red-600 hover:bg-red-50"
-                          >
-                            <UserX className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
+              <div className="flex gap-2 sm:flex-col sm:gap-1">
+                <Button
+                  size="sm"
+                  onClick={() => handleRequestAction(request.passengerId, "accept")}
+                  disabled={processingRequest === request.passengerId}
+                  className="bg-green-600 hover:bg-green-700 text-white flex items-center gap-1"
+                >
+                  {processingRequest === request.passengerId ? (
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
+                  ) : (
+                    <Check className="h-3 w-3" />
+                  )}
+                  {processingRequest === request.passengerId ? "Processing..." : "Accept"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleRequestAction(request.passengerId, "reject")}
+                  disabled={processingRequest === request.passengerId}
+                  className="border-red-300 text-red-600 hover:bg-red-50 flex items-center gap-1"
+                >
+                  {processingRequest === request.passengerId ? (
+                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-red-600"></div>
+                  ) : (
+                    <X className="h-3 w-3" />
+                  )}
+                  {processingRequest === request.passengerId ? "Processing..." : "Reject"}
+                </Button>
+              </div>
             </div>
-          ) : (
-            <p className="text-gray-500 text-sm">No pending requests.</p>
-          )}
+          ))}
         </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 }

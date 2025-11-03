@@ -105,7 +105,7 @@ export const createUserApiInstance = (baseURL: string) => {
             return Promise.reject(error);
           }
 
-          // Handle token refresh
+          // Handle token refresh - but skip in development during hot reload
           if (
             error.response?.status === 401 &&
             error.response?.data?.message === "Access token expired, please refresh" &&
@@ -120,6 +120,11 @@ export const createUserApiInstance = (baseURL: string) => {
               const refreshToken = (session?.user as any)?.refreshToken;
               if (!refreshToken) {
                 console.log("❌ No refresh token found");
+                // Don't redirect in development during hot reload
+                if (process.env.NODE_ENV === 'development') {
+                  console.log("Development mode: Ignoring missing refresh token");
+                  return Promise.reject(error);
+                }
                 await signOut({ redirect: false });
                 router.replace("/user/login?error=No%20refresh%20token%20found");
                 throw new Error("No refresh token found");
@@ -137,6 +142,11 @@ export const createUserApiInstance = (baseURL: string) => {
               const { accessToken: newAccessToken, refreshToken: newRefreshToken } = response.data;
               if (!newAccessToken) {
                 console.log("❌ Invalid refresh token response");
+                // Don't redirect in development during hot reload
+                if (process.env.NODE_ENV === 'development') {
+                  console.log("Development mode: Ignoring invalid refresh token");
+                  return Promise.reject(error);
+                }
                 await signOut({ redirect: false });
                 router.replace("/user/login?error=Invalid%20refresh%20token%20response");
                 throw new Error("Invalid refresh token response");
@@ -160,14 +170,26 @@ export const createUserApiInstance = (baseURL: string) => {
               return api(originalRequest);
             } catch (refreshError) {
               console.log("❌ Token refresh failed:", refreshError);
+              // Don't redirect in development during hot reload
+              if (process.env.NODE_ENV === 'development') {
+                console.log("Development mode: Ignoring token refresh failure");
+                return Promise.reject(error);
+              }
               await signOut({ redirect: false });
               router.replace("/user/login?error=Failed%20to%20refresh%20token");
               return Promise.reject(refreshError);
             }
           }
 
-          // For other 401 errors, don't redirect automatically
-          // Let the calling component handle the error
+          // For other 401 errors, don't redirect automatically in development
+          if (error.response?.status === 401) {
+            console.log("🔧 Development mode: Ignoring 401 error during hot reload");
+            if (process.env.NODE_ENV === 'development') {
+              // In development, just reject the error without redirecting
+              return Promise.reject(error);
+            }
+          }
+
           return Promise.reject(error);
         }
       );

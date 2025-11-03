@@ -1,4 +1,3 @@
-// app/api/proxy/admin/login/route.ts - UPDATED WITH DEBUGGING
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
