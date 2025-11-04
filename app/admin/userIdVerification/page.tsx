@@ -32,7 +32,7 @@ import {
 import Swal from 'sweetalert2';
 
 interface User {
-  _id: string;
+  id: string;
   fullName: string;
   email: string;
   govId: {
@@ -42,7 +42,6 @@ interface User {
     rejectionNote?: string;
   };
   createdAt: string;
-  updatedAt?: string;
 }
 
 interface PaginationData {
@@ -333,6 +332,15 @@ export default function UserIdVerification() {
     setRotation(0);
   };
 
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "N/A";
+    try {
+      return new Date(dateString).toLocaleDateString();
+    } catch {
+      return "Invalid Date";
+    }
+  };
+
   const renderStatus = (status: string) => {
     switch (status) {
       case "Verified":
@@ -399,7 +407,7 @@ export default function UserIdVerification() {
           <ArrowUpDown className="h-4 w-4" />
         </Button>
       ),
-      render: (createdAt: string) => createdAt ? new Date(createdAt).toLocaleDateString() : "N/A"
+      render: (createdAt: string) => formatDate(createdAt)
     },
     { 
       key: "govId.verificationStatus", 
@@ -430,7 +438,7 @@ export default function UserIdVerification() {
       return (
         <div className="flex space-x-2">
           <Button
-            onClick={() => handleApproveUser(user._id)}
+            onClick={() => handleApproveUser(user.id)}
             variant="default"
             size="sm"
             className="bg-green-600 text-white hover:bg-green-700 border-green-500"
@@ -438,7 +446,7 @@ export default function UserIdVerification() {
             Approve
           </Button>
           <Button
-            onClick={() => openRejectionModal(user._id)}
+            onClick={() => openRejectionModal(user.id)}
             variant="destructive"
             size="sm"
             className="bg-red-600 hover:bg-red-700 border-red-500"
@@ -512,7 +520,7 @@ export default function UserIdVerification() {
             hasPrev: pagination.hasPrev,
           }}
           onPageChange={handlePageChange}
-          keyField="_id"
+          keyField="id"
         />
 
         {/* Secure Document Preview Dialog */}

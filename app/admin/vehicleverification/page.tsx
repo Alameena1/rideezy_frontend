@@ -14,7 +14,6 @@ import {
   Filter, 
   ArrowUpDown, 
   Eye, 
-  FileText, 
   Download,
   X,
   ZoomIn,
@@ -26,37 +25,26 @@ import {
 } from "lucide-react";
 
 interface Vehicle {
-  _id: string;
-  user: {
-    _id: string;
-    fullName: string;
-    email: string;
-  };
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
   vehicleName: string;
   vehicleType: string;
   licensePlate: string;
   color: string;
-  insurance: {
-    number: string;
-    image: string;
-    startDate: string;
-    endDate: string;
-    status: 'Active' | 'Expired' | 'Pending';
-  };
-  pollution: {
-    number: string;
-    image: string;
-    startDate: string;
-    endDate: string;
-    status: 'Active' | 'Expired' | 'Pending';
-  };
+  insuranceNumber: string;
+  insuranceImage: string;
+  insuranceEndDate: string;
+  pollutionNumber: string;
+  pollutionImage: string;
+  pollutionEndDate: string;
   vehicleImage: string;
   status: "Pending" | "Approved" | "Rejected";
   note?: string;
   mileage: number;
   seatCapacity: number;
   createdAt: string;
-  updatedAt?: string;
 }
 
 interface PaginatedResponse {
@@ -76,13 +64,13 @@ interface DocumentPreview {
   type: "vehicle" | "insurance" | "pollution";
   title: string;
   vehicle: {
-    fullName: string;
+    userName: string;
     licensePlate: string;
     vehicleName: string;
   };
 }
 
-// Helper function to check if a string is a public_id (not a full URL)
+// Helper function to check if a string is a public_id
 const isPublicId = (imageString: string): boolean => {
   return !imageString.startsWith('http') && !imageString.includes('/') && imageString.length > 0;
 };
@@ -149,37 +137,26 @@ export default function VehicleVerification() {
       const response: PaginatedResponse = await apiService.vehicle.getVehicles(params);
       
       const mappedVehicles: Vehicle[] = response.data.map((vehicle: any) => ({
-        _id: vehicle._id.toString(),
-        user: {
-          _id: vehicle.user?._id || "N/A",
-          fullName: vehicle.user?.fullName || "Unknown",
-          email: vehicle.user?.email || "N/A",
-        },
-        vehicleName: vehicle.vehicleName || "N/A",
-        vehicleType: vehicle.vehicleType || "N/A",
-        licensePlate: vehicle.licensePlate || "N/A",
-        color: vehicle.color || "N/A",
-        insurance: {
-          number: vehicle.insurance?.number || "N/A",
-          image: vehicle.insurance?.image || "",
-          startDate: vehicle.insurance?.startDate || "",
-          endDate: vehicle.insurance?.endDate || "",
-          status: vehicle.insurance?.status || "Pending"
-        },
-        pollution: {
-          number: vehicle.pollution?.number || "N/A",
-          image: vehicle.pollution?.image || "",
-          startDate: vehicle.pollution?.startDate || "",
-          endDate: vehicle.pollution?.endDate || "",
-          status: vehicle.pollution?.status || "Pending"
-        },
-        vehicleImage: vehicle.vehicleImage || "",
-        status: vehicle.status || "Pending",
-        note: vehicle.note || "",
-        mileage: vehicle.mileage || 0,
-        seatCapacity: vehicle.seatCapacity || 1,
-        createdAt: vehicle.createdAt ? new Date(vehicle.createdAt).toLocaleDateString() : "N/A",
-        updatedAt: vehicle.updatedAt ? new Date(vehicle.updatedAt).toLocaleDateString() : undefined,
+        id: vehicle.id,
+        userId: vehicle.userId,
+        userName: vehicle.userName,
+        userEmail: vehicle.userEmail,
+        vehicleName: vehicle.vehicleName,
+        vehicleType: vehicle.vehicleType,
+        licensePlate: vehicle.licensePlate,
+        color: vehicle.color,
+        insuranceNumber: vehicle.insuranceNumber,
+        insuranceImage: vehicle.insuranceImage,
+        insuranceEndDate: vehicle.insuranceEndDate,
+        pollutionNumber: vehicle.pollutionNumber,
+        pollutionImage: vehicle.pollutionImage,
+        pollutionEndDate: vehicle.pollutionEndDate,
+        vehicleImage: vehicle.vehicleImage,
+        status: vehicle.status,
+        note: vehicle.note,
+        mileage: vehicle.mileage,
+        seatCapacity: vehicle.seatCapacity,
+        createdAt: vehicle.createdAt,
       }));
       
       setVehicles(mappedVehicles);
@@ -220,23 +197,23 @@ export default function VehicleVerification() {
             }
 
             // Process insurance image
-            let insuranceImageUrl = vehicle.insurance.image;
-            if (vehicle.insurance.image && isPublicId(vehicle.insurance.image)) {
+            let insuranceImageUrl = vehicle.insuranceImage;
+            if (vehicle.insuranceImage && isPublicId(vehicle.insuranceImage)) {
               try {
-                insuranceImageUrl = await generateSignedUrl(vehicle.insurance.image);
+                insuranceImageUrl = await generateSignedUrl(vehicle.insuranceImage);
               } catch (error) {
-                console.error("Failed to generate signed URL for insurance image:", vehicle.insurance.image, error);
+                console.error("Failed to generate signed URL for insurance image:", vehicle.insuranceImage, error);
                 insuranceImageUrl = "/placeholder.svg";
               }
             }
 
             // Process pollution image
-            let pollutionImageUrl = vehicle.pollution.image;
-            if (vehicle.pollution.image && isPublicId(vehicle.pollution.image)) {
+            let pollutionImageUrl = vehicle.pollutionImage;
+            if (vehicle.pollutionImage && isPublicId(vehicle.pollutionImage)) {
               try {
-                pollutionImageUrl = await generateSignedUrl(vehicle.pollution.image);
+                pollutionImageUrl = await generateSignedUrl(vehicle.pollutionImage);
               } catch (error) {
-                console.error("Failed to generate signed URL for pollution image:", vehicle.pollution.image, error);
+                console.error("Failed to generate signed URL for pollution image:", vehicle.pollutionImage, error);
                 pollutionImageUrl = "/placeholder.svg";
               }
             }
@@ -244,14 +221,8 @@ export default function VehicleVerification() {
             return {
               ...vehicle,
               vehicleImage: vehicleImageUrl,
-              insurance: {
-                ...vehicle.insurance,
-                image: insuranceImageUrl
-              },
-              pollution: {
-                ...vehicle.pollution,
-                image: pollutionImageUrl
-              }
+              insuranceImage: insuranceImageUrl,
+              pollutionImage: pollutionImageUrl
             };
           })
         );
@@ -274,7 +245,7 @@ export default function VehicleVerification() {
     try {
       await apiService.vehicle.updateVehicleStatus(vehicleId, "Approved");
       setVehicles(vehicles.map((vehicle) =>
-        vehicle._id === vehicleId ? { ...vehicle, status: "Approved" } : vehicle
+        vehicle.id === vehicleId ? { ...vehicle, status: "Approved" } : vehicle
       ));
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to approve vehicle";
@@ -298,7 +269,7 @@ export default function VehicleVerification() {
     try {
       await apiService.vehicle.updateVehicleStatus(selectedVehicle, "Rejected", rejectionNote);
       setVehicles(vehicles.map((vehicle) =>
-        vehicle._id === selectedVehicle ? { ...vehicle, status: "Rejected", note: rejectionNote } : vehicle
+        vehicle.id === selectedVehicle ? { ...vehicle, status: "Rejected", note: rejectionNote } : vehicle
       ));
       setShowRejectionModal(false);
       setSelectedVehicle(null);
@@ -341,11 +312,11 @@ export default function VehicleVerification() {
         title = "Vehicle Image";
         break;
       case "insurance":
-        imageUrl = vehicle.insurance.image;
+        imageUrl = vehicle.insuranceImage;
         title = "Insurance Document";
         break;
       case "pollution":
-        imageUrl = vehicle.pollution.image;
+        imageUrl = vehicle.pollutionImage;
         title = "Pollution Certificate";
         break;
     }
@@ -360,7 +331,7 @@ export default function VehicleVerification() {
       type,
       title,
       vehicle: {
-        fullName: vehicle.user.fullName,
+        userName: vehicle.userName,
         licensePlate: vehicle.licensePlate,
         vehicleName: vehicle.vehicleName,
       }
@@ -383,7 +354,7 @@ export default function VehicleVerification() {
       link.href = url;
       
       // Generate meaningful filename
-      const fileName = `${documentPreview.title}_${documentPreview.vehicle.licensePlate}_${documentPreview.vehicle.fullName}.${getFileExtension(documentPreview.url)}`;
+      const fileName = `${documentPreview.title}_${documentPreview.vehicle.licensePlate}_${documentPreview.vehicle.userName}.${getFileExtension(documentPreview.url)}`;
       link.download = fileName.replace(/\s+/g, '_');
       
       document.body.appendChild(link);
@@ -404,7 +375,7 @@ export default function VehicleVerification() {
 
   // Format date for display
   const formatDate = (dateString: string) => {
-    if (!dateString || dateString === "N/A") return "N/A";
+    if (!dateString) return "N/A";
     try {
       return new Date(dateString).toLocaleDateString();
     } catch {
@@ -414,7 +385,7 @@ export default function VehicleVerification() {
 
   // Check if document is expired
   const isDocumentExpired = (endDate: string) => {
-    if (!endDate || endDate === "N/A") return false;
+    if (!endDate) return false;
     try {
       return new Date(endDate) < new Date();
     } catch {
@@ -441,13 +412,6 @@ export default function VehicleVerification() {
   };
 
   const renderStatus = (status: string) => {
-    const color =
-      status === "Approved" 
-        ? "text-green-500" 
-        : status === "Rejected" 
-        ? "text-red-500" 
-        : "text-orange-500";
-    
     const badgeVariant = 
       status === "Approved" 
         ? "default" 
@@ -471,7 +435,7 @@ export default function VehicleVerification() {
     );
   };
 
-  const renderDocumentStatus = (endDate: string, documentType: string) => {
+  const renderDocumentStatus = (endDate: string) => {
     const isExpired = isDocumentExpired(endDate);
     return (
       <Badge 
@@ -489,11 +453,11 @@ export default function VehicleVerification() {
 
   const columns = [
     { 
-      key: "user.fullName", 
+      key: "userName", 
       header: () => (
         <Button
           variant="ghost"
-          onClick={() => handleSort("user.fullName")}
+          onClick={() => handleSort("userName")}
           className="flex items-center space-x-1 p-0 hover:bg-transparent text-gray-300"
         >
           <span>Owner</span>
@@ -509,32 +473,32 @@ export default function VehicleVerification() {
     { 
       key: "insurance", 
       header: "Insurance",
-      render: (insurance: any) => (
+      render: (_: any, vehicle: Vehicle) => (
         <div className="space-y-1">
-          <div className="text-gray-300 text-sm">{insurance.number}</div>
+          <div className="text-gray-300 text-sm">{vehicle.insuranceNumber}</div>
           <div className="flex items-center gap-1 text-xs">
             <Calendar className="h-3 w-3 text-gray-400" />
-            <span className="text-gray-400">Valid until: {formatDate(insurance.endDate)}</span>
+            <span className="text-gray-400">Valid until: {formatDate(vehicle.insuranceEndDate)}</span>
           </div>
-          {renderDocumentStatus(insurance.endDate, "insurance")}
+          {renderDocumentStatus(vehicle.insuranceEndDate)}
         </div>
       )
     },
     { 
       key: "pollution", 
       header: "Pollution",
-      render: (pollution: any) => (
+      render: (_: any, vehicle: Vehicle) => (
         <div className="space-y-1">
-          <div className="text-gray-300 text-sm">{pollution.number}</div>
+          <div className="text-gray-300 text-sm">{vehicle.pollutionNumber}</div>
           <div className="flex items-center gap-1 text-xs">
             <Calendar className="h-3 w-3 text-gray-400" />
-            <span className="text-gray-400">Valid until: {formatDate(pollution.endDate)}</span>
+            <span className="text-gray-400">Valid until: {formatDate(vehicle.pollutionEndDate)}</span>
           </div>
-          {renderDocumentStatus(pollution.endDate, "pollution")}
+          {renderDocumentStatus(vehicle.pollutionEndDate)}
         </div>
       )
     },
-    { key: "createdAt", header: "Submitted On", render: (date: string) => <span className="text-gray-300">{date}</span> },
+    { key: "createdAt", header: "Submitted On", render: (date: string) => <span className="text-gray-300">{formatDate(date)}</span> },
     { 
       key: "status", 
       header: "Status",
@@ -556,7 +520,7 @@ export default function VehicleVerification() {
               <Eye className="h-4 w-4" />
             </Button>
           )}
-          {vehicle.insurance.image && vehicle.insurance.image !== "/placeholder.svg" && (
+          {vehicle.insuranceImage && vehicle.insuranceImage !== "/placeholder.svg" && (
             <Button
               onClick={() => handleViewDocument(vehicle, "insurance")}
               variant="outline"
@@ -567,7 +531,7 @@ export default function VehicleVerification() {
               <Shield className="h-4 w-4" />
             </Button>
           )}
-          {vehicle.pollution.image && vehicle.pollution.image !== "/placeholder.svg" && (
+          {vehicle.pollutionImage && vehicle.pollutionImage !== "/placeholder.svg" && (
             <Button
               onClick={() => handleViewDocument(vehicle, "pollution")}
               variant="outline"
@@ -588,7 +552,7 @@ export default function VehicleVerification() {
       return (
         <div className="flex space-x-2">
           <Button
-            onClick={() => handleApproveVehicle(vehicle._id)}
+            onClick={() => handleApproveVehicle(vehicle.id)}
             variant="default"
             size="sm"
             className="bg-green-600 hover:bg-green-700 text-white"
@@ -596,7 +560,7 @@ export default function VehicleVerification() {
             Approve
           </Button>
           <Button
-            onClick={() => openRejectionModal(vehicle._id)}
+            onClick={() => openRejectionModal(vehicle.id)}
             variant="destructive"
             size="sm"
             className="bg-red-600 hover:bg-red-700 text-white"
@@ -648,7 +612,7 @@ export default function VehicleVerification() {
         
         <DataTable
           columns={columns}
-          data={processedVehicles} // Use processed vehicles with signed URLs
+          data={processedVehicles}
           loading={loading}
           error={error}
           pagination={{
@@ -669,7 +633,7 @@ export default function VehicleVerification() {
             <DialogHeader>
               <DialogTitle className="text-white flex items-center justify-between">
                 <div>
-                  {documentPreview?.title} - {documentPreview?.vehicle.fullName}
+                  {documentPreview?.title} - {documentPreview?.vehicle.userName}
                   <div className="text-sm text-gray-400 mt-1">
                     License Plate: {documentPreview?.vehicle.licensePlate} | 
                     Vehicle: {documentPreview?.vehicle.vehicleName}

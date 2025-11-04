@@ -349,7 +349,7 @@ export default function Subscription() {
       ),
       render: (price: number, row: SubscriptionPlan) => (
         <div>
-          <div className="font-semibold text-white">${price.toFixed(2)}</div>
+          <div className="font-semibold text-white">{price.toFixed(2)}</div>
           <div className="text-xs text-gray-400">
             ${(price / row.durationMonths).toFixed(2)}/mo
           </div>
@@ -553,7 +553,7 @@ export default function Subscription() {
                   <div className="space-y-2">
                     <Label htmlFor="price" className="text-white flex items-center gap-2">
                       <DollarSign className="h-4 w-4" />
-                      Total Price ($)
+                      Total Price 
                     </Label>
                     <Input
                       id="price"
@@ -644,9 +644,9 @@ export default function Subscription() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="flex justify-between items-center text-2xl font-bold text-white">
-                      ${currentPlan.price?.toFixed(2) || "0.00"}
+                      {currentPlan.price?.toFixed(2) || "0.00"}
                       <span className="text-sm font-normal text-gray-400">
-                        ${calculateMonthlyPrice()}/mo
+                        {calculateMonthlyPrice()}/mo
                       </span>
                     </div>
                     

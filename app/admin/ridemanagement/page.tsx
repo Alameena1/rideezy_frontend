@@ -671,15 +671,15 @@ export default function RideManagement() {
                 <CardContent className="space-y-2">
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-400">Fuel Price:</span>
-                    <span className="text-sm font-medium text-gray-300">${formatNumber(ride.fuelPrice)}</span>
+                    <span className="text-sm font-medium text-gray-300">{formatNumber(ride.fuelPrice)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-400">Total Fuel Cost:</span>
-                    <span className="text-sm font-medium text-gray-300">${formatNumber(ride.totalFuelCost)}</span>
+                    <span className="text-sm font-medium text-gray-300">{formatNumber(ride.totalFuelCost)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-400">Cost Per Person:</span>
-                    <span className="text-sm font-medium text-gray-300">${formatNumber(ride.costPerPerson)}</span>
+                    <span className="text-sm font-medium text-gray-300">{formatNumber(ride.costPerPerson)}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-sm text-gray-400">Status:</span>

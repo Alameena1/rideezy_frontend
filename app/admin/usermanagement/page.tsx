@@ -11,16 +11,16 @@ import { Search, Filter, ArrowUpDown } from "lucide-react";
 import Swal from 'sweetalert2';
 
 interface User {
-  _id: string;
-  name: string;
+  id: string;
+  fullName: string;
   email: string;
-  phone: string;
-  totalRides: string;
+  phoneNumber: string;
+  totalRides: number;
   registrationDate: string;
-  status: string;
-  subscribed: boolean;
-  govtIdStatus: string;
-  hasOngoingRides?: boolean;
+  status: "Active" | "Blocked";
+  isSubscribed: boolean;
+  govIdStatus: "Pending" | "Verified" | "Rejected";
+  hasOngoingRides: boolean;
 }
 
 interface PaginatedResponse {
@@ -77,17 +77,15 @@ export default function UserManagement() {
       const response: PaginatedResponse = await apiService.user.getUsers(params);
       
       const mappedUsers: User[] = response.data.map((user: any) => ({
-        _id: user._id.toString(),
-        name: user.fullName || "Unknown",
-        email: user.email || "N/A",
-        phone: user.phone || "N/A",
-        totalRides: user.totalRides || "0/0",
-        registrationDate: user.createdAt
-          ? new Date(user.createdAt).toLocaleDateString()
-          : "N/A",
-        status: user.status || "Active",
-        subscribed: user.subscription?.isSubscribed || false,
-        govtIdStatus: user.govId?.verificationStatus || "Pending",
+        id: user.id,
+        fullName: user.fullName,
+        email: user.email,
+        phoneNumber: user.phoneNumber || "N/A",
+        totalRides: user.totalRides || 0,
+        registrationDate: user.createdAt,
+        status: user.status,
+        isSubscribed: user.isSubscribed || false,
+        govIdStatus: user.govIdStatus || "Pending",
         hasOngoingRides: user.hasOngoingRides || false,
       }));
       
@@ -126,13 +124,13 @@ export default function UserManagement() {
   };
 
   const handleToggleStatus = async (user: User) => {
-    if (blockingUser === user._id) return;
+    if (blockingUser === user.id) return;
     
     try {
-      setBlockingUser(user._id);
+      setBlockingUser(user.id);
       
       if (user.status === "Active") {
-        const ongoingRidesCheck = await checkOngoingRides(user._id);
+        const ongoingRidesCheck = await checkOngoingRides(user.id);
         
         if (ongoingRidesCheck.hasOngoingRides && ongoingRidesCheck.ongoingRides.length > 0) {
           const rideDetails = ongoingRidesCheck.ongoingRides.map((ride, index) => 
@@ -143,7 +141,7 @@ export default function UserManagement() {
             title: 'Cannot Block User',
             html: `
               <div class="text-left">
-                <p class="mb-3"><strong>${user.name}</strong> has ${ongoingRidesCheck.ongoingRides.length} ongoing ride(s):</p>
+                <p class="mb-3"><strong>${user.fullName}</strong> has ${ongoingRidesCheck.ongoingRides.length} ongoing ride(s):</p>
                 <div class="bg-gray-100 p-3 rounded text-sm mb-4 max-h-32 overflow-y-auto">
                   ${rideDetails}
                 </div>
@@ -173,7 +171,7 @@ export default function UserManagement() {
       
       const result = await Swal.fire({
         title: `${actionText} User?`,
-        text: `Are you sure you want to ${action} ${user.name}?`,
+        text: `Are you sure you want to ${action} ${user.fullName}?`,
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: `Yes, ${actionText}`,
@@ -188,13 +186,13 @@ export default function UserManagement() {
       }
       
       const newStatus = user.status === "Active" ? "Blocked" : "Active";
-      await apiService.user.toggleUserStatus(user._id, newStatus);
+      await apiService.user.toggleUserStatus(user.id, newStatus);
       
-      setUsers(users.map((u) => (u._id === user._id ? { ...u, status: newStatus } : u)));
+      setUsers(users.map((u) => (u.id === user.id ? { ...u, status: newStatus } : u)));
       
       Swal.fire({
         title: 'Success!',
-        text: `User ${user.name} has been ${newStatus === "Blocked" ? "blocked" : "activated"}`,
+        text: `User ${user.fullName} has been ${newStatus === "Blocked" ? "blocked" : "activated"}`,
         icon: 'success',
         confirmButtonText: 'OK',
         confirmButtonColor: '#3085d6',
@@ -238,6 +236,15 @@ export default function UserManagement() {
     setPage(1);
   };
 
+  const formatDate = (dateString: string) => {
+    if (!dateString) return "N/A";
+    try {
+      return new Date(dateString).toLocaleDateString();
+    } catch {
+      return "Invalid Date";
+    }
+  };
+
   const renderStatus = (status: string) => {
     const color = status === "Active" ? "text-green-500" : "text-red-500";
     return <span className={color}>{status}</span>;
@@ -268,22 +275,22 @@ export default function UserManagement() {
   const renderSubscribed = (subscribed: boolean) => {
     return subscribed ? (
       <Badge variant="outline" className="bg-blue-500/20 text-blue-400 border-blue-500">
-        True
+        Subscribed
       </Badge>
     ) : (
       <Badge variant="outline" className="bg-gray-500/20 text-gray-400 border-gray-500">
-        False
+        Not Subscribed
       </Badge>
     );
   };
 
   const columns = [
     { 
-      key: "name", 
+      key: "fullName", 
       header: () => (
         <Button
           variant="ghost"
-          onClick={() => handleSort("name")}
+          onClick={() => handleSort("fullName")}
           className="flex items-center space-x-1 p-0 hover:bg-transparent text-gray-300"
         >
           <span>Name</span>
@@ -293,21 +300,21 @@ export default function UserManagement() {
       render: (name: string) => <span className="text-gray-300 font-medium">{name}</span>
     },
     { key: "email", header: "Email", render: (email: string) => <span className="text-gray-300">{email}</span> },
-    { key: "phone", header: "Phone", render: (phone: string) => <span className="text-gray-300">{phone}</span> },
-    { key: "totalRides", header: "Total Rides", render: (totalRides: string) => <span className="text-gray-300">{totalRides}</span> },
-    { key: "registrationDate", header: "Registration Date", render: (date: string) => <span className="text-gray-300">{date}</span> },
+    { key: "phoneNumber", header: "Phone", render: (phone: string) => <span className="text-gray-300">{phone}</span> },
+    { key: "totalRides", header: "Total Rides", render: (totalRides: number) => <span className="text-gray-300">{totalRides}</span> },
+    { key: "registrationDate", header: "Registration Date", render: (date: string) => <span className="text-gray-300">{formatDate(date)}</span> },
     { 
       key: "status", 
       header: "Status",
       render: (status: string) => renderStatus(status)
     },
     { 
-      key: "subscribed", 
+      key: "isSubscribed", 
       header: "Subscribed",
       render: (subscribed: boolean) => renderSubscribed(subscribed)
     },
     { 
-      key: "govtIdStatus", 
+      key: "govIdStatus", 
       header: "Govt ID Status",
       render: (status: string) => renderGovtIdStatus(status)
     },
@@ -323,11 +330,11 @@ export default function UserManagement() {
       onClick={() => handleToggleStatus(user)}
       variant={user.status === "Active" ? "destructive" : "default"}
       size="sm"
-      disabled={blockingUser === user._id || (user.status === "Active" && user.hasOngoingRides)}
+      disabled={blockingUser === user.id || (user.status === "Active" && user.hasOngoingRides)}
       title={user.status === "Active" && user.hasOngoingRides ? "Cannot block user with ongoing rides" : ""}
       className={user.status === "Active" ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"}
     >
-      {blockingUser === user._id ? "Processing..." : user.status === "Active" ? "Block" : "Activate"}
+      {blockingUser === user.id ? "Processing..." : user.status === "Active" ? "Block" : "Activate"}
     </Button>
   );
 
@@ -367,7 +374,6 @@ export default function UserManagement() {
           </div>
         </div>
         
-        {/* FIXED: onPageChange is now a separate prop */}
         <DataTable
           columns={columns}
           data={users}
