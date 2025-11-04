@@ -18,10 +18,22 @@ interface Vehicle {
   vehicleType: string;
   licensePlate: string;
   color?: string;
-  insuranceNumber?: string;
+  insurance?: {
+    number: string;
+    image: string;
+    startDate: string;
+    endDate: string;
+    status: string;
+  };
+  pollution?: {
+    number: string;
+    image: string;
+    startDate: string;
+    endDate: string;
+    status: string;
+  };
   status: "Pending" | "Approved" | "Rejected";
   vehicleImage: string;
-  documentImage: string;
   mileage: number;
   seatCapacity: number;
   user: {
@@ -38,14 +50,54 @@ interface VehicleCardProps {
   vehicle: Vehicle;
   onDelete?: (vehicleId: string) => void;
   onReapply?: (vehicleId: string) => void;
+  onImageLoad?: () => void;
+  onImageError?: (imageUrl: string) => void;
 }
 
-export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCardProps) {
+// Debug image component
+const DebugImage = ({ src, alt, onLoad, onError }: { 
+  src: string; 
+  alt: string;
+  onLoad?: () => void;
+  onError?: (src: string) => void;
+}) => {
+  const [hasError, setHasError] = useState(false);
+
+  const handleLoad = () => {
+    console.log(`✅ Image loaded successfully: ${src}`);
+    onLoad?.();
+  };
+
+  const handleError = () => {
+    console.error(`❌ Failed to load image: ${src}`);
+    setHasError(true);
+    onError?.(src);
+  };
+
+  return (
+    <img
+      src={hasError ? "/placeholder.svg" : src}
+      alt={alt}
+      className="w-full h-full object-cover"
+      onLoad={handleLoad}
+      onError={handleError}
+      crossOrigin="anonymous" // Add this for CORS issues
+    />
+  );
+};
+
+export default function VehicleCard({ vehicle, onDelete, onReapply, onImageLoad, onImageError }: VehicleCardProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isReapplying, setIsReapplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const { updateVehicle } = useVehicleStore();
+
+  console.log(`Rendering VehicleCard for: ${vehicle.vehicleName}`, {
+    vehicleImage: vehicle.vehicleImage,
+    insuranceImage: vehicle.insurance?.image,
+    pollutionImage: vehicle.pollution?.image
+  });
 
   const getStatusConfig = (status: string) => {
     switch (status) {
@@ -137,10 +189,11 @@ export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCar
       <div className="flex flex-col lg:flex-row">
         {/* Vehicle Image */}
         <div className="lg:w-1/4 h-48 lg:h-auto relative">
-          <img
+          <DebugImage 
             src={vehicle.vehicleImage || "/placeholder.svg"}
             alt={vehicle.vehicleName}
-            className="w-full h-full object-cover"
+            onLoad={onImageLoad}
+            onError={onImageError}
           />
           <div className="absolute top-3 left-3">
             <TooltipProvider>
@@ -198,11 +251,19 @@ export default function VehicleCard({ vehicle, onDelete, onReapply }: VehicleCar
                     <strong className="text-gray-500">Seats:</strong> {vehicle.seatCapacity}
                   </span>
                 </div>
-                {vehicle.insuranceNumber && (
+                {vehicle.insurance?.number && (
                   <div className="flex items-center gap-2 text-gray-600">
                     <FileText className="h-4 w-4 text-orange-500" />
                     <span>
-                      <strong className="text-gray-500">Insurance:</strong> {vehicle.insuranceNumber}
+                      <strong className="text-gray-500">Insurance:</strong> {vehicle.insurance.number}
+                    </span>
+                  </div>
+                )}
+                {vehicle.pollution?.number && (
+                  <div className="flex items-center gap-2 text-gray-600">
+                    <FileText className="h-4 w-4 text-green-500" />
+                    <span>
+                      <strong className="text-gray-500">Pollution:</strong> {vehicle.pollution.number}
                     </span>
                   </div>
                 )}

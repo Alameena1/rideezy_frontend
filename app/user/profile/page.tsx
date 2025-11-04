@@ -127,6 +127,31 @@ interface DashboardStats {
   vehiclesCount: number;
 }
 
+// Helper function to check if a string is a public_id
+const isPublicId = (imageString: string): boolean => {
+  return !imageString.startsWith('http') && !imageString.includes('/') && imageString.length > 0;
+};
+
+// Function to generate signed URL
+const generateSignedUrl = async (publicId: string): Promise<string> => {
+  const response = await fetch("/api/signed-url", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      public_id: publicId,
+      expiration: 3600, // 1 hour expiration
+    }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || "Failed to generate signed URL");
+  }
+  return data.signed_url;
+};
+
 export default function Profile() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -206,6 +231,21 @@ export default function Profile() {
     }
   }, [profileForm.watch("country"), countries]);
 
+  // Function to load signed URL for government ID document
+  const loadSignedGovIdDocument = async (documentUrl: string) => {
+    if (!documentUrl) return "";
+    
+    if (isPublicId(documentUrl)) {
+      try {
+        return await generateSignedUrl(documentUrl);
+      } catch (error) {
+        console.error("Failed to generate signed URL for gov ID document:", error);
+        return "/placeholder.svg";
+      }
+    }
+    return documentUrl;
+  };
+
   useEffect(() => {
     const fetchUserData = async () => {
       try {
@@ -222,29 +262,33 @@ export default function Profile() {
             country: profileData.country || "",
             state: profileData.state || "",
           });
-          setGovIdData(
-            profileData.govId || {
-              idNumber: "",
-              documentUrl: "",
-              verificationStatus: "",
-              reason: "",
-            }
-          );
+
+          // Load signed URL for government ID document
+          let signedDocumentUrl = "";
+          if (profileData.govId?.documentUrl) {
+            signedDocumentUrl = await loadSignedGovIdDocument(profileData.govId.documentUrl);
+          }
+
+          setGovIdData({
+            idNumber: profileData.govId?.idNumber || "",
+            documentUrl: signedDocumentUrl,
+            verificationStatus: profileData.govId?.verificationStatus || "",
+            reason: profileData.govId?.reason || "",
+          });
 
           setDashboardStats({
-  walletBalance: profileData.wallet?.balance || 0,
-  // Use actual ride counts from stats
-  totalRidesCreated: profileData.stats?.ridesCreated || 0,
-  totalRidesJoined: profileData.stats?.ridesJoined || 0,
-  monthlyRideCount: profileData.monthlyRideCount || 0,
-  subscriptionStatus: profileData.subscription ? "Active" : "No Active Subscription",
-  subscriptionRemainingRides: {
-    start: profileData.subscription?.remainingStartRides || 0,
-    join: profileData.subscription?.remainingJoinRides || 0
-  },
-  recentTransactions: profileData.wallet?.transactions?.slice(0, 3) || [],
-  vehiclesCount: profileData.vehicles?.length || 0
-});
+            walletBalance: profileData.wallet?.balance || 0,
+            totalRidesCreated: profileData.stats?.ridesCreated || 0,
+            totalRidesJoined: profileData.stats?.ridesJoined || 0,
+            monthlyRideCount: profileData.monthlyRideCount || 0,
+            subscriptionStatus: profileData.subscription ? "Active" : "No Active Subscription",
+            subscriptionRemainingRides: {
+              start: profileData.subscription?.remainingStartRides || 0,
+              join: profileData.subscription?.remainingJoinRides || 0
+            },
+            recentTransactions: profileData.wallet?.transactions?.slice(0, 3) || [],
+            vehiclesCount: profileData.vehicles?.length || 0
+          });
         } else {
           console.error("Invalid profile data structure:", profileData);
           setError("Failed to load profile data. Please try again.");
@@ -285,96 +329,10 @@ export default function Profile() {
     }
   }, [isAuthenticated, authLoading, router, profileForm]);
 
-  const handleGovIdSubmit = async (values: GovIdFormValues) => {
-    setError(null);
-    setIsSubmittingGovId(true);
-    try {
-      console.log("🔄 Submitting government ID...");
-
-      // First, check if user is authenticated
-      if (!isAuthenticated) {
-        setError("Please log in to submit government ID");
-        return;
-      }
-
-      // Upload file first
-      console.log("📤 Uploading document image...");
-      const documentUrl = await uploadFile(values.documentImage);
-      console.log("✅ Document uploaded:", documentUrl);
-      
-      // Prepare payload
-      const payload = {
-        govId: {
-          idNumber: values.idNumber,
-          documentUrl: documentUrl,
-          verificationStatus: "Pending" as const,
-        },
-      };
-
-      console.log("📤 Sending gov ID data to server...");
-      
-      // Use updateProfile for government ID submission
-      const response = await clientApiService.user.updateProfile(payload);
-      
-      console.log("✅ Gov ID submission response:", response);
-
-      // Handle different response structures
-      if (response.success === false) {
-        throw new Error(response.message || "Failed to submit government ID");
-      }
-
-      if (!response.data && !response.user) {
-        throw new Error("Invalid response from server");
-      }
-
-      // Update local state with the response data
-      const userData = response.data || response.user || response;
-      setGovIdData({
-        idNumber: values.idNumber,
-        documentUrl: documentUrl,
-        verificationStatus: "Pending",
-        reason: userData.govId?.reason || "",
-      });
-      
-      setShowGovIdForm(false);
-      govIdForm.reset();
-      setDocumentImagePreview(null);
-      
-      // Show success message
-      setError(null);
-      
-    } catch (error: any) {
-      console.error("❌ Gov ID submission failed:", error);
-      
-      // Handle specific error cases
-      if (error.message === "Unauthenticated" || error.message === "No access token") {
-        setError("Your session has expired. Please log in again.");
-        // Optional: redirect to login after showing error
-        setTimeout(() => {
-          router.push("/user/login");
-        }, 3000);
-      } else if (error.response?.status === 401) {
-        setError("Session expired. Please log in again.");
-      } else if (error.response?.status === 403) {
-        setError("Your account has been blocked. Please contact support.");
-      } else {
-        const errorMessage =
-          error.response?.data?.message ||
-          error.response?.data?.error ||
-          error.message ||
-          "Failed to submit government ID. Please try again.";
-        setError(errorMessage);
-      }
-    } finally {
-      setIsSubmittingGovId(false);
-    }
-  };
-
   const uploadFile = async (file: File): Promise<string> => {
     const formData = new FormData();
     formData.append("file", file);
     
-    // The interceptor will automatically add the token
     const response = await fetch("/api/upload", {
       method: "POST",
       body: formData,
@@ -384,8 +342,99 @@ export default function Profile() {
     if (!response.ok) {
       throw new Error(data.error || "Upload failed");
     }
-    return data.secure_url;
+    return data.public_id; // Return public_id instead of URL
   };
+
+const handleGovIdSubmit = async (values: GovIdFormValues) => {
+  setError(null);
+  setIsSubmittingGovId(true);
+  try {
+    console.log("🔄 Submitting government ID...");
+
+    if (!isAuthenticated) {
+      setError("Please log in to submit government ID");
+      return;
+    }
+
+    // Upload file and get public_id
+    console.log("📤 Uploading document image...");
+    const documentPublicId = await uploadFile(values.documentImage);
+    console.log("✅ Document uploaded, public_id:", documentPublicId);
+    
+    // Prepare payload with public_id
+    const payload = {
+      govId: {
+        idNumber: values.idNumber,
+        documentUrl: documentPublicId, // Store public_id instead of URL
+        verificationStatus: "Pending" as const,
+      },
+    };
+
+    console.log("📤 Sending gov ID data to server...");
+    
+    const response = await clientApiService.user.updateProfile(payload);
+    
+    console.log("✅ Gov ID submission response:", response);
+
+    if (response.success === false) {
+      throw new Error(response.message || "Failed to submit government ID");
+    }
+
+    if (!response.data && !response.user) {
+      throw new Error("Invalid response from server");
+    }
+
+    // Generate signed URL for the new document for immediate preview
+    const signedDocumentUrl = await generateSignedUrl(documentPublicId);
+
+    // Update local state with signed URL
+    const userData = response.data || response.user || response;
+    setGovIdData({
+      idNumber: values.idNumber,
+      documentUrl: signedDocumentUrl,
+      verificationStatus: "Pending",
+      reason: userData.govId?.reason || "",
+    });
+    
+    setShowGovIdForm(false);
+    govIdForm.reset();
+    setDocumentImagePreview(null);
+    
+    setError(null);
+    
+  } catch (error: any) {
+    console.error("❌ Gov ID submission failed:", error);
+    
+    if (error.message === "Unauthenticated" || error.message === "No access token") {
+      setError("Your session has expired. Please log in again.");
+      setTimeout(() => {
+        router.push("/user/login");
+      }, 3000);
+    } else if (error.response?.status === 400) {
+      // Handle validation errors specifically
+      const validationErrors = error.response.data.errors;
+      const govIdError = validationErrors.find((err: any) => err.path.includes('govId'));
+      if (govIdError) {
+        setError(`Validation error: ${govIdError.message}`);
+      } else {
+        setError("Invalid data submitted. Please check your inputs.");
+      }
+    } else if (error.response?.status === 401) {
+      setError("Session expired. Please log in again.");
+    } else if (error.response?.status === 403) {
+      setError("Your account has been blocked. Please contact support.");
+    } else {
+      const errorMessage =
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        "Failed to submit government ID. Please try again.";
+      setError(errorMessage);
+    }
+  } finally {
+    setIsSubmittingGovId(false);
+  }
+};
 
   const handleDocumentImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

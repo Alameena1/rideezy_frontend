@@ -11,13 +11,30 @@ import { Search, ChevronLeft, ChevronRight, Car } from "lucide-react";
 import VehicleCard from "./VehicleCard";
 import EmptyState from "./EmptyState";
 import { useVehicleStore } from "../../../stores/vehicleStore";
+import { useSession } from "next-auth/react";
 
-// ... keep interfaces the same
+interface VehicleListProps {
+  onDelete?: (vehicleId: string) => void;
+  onReapply?: (vehicleId: string) => void;
+}
+
+// Helper function to check if a string is a public_id (not a full URL)
+const isPublicId = (imageString: string): boolean => {
+  return !imageString.startsWith('http') && !imageString.includes('/') && imageString.length > 0;
+};
+
+// Function to generate direct URL from public_id (fallback)
+const generateDirectUrl = (publicId: string): string => {
+  const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+  return `https://res.cloudinary.com/${cloudName}/image/upload/${publicId}`;
+};
 
 export default function VehicleList({ onDelete, onReapply }: VehicleListProps) {
   const [activeTab, setActiveTab] = useState("all");
   const [localSearchTerm, setLocalSearchTerm] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [processedVehicles, setProcessedVehicles] = useState<any[]>([]);
+  const { data: session } = useSession();
   
   const { 
     vehicles, 
@@ -26,6 +43,138 @@ export default function VehicleList({ onDelete, onReapply }: VehicleListProps) {
     pagination,
     fetchVehicles
   } = useVehicleStore();
+
+  // Function to generate signed URL
+  const generateSignedUrl = async (publicId: string): Promise<string> => {
+    const token = session?.user?.accessToken;
+    if (!token) {
+      throw new Error("Authentication required");
+    }
+
+    console.log("Generating signed URL for public_id:", publicId);
+
+    try {
+      const response = await fetch("/api/signed-url", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          public_id: publicId,
+          expiration: 3600,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        console.warn("Signed URL generation failed, using direct URL:", data.error);
+        return generateDirectUrl(publicId);
+      }
+
+      console.log("Generated signed URL:", data.signed_url);
+      return data.signed_url;
+    } catch (error) {
+      console.error("Signed URL API error, using direct URL:", error);
+      return generateDirectUrl(publicId);
+    }
+  };
+
+  // Process vehicles to handle both public_ids and URLs
+  useEffect(() => {
+    const processVehicleImages = async () => {
+      console.log("Processing vehicles:", vehicles);
+      
+      const vehiclesWithProcessedImages = await Promise.all(
+        vehicles.map(async (vehicle) => {
+          try {
+            // Process vehicle image
+            let vehicleImageUrl = "/placeholder.svg";
+            if (vehicle.vehicleImage) {
+              if (isPublicId(vehicle.vehicleImage)) {
+                console.log(`Processing vehicle image public_id: ${vehicle.vehicleImage}`);
+                vehicleImageUrl = await generateSignedUrl(vehicle.vehicleImage);
+              } else if (vehicle.vehicleImage.startsWith('http')) {
+                console.log(`Using existing vehicle image URL: ${vehicle.vehicleImage}`);
+                vehicleImageUrl = vehicle.vehicleImage;
+              }
+            }
+
+            // Process insurance image
+            let insuranceImageUrl = vehicle.insurance?.image || null;
+            if (vehicle.insurance?.image && isPublicId(vehicle.insurance.image)) {
+              console.log(`Processing insurance image public_id: ${vehicle.insurance.image}`);
+              insuranceImageUrl = await generateSignedUrl(vehicle.insurance.image);
+            }
+
+            // Process pollution image
+            let pollutionImageUrl = vehicle.pollution?.image || null;
+            if (vehicle.pollution?.image && isPublicId(vehicle.pollution.image)) {
+              console.log(`Processing pollution image public_id: ${vehicle.pollution.image}`);
+              pollutionImageUrl = await generateSignedUrl(vehicle.pollution.image);
+            }
+
+            const processedVehicle = {
+              ...vehicle,
+              vehicleImage: vehicleImageUrl,
+              insurance: vehicle.insurance ? {
+                ...vehicle.insurance,
+                image: insuranceImageUrl
+              } : null,
+              pollution: vehicle.pollution ? {
+                ...vehicle.pollution,
+                image: pollutionImageUrl
+              } : null
+            };
+
+            console.log("Processed vehicle:", processedVehicle);
+            return processedVehicle;
+
+          } catch (error) {
+            console.error("Failed to process vehicle images:", vehicle._id, error);
+            // Fallback to direct URLs
+            return {
+              ...vehicle,
+              vehicleImage: vehicle.vehicleImage && isPublicId(vehicle.vehicleImage) 
+                ? generateDirectUrl(vehicle.vehicleImage) 
+                : vehicle.vehicleImage || "/placeholder.svg",
+              insurance: vehicle.insurance ? {
+                ...vehicle.insurance,
+                image: vehicle.insurance.image && isPublicId(vehicle.insurance.image)
+                  ? generateDirectUrl(vehicle.insurance.image)
+                  : vehicle.insurance.image
+              } : null,
+              pollution: vehicle.pollution ? {
+                ...vehicle.pollution,
+                image: vehicle.pollution.image && isPublicId(vehicle.pollution.image)
+                  ? generateDirectUrl(vehicle.pollution.image)
+                  : vehicle.pollution.image
+              } : null
+            };
+          }
+        })
+      );
+      
+      console.log("All processed vehicles:", vehiclesWithProcessedImages);
+      setProcessedVehicles(vehiclesWithProcessedImages);
+    };
+
+    if (vehicles.length > 0) {
+      processVehicleImages();
+    } else {
+      setProcessedVehicles([]);
+    }
+  }, [vehicles, session]);
+
+  // Handle image loading states
+  const handleImageLoad = (vehicleId: string) => {
+    setImageLoadingStates(prev => ({ ...prev, [vehicleId]: false }));
+  };
+
+  const handleImageError = (vehicleId: string, imageUrl: string) => {
+    console.error(`Failed to load image for vehicle ${vehicleId}: ${imageUrl}`);
+    setImageLoadingStates(prev => ({ ...prev, [vehicleId]: false }));
+  };
 
   // Debounce search input
   useEffect(() => {
@@ -38,26 +187,24 @@ export default function VehicleList({ onDelete, onReapply }: VehicleListProps) {
 
   // Fetch vehicles when tab, search, or page changes
   useEffect(() => {
-    fetchVehicles(1, 1, debouncedSearch);
+    fetchVehicles(1, 10, debouncedSearch);
   }, [debouncedSearch, fetchVehicles]);
 
   // Handle tab change
   useEffect(() => {
-    // Note: For server-side filtering, you might need to modify the API
-    // Currently using client-side filtering for tabs
-    fetchVehicles(1, 1, debouncedSearch);
+    fetchVehicles(1, 10, debouncedSearch);
   }, [activeTab, fetchVehicles, debouncedSearch]);
 
   const handlePageChange = (page: number) => {
-    fetchVehicles(page, 1, debouncedSearch);
+    fetchVehicles(page, 10, debouncedSearch);
   };
 
   const handleSearch = (search: string) => {
     setLocalSearchTerm(search);
   };
 
-  // CLIENT-SIDE FILTERING FOR TABS (since API doesn't support tab filtering)
-  const filteredVehicles = vehicles.filter(vehicle => {
+  // CLIENT-SIDE FILTERING FOR TABS
+  const filteredVehicles = processedVehicles.filter(vehicle => {
     if (activeTab === "all") return true;
     if (activeTab === "expired") {
       return vehicle.insurance?.status === 'Expired' || vehicle.pollution?.status === 'Expired';
@@ -83,31 +230,25 @@ export default function VehicleList({ onDelete, onReapply }: VehicleListProps) {
     
     if (totalPages <= 1) return [1];
     
-    // Always show first page
     buttons.push(1);
     
-    // Show pages around current page
     const startPage = Math.max(2, currentPage - 1);
     const endPage = Math.min(totalPages - 1, currentPage + 1);
     
-    // Add ellipsis if needed
     if (startPage > 2) {
       buttons.push('...');
     }
     
-    // Add middle pages
     for (let i = startPage; i <= endPage; i++) {
       if (i !== 1 && i !== totalPages) {
         buttons.push(i);
       }
     }
     
-    // Add ellipsis if needed
     if (endPage < totalPages - 1) {
       buttons.push('...');
     }
     
-    // Always show last page if there is more than one page
     if (totalPages > 1) {
       buttons.push(totalPages);
     }
@@ -243,6 +384,8 @@ export default function VehicleList({ onDelete, onReapply }: VehicleListProps) {
                       vehicle={vehicle}
                       onDelete={onDelete}
                       onReapply={onReapply}
+                      onImageLoad={() => handleImageLoad(vehicle._id)}
+                      onImageError={(imageUrl) => handleImageError(vehicle._id, imageUrl)}
                     />
                   ))}
                 </div>
@@ -307,4 +450,8 @@ export default function VehicleList({ onDelete, onReapply }: VehicleListProps) {
       </Card>
     </div>
   );
+}
+
+function setImageLoadingStates(arg0: (prev: any) => any) {
+  throw new Error("Function not implemented.");
 }

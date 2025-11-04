@@ -17,10 +17,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
     }
 
-    const allowedTypes = ["image/jpeg", "image/png", "image/gif"];
+    const allowedTypes = ["image/jpeg", "image/png", "image/gif", "application/pdf"];
     if (!allowedTypes.includes(file.type)) {
       return NextResponse.json(
-        { error: "Invalid file type. Only JPEG, PNG, and GIF are allowed." },
+        { error: "Invalid file type. Only JPEG, PNG, GIF, and PDF are allowed." },
         { status: 400 }
       );
     }
@@ -36,29 +36,40 @@ export async function POST(request: NextRequest) {
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    const uploadResponse = await new Promise<UploadApiResponse>((resolve, reject) => {
-      const stream = cloudinary.uploader.upload_stream(
-        {
-          upload_preset: process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET,
-          resource_type: "image",
-        },
-        (error, result) => {
-          if (error) {
-            console.error("Cloudinary upload error:", error);
-            reject(error);
-          } else if (result) {
-            resolve(result);
-          } else {
-            const errorMsg = "Upload completed without a valid response";
-            console.error(errorMsg);
-            reject(new Error(errorMsg));
-          }
-        }
-      );
-      stream.end(buffer);
-    });
+const uploadResponse = await new Promise<UploadApiResponse>((resolve, reject) => {
+  const stream = cloudinary.uploader.upload_stream(
+    {
+      upload_preset: process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET,
+      resource_type: "auto",
+      type: "authenticated", // Make sure this is set
+      // Remove any folder or public_id settings that might conflict
+    },
+    (error, result) => {
+      if (error) {
+        console.error("Cloudinary upload error:", error);
+        reject(error);
+      } else if (result) {
+        console.log("Upload successful:", {
+          public_id: result.public_id,
+          secure_url: result.secure_url,
+          type: result.type
+        });
+        resolve(result);
+      } else {
+        const errorMsg = "Upload completed without a valid response";
+        console.error(errorMsg);
+        reject(new Error(errorMsg));
+      }
+    }
+  );
+  stream.end(buffer);
+});
 
-    return NextResponse.json({ secure_url: uploadResponse.secure_url });
+    // Return the public_id instead of secure_url
+    return NextResponse.json({ 
+      public_id: uploadResponse.public_id,
+      resource_type: uploadResponse.resource_type
+    });
   } catch (error: any) {
     console.error("Upload process failed:", error);
     return NextResponse.json(

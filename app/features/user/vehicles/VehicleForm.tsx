@@ -172,6 +172,44 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel }: VehicleFo
   // Get today's date in YYYY-MM-DD format for date input min attribute
   const today = new Date().toISOString().split('T')[0];
 
+  // Function to generate signed URL
+  const generateSignedUrl = async (publicId: string, resourceType: string = 'image'): Promise<string> => {
+    const token = session?.user?.accessToken;
+    if (!token) {
+      throw new Error("Authentication required");
+    }
+
+    const response = await fetch("/api/signed-url", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        public_id: publicId,
+        resource_type: resourceType,
+        expiration: 3600, // 1 hour expiration
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to generate signed URL");
+    }
+
+    return data.signed_url;
+  };
+
+  // Function to generate signed URL for preview
+  const generateImagePreview = async (publicId: string): Promise<string> => {
+    try {
+      return await generateSignedUrl(publicId);
+    } catch (error) {
+      console.error("Failed to generate signed URL for preview:", error);
+      return "/placeholder.svg"; // Fallback image
+    }
+  };
+
   useEffect(() => {
     if (isEditMode) {
       const vehicle = vehicles.find((v) => v._id === vehicleId);
@@ -193,9 +231,24 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel }: VehicleFo
           insuranceImage: null,
           pollutionImage: null,
         });
-        setVehicleImagePreview(vehicle.vehicleImage || null);
-        setInsuranceImagePreview(vehicle.insurance?.image || null);
-        setPollutionImagePreview(vehicle.pollution?.image || null);
+
+        // Generate signed URLs for previews
+        const loadSignedPreviews = async () => {
+          if (vehicle.vehicleImage) {
+            const signedUrl = await generateImagePreview(vehicle.vehicleImage);
+            setVehicleImagePreview(signedUrl);
+          }
+          if (vehicle.insurance?.image) {
+            const signedUrl = await generateImagePreview(vehicle.insurance.image);
+            setInsuranceImagePreview(signedUrl);
+          }
+          if (vehicle.pollution?.image) {
+            const signedUrl = await generateImagePreview(vehicle.pollution.image);
+            setPollutionImagePreview(signedUrl);
+          }
+        };
+        
+        loadSignedPreviews();
       } else {
         setError("Vehicle not found");
       }
@@ -239,24 +292,31 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel }: VehicleFo
     if (status === "unauthenticated") {
       throw new Error("Authentication required. Please log in.");
     }
+    
     const formData = new FormData();
     formData.append("file", file);
     const token = session?.user?.accessToken;
+    
     if (!token) {
       throw new Error("Authentication required. Please log in.");
     }
-    const response = await fetch("/api/upload", {
+
+    // Upload file and get public_id
+    const uploadResponse = await fetch("/api/upload", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
       },
       body: formData,
     });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || "Upload failed");
+    
+    const uploadData = await uploadResponse.json();
+    if (!uploadResponse.ok) {
+      throw new Error(uploadData.error || "Upload failed");
     }
-    return data.secure_url;
+
+    // Return the public_id to store in database
+    return uploadData.public_id;
   };
 
   const handleSubmit = async (values: z.infer<typeof vehicleSchema>) => {
@@ -301,19 +361,24 @@ export default function VehicleForm({ vehicleId, onSubmit, onCancel }: VehicleFo
         seatCapacity: values.seatCapacity,
       };
 
-      // Handle file uploads
+      // Handle file uploads - store public_ids instead of URLs
       if (values.vehicleImage instanceof File) {
         payload.vehicleImage = await uploadFile(values.vehicleImage);
+      } else if (vehicleImagePreview && isEditMode) {
+        // If editing and image hasn't changed, keep the existing public_id
+        payload.vehicleImage = vehicleImagePreview; // This should be public_id now
       }
+
       if (values.insuranceImage instanceof File) {
         payload.insurance.image = await uploadFile(values.insuranceImage);
-      } else if (insuranceImagePreview && !isEditMode) {
-        payload.insurance.image = insuranceImagePreview;
+      } else if (insuranceImagePreview && isEditMode) {
+        payload.insurance.image = insuranceImagePreview; // This should be public_id now
       }
+
       if (values.pollutionImage instanceof File) {
         payload.pollution.image = await uploadFile(values.pollutionImage);
-      } else if (pollutionImagePreview && !isEditMode) {
-        payload.pollution.image = pollutionImagePreview;
+      } else if (pollutionImagePreview && isEditMode) {
+        payload.pollution.image = pollutionImagePreview; // This should be public_id now
       }
 
       if (isEditMode) {

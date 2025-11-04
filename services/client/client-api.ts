@@ -328,6 +328,16 @@ getSubscriptionPlans: ({ page = 1, limit = 10, search = '' }: { page?: number; l
     calculateRoute: (startPoint: string, endPoint: string) =>
       clientApi.api.post("/api/route", { startPoint, endPoint }).then((res) => res.data),
   },
+
+  images: {
+    getSignedUrl: (publicId: string, resourceType: string = 'image') =>
+      clientApi.api.post('/api/signed-url', {
+        public_id: publicId,
+        resource_type: resourceType,
+        expiration: 3600
+      }).then((res) => res.data),
+  },
+  
   admin: {
     auth: {
       login: (email: string, password: string) =>

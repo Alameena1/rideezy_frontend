@@ -1,4 +1,3 @@
-// UserIdVerification.tsx - UPDATED with secure document preview
 "use client";
 
 import { useState, useEffect } from "react";
@@ -62,8 +61,34 @@ interface DocumentPreview {
   };
 }
 
+// Helper function to check if a string is a public_id
+const isPublicId = (imageString: string): boolean => {
+  return !imageString.startsWith('http') && !imageString.includes('/') && imageString.length > 0;
+};
+
+// Function to generate signed URL
+const generateSignedUrl = async (publicId: string): Promise<string> => {
+  const response = await fetch("/api/signed-url", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      public_id: publicId,
+      expiration: 3600,
+    }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || "Failed to generate signed URL");
+  }
+  return data.signed_url;
+};
+
 export default function UserIdVerification() {
   const [users, setUsers] = useState<User[]>([]);
+  const [processedUsers, setProcessedUsers] = useState<User[]>([]);
   const [pagination, setPagination] = useState<PaginationData>({
     currentPage: 1,
     totalPages: 1,
@@ -125,6 +150,48 @@ export default function UserIdVerification() {
       setLoading(false);
     }
   };
+
+  // Process users to convert public_ids to signed URLs
+  useEffect(() => {
+    const processUserDocuments = async () => {
+      if (!users.length) {
+        setProcessedUsers([]);
+        return;
+      }
+
+      try {
+        const usersWithSignedUrls = await Promise.all(
+          users.map(async (user) => {
+            let signedDocumentUrl = user.govId?.documentUrl || "";
+            
+            if (user.govId?.documentUrl && isPublicId(user.govId.documentUrl)) {
+              try {
+                signedDocumentUrl = await generateSignedUrl(user.govId.documentUrl);
+              } catch (error) {
+                console.error("Failed to generate signed URL for gov ID document:", user.govId.documentUrl, error);
+                signedDocumentUrl = "/placeholder.svg";
+              }
+            }
+
+            return {
+              ...user,
+              govId: {
+                ...user.govId,
+                documentUrl: signedDocumentUrl
+              }
+            };
+          })
+        );
+
+        setProcessedUsers(usersWithSignedUrls);
+      } catch (error) {
+        console.error("Failed to process user documents:", error);
+        setProcessedUsers(users);
+      }
+    };
+
+    processUserDocuments();
+  }, [users]);
 
   useEffect(() => {
     fetchUsers(currentPage);
@@ -197,7 +264,7 @@ export default function UserIdVerification() {
 
   // Secure document preview handler
   const handleViewDocument = (user: User) => {
-    if (!user.govId?.documentUrl) {
+    if (!user.govId?.documentUrl || user.govId.documentUrl === "/placeholder.svg") {
       Swal.fire('Info', 'No document available to view.', 'info');
       return;
     }
@@ -347,10 +414,10 @@ export default function UserIdVerification() {
           onClick={() => handleViewDocument(user)}
           variant="outline"
           size="sm"
-          disabled={!user.govId?.documentUrl}
+          disabled={!user.govId?.documentUrl || user.govId.documentUrl === "/placeholder.svg"}
           className="bg-purple-600 text-white hover:bg-purple-700 border-purple-500 disabled:bg-gray-700 disabled:text-gray-400 disabled:border-gray-600"
         >
-          {user.govId?.documentUrl ? "View Document" : "No Document"}
+          {user.govId?.documentUrl && user.govId.documentUrl !== "/placeholder.svg" ? "View Document" : "No Document"}
         </Button>
       )
     },
@@ -430,25 +497,23 @@ export default function UserIdVerification() {
           </div>
         </div>
 
-
-<DataTable
-  columns={columns}
-  data={users}
-  loading={loading}
-  error={error}
-  emptyMessage="No users found for ID verification."
-  actions={renderActions}
-  pagination={{
-    currentPage: currentPage,
-    totalPages: pagination.totalPages,
-    totalItems: pagination.totalItems,
-    hasNext: pagination.hasNext,
-    hasPrev: pagination.hasPrev,
-    
-  }}
-  onPageChange= {handlePageChange}
-  keyField="_id"
-/>
+        <DataTable
+          columns={columns}
+          data={processedUsers}
+          loading={loading}
+          error={error}
+          emptyMessage="No users found for ID verification."
+          actions={renderActions}
+          pagination={{
+            currentPage: currentPage,
+            totalPages: pagination.totalPages,
+            totalItems: pagination.totalItems,
+            hasNext: pagination.hasNext,
+            hasPrev: pagination.hasPrev,
+          }}
+          onPageChange={handlePageChange}
+          keyField="_id"
+        />
 
         {/* Secure Document Preview Dialog */}
         <Dialog open={!!documentPreview} onOpenChange={() => setDocumentPreview(null)}>

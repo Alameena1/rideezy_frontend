@@ -82,8 +82,34 @@ interface DocumentPreview {
   };
 }
 
+// Helper function to check if a string is a public_id (not a full URL)
+const isPublicId = (imageString: string): boolean => {
+  return !imageString.startsWith('http') && !imageString.includes('/') && imageString.length > 0;
+};
+
+// Function to generate signed URL
+const generateSignedUrl = async (publicId: string): Promise<string> => {
+  const response = await fetch("/api/signed-url", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      public_id: publicId,
+      expiration: 3600,
+    }),
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || "Failed to generate signed URL");
+  }
+  return data.signed_url;
+};
+
 export default function VehicleVerification() {
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [processedVehicles, setProcessedVehicles] = useState<Vehicle[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [rejectionNote, setRejectionNote] = useState("");
@@ -171,6 +197,75 @@ export default function VehicleVerification() {
     }
   };
 
+  // Process vehicles to convert public_ids to signed URLs
+  useEffect(() => {
+    const processVehicleImages = async () => {
+      if (!vehicles.length) {
+        setProcessedVehicles([]);
+        return;
+      }
+
+      try {
+        const vehiclesWithSignedUrls = await Promise.all(
+          vehicles.map(async (vehicle) => {
+            // Process vehicle image
+            let vehicleImageUrl = vehicle.vehicleImage;
+            if (vehicle.vehicleImage && isPublicId(vehicle.vehicleImage)) {
+              try {
+                vehicleImageUrl = await generateSignedUrl(vehicle.vehicleImage);
+              } catch (error) {
+                console.error("Failed to generate signed URL for vehicle image:", vehicle.vehicleImage, error);
+                vehicleImageUrl = "/placeholder.svg";
+              }
+            }
+
+            // Process insurance image
+            let insuranceImageUrl = vehicle.insurance.image;
+            if (vehicle.insurance.image && isPublicId(vehicle.insurance.image)) {
+              try {
+                insuranceImageUrl = await generateSignedUrl(vehicle.insurance.image);
+              } catch (error) {
+                console.error("Failed to generate signed URL for insurance image:", vehicle.insurance.image, error);
+                insuranceImageUrl = "/placeholder.svg";
+              }
+            }
+
+            // Process pollution image
+            let pollutionImageUrl = vehicle.pollution.image;
+            if (vehicle.pollution.image && isPublicId(vehicle.pollution.image)) {
+              try {
+                pollutionImageUrl = await generateSignedUrl(vehicle.pollution.image);
+              } catch (error) {
+                console.error("Failed to generate signed URL for pollution image:", vehicle.pollution.image, error);
+                pollutionImageUrl = "/placeholder.svg";
+              }
+            }
+
+            return {
+              ...vehicle,
+              vehicleImage: vehicleImageUrl,
+              insurance: {
+                ...vehicle.insurance,
+                image: insuranceImageUrl
+              },
+              pollution: {
+                ...vehicle.pollution,
+                image: pollutionImageUrl
+              }
+            };
+          })
+        );
+
+        setProcessedVehicles(vehiclesWithSignedUrls);
+      } catch (error) {
+        console.error("Failed to process vehicle images:", error);
+        setProcessedVehicles(vehicles);
+      }
+    };
+
+    processVehicleImages();
+  }, [vehicles]);
+
   useEffect(() => {
     fetchVehicles();
   }, [page, limit, search, statusFilter, sortBy, sortOrder]);
@@ -255,7 +350,7 @@ export default function VehicleVerification() {
         break;
     }
     
-    if (!imageUrl) {
+    if (!imageUrl || imageUrl === "/placeholder.svg") {
       alert(`No ${title.toLowerCase()} available to view.`);
       return;
     }
@@ -450,7 +545,7 @@ export default function VehicleVerification() {
       header: "Documents",
       render: (_: any, vehicle: Vehicle) => (
         <div className="flex space-x-2">
-          {vehicle.vehicleImage && (
+          {vehicle.vehicleImage && vehicle.vehicleImage !== "/placeholder.svg" && (
             <Button
               onClick={() => handleViewDocument(vehicle, "vehicle")}
               variant="outline"
@@ -461,7 +556,7 @@ export default function VehicleVerification() {
               <Eye className="h-4 w-4" />
             </Button>
           )}
-          {vehicle.insurance.image && (
+          {vehicle.insurance.image && vehicle.insurance.image !== "/placeholder.svg" && (
             <Button
               onClick={() => handleViewDocument(vehicle, "insurance")}
               variant="outline"
@@ -472,7 +567,7 @@ export default function VehicleVerification() {
               <Shield className="h-4 w-4" />
             </Button>
           )}
-          {vehicle.pollution.image && (
+          {vehicle.pollution.image && vehicle.pollution.image !== "/placeholder.svg" && (
             <Button
               onClick={() => handleViewDocument(vehicle, "pollution")}
               variant="outline"
@@ -551,24 +646,22 @@ export default function VehicleVerification() {
           </div>
         </div>
         
-    
-<DataTable
-  columns={columns}
-  data={vehicles}
-  loading={loading}
-  error={error}
-  pagination={{
-    currentPage: page,
-    totalPages,
-    totalItems,
-    hasNext,
-    hasPrev,
-    
-  }}
-  onPageChange= {setPage}
-  emptyMessage="No vehicles found for verification."
-  actions={renderActions}
-/>
+        <DataTable
+          columns={columns}
+          data={processedVehicles} // Use processed vehicles with signed URLs
+          loading={loading}
+          error={error}
+          pagination={{
+            currentPage: page,
+            totalPages,
+            totalItems,
+            hasNext,
+            hasPrev,
+          }}
+          onPageChange={setPage}
+          emptyMessage="No vehicles found for verification."
+          actions={renderActions}
+        />
 
         {/* Secure Document Preview Dialog */}
         <Dialog open={!!documentPreview} onOpenChange={() => setDocumentPreview(null)}>
