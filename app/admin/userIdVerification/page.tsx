@@ -28,20 +28,26 @@ import {
   ZoomIn,
   ZoomOut,
   RotateCw,
+  User,
+  Mail,
+  Calendar,
 } from "lucide-react";
 import Swal from 'sweetalert2';
 
+// Define the actual user interface based on backend response
 interface User {
-  id: string;
+  _id?: string; // MongoDB _id field
+  id?: string; // Some APIs might use id instead of _id
   fullName: string;
   email: string;
-  govId: {
+  govId?: {
     idNumber: string;
     documentUrl: string;
     verificationStatus: "Pending" | "Verified" | "Rejected";
     rejectionNote?: string;
   };
   createdAt: string;
+  // Add other fields that might be present
 }
 
 interface PaginationData {
@@ -67,22 +73,50 @@ const isPublicId = (imageString: string): boolean => {
 
 // Function to generate signed URL
 const generateSignedUrl = async (publicId: string): Promise<string> => {
-  const response = await fetch("/api/signed-url", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      public_id: publicId,
-      expiration: 3600,
-    }),
-  });
+  try {
+    const response = await fetch("/api/signed-url", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        public_id: publicId,
+        expiration: 3600,
+      }),
+    });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error || "Failed to generate signed URL");
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || "Failed to generate signed URL");
+    }
+
+    const data = await response.json();
+    return data.signed_url;
+  } catch (error) {
+    console.error("❌ Failed to generate signed URL:", error);
+    throw error;
   }
-  return data.signed_url;
+};
+
+// Get the actual user ID from user object (handles both _id and id fields)
+const getUserId = (user: User): string => {
+  // Try _id first (MongoDB default), then id, then generate fallback
+  return user._id || user.id || `unknown-${Math.random().toString(36).substr(2, 9)}`;
+};
+
+// Validation function for user ID
+const isValidUserId = (userId: string): boolean => {
+  // Allow both MongoDB ObjectId format and our fallback format
+  if (userId.startsWith('unknown-')) {
+    return true; // Our fallback IDs are considered valid for UI purposes
+  }
+  return !!(userId && userId.trim() !== '' && userId.match(/^[0-9a-fA-F]{24}$/));
+};
+
+// Safe substring function
+const safeSubstring = (str: string | undefined | null, start: number, end?: number): string => {
+  if (!str) return "N/A";
+  return str.substring(start, end);
 };
 
 export default function UserIdVerification() {
@@ -114,10 +148,13 @@ export default function UserIdVerification() {
   const [rejectionNote, setRejectionNote] = useState("");
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
   const [showRejectionModal, setShowRejectionModal] = useState(false);
+  const [processingUser, setProcessingUser] = useState<string | null>(null);
 
   const fetchUsers = async (page: number = 1) => {
     try {
       setLoading(true);
+      setError(null);
+      
       const params = {
         page,
         limit,
@@ -133,10 +170,40 @@ export default function UserIdVerification() {
       console.log("📥 Fetched users response:", response);
       
       if (response && response.success && Array.isArray(response.data)) {
-        setUsers(response.data);
+        // Log the raw data structure to understand what we're getting
+        console.log("🔍 Raw user data sample:", response.data[0]);
+        
+        // Process users to ensure consistent structure
+        const validatedUsers = response.data.map((user: any) => {
+          const userId = user._id || user.id;
+          console.log(`👤 Processing user:`, { 
+            _id: user._id, 
+            id: user.id, 
+            fullName: user.fullName,
+            hasGovId: !!user.govId 
+          });
+          
+          return {
+            ...user,
+            _id: user._id,
+            id: user.id,
+            fullName: user.fullName || "Unknown User",
+            email: user.email || "No email",
+            govId: user.govId ? {
+              idNumber: user.govId.idNumber || "N/A",
+              documentUrl: user.govId.documentUrl || "",
+              verificationStatus: user.govId.verificationStatus || "Pending",
+              rejectionNote: user.govId.rejectionNote || "",
+            } : undefined,
+            createdAt: user.createdAt || new Date().toISOString(),
+          };
+        });
+        
+        setUsers(validatedUsers);
         setPagination(response.pagination);
+        
       } else {
-        console.error("Unexpected response format:", response);
+        console.error("❌ Unexpected response format:", response);
         setError("Invalid response format from server");
         setUsers([]);
       }
@@ -161,30 +228,33 @@ export default function UserIdVerification() {
       try {
         const usersWithSignedUrls = await Promise.all(
           users.map(async (user) => {
+            const userId = getUserId(user);
             let signedDocumentUrl = user.govId?.documentUrl || "";
             
             if (user.govId?.documentUrl && isPublicId(user.govId.documentUrl)) {
               try {
+                console.log(`🔄 Generating signed URL for user ${userId}`);
                 signedDocumentUrl = await generateSignedUrl(user.govId.documentUrl);
+                console.log(`✅ Signed URL generated for user ${userId}`);
               } catch (error) {
-                console.error("Failed to generate signed URL for gov ID document:", user.govId.documentUrl, error);
+                console.error(`❌ Failed to generate signed URL for user ${userId}:`, error);
                 signedDocumentUrl = "/placeholder.svg";
               }
             }
 
             return {
               ...user,
-              govId: {
+              govId: user.govId ? {
                 ...user.govId,
                 documentUrl: signedDocumentUrl
-              }
+              } : undefined
             };
           })
         );
 
         setProcessedUsers(usersWithSignedUrls);
       } catch (error) {
-        console.error("Failed to process user documents:", error);
+        console.error("❌ Failed to process user documents:", error);
         setProcessedUsers(users);
       }
     };
@@ -220,50 +290,110 @@ export default function UserIdVerification() {
     setCurrentPage(1);
   };
 
-  const handleApproveUser = async (userId: string) => {
+  const handleApproveUser = async (user: User) => {
+    const userId = getUserId(user);
     try {
+      console.log("🟢 Approving user ID:", userId, "User object:", user);
+      
+      // For fallback IDs, we can't make the API call
+      if (userId.startsWith('unknown-')) {
+        const errorMsg = "Cannot process user: Invalid user ID received from server";
+        console.error("❌", errorMsg, user);
+        Swal.fire('Error!', errorMsg, 'error');
+        return;
+      }
+
+      setProcessingUser(userId);
+      
       await apiService.user.verifyGovId(userId, "Verified");
-      Swal.fire('Success!', 'User ID verified successfully.', 'success');
+      
+      Swal.fire({
+        title: 'Success!',
+        text: 'User ID verified successfully.',
+        icon: 'success',
+        timer: 2000,
+        showConfirmButton: false
+      });
+      
       fetchUsers(currentPage);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to approve user ID";
-      console.error("Approve user ID failed:", err);
+      console.error("❌ Approve user ID failed:", err);
       setError(errorMessage);
       Swal.fire('Error!', errorMessage, 'error');
+    } finally {
+      setProcessingUser(null);
     }
   };
 
-  const openRejectionModal = (userId: string) => {
+  const openRejectionModal = (user: User) => {
+    const userId = getUserId(user);
+    console.log("🔴 Opening rejection modal for user:", userId);
+    
+    // For fallback IDs, we can't make the API call
+    if (userId.startsWith('unknown-')) {
+      const errorMsg = "Cannot process user: Invalid user ID received from server";
+      console.error("❌", errorMsg, user);
+      Swal.fire('Error!', errorMsg, 'error');
+      return;
+    }
+    
     setSelectedUser(userId);
     setRejectionNote("");
     setShowRejectionModal(true);
   };
 
   const handleRejectUser = async () => {
-    if (!selectedUser || !rejectionNote.trim()) {
-      setError("Rejection reason is required");
+    if (!selectedUser) {
+      const errorMsg = "No user selected for rejection";
+      console.error("❌", errorMsg);
+      Swal.fire('Error!', errorMsg, 'error');
+      return;
+    }
+
+    if (!rejectionNote.trim()) {
+      const errorMsg = "Rejection reason is required";
+      console.error("❌", errorMsg);
       Swal.fire('Error!', 'Please provide a rejection reason.', 'error');
       return;
     }
 
     try {
+      console.log("🔴 Rejecting user ID:", selectedUser, "Reason:", rejectionNote);
+      setProcessingUser(selectedUser);
+      
       await apiService.user.verifyGovId(selectedUser, "Rejected", rejectionNote);
+      
       setShowRejectionModal(false);
       setSelectedUser(null);
       setRejectionNote("");
-      Swal.fire('Success!', 'User ID rejected successfully.', 'success');
+      
+      Swal.fire({
+        title: 'Success!',
+        text: 'User ID rejected successfully.',
+        icon: 'success',
+        timer: 2000,
+        showConfirmButton: false
+      });
+      
       fetchUsers(currentPage);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to reject user ID";
-      console.error("Reject user ID failed:", err);
+      console.error("❌ Reject user ID failed:", err);
       setError(errorMessage);
       Swal.fire('Error!', errorMessage, 'error');
+    } finally {
+      setProcessingUser(null);
     }
   };
 
   // Secure document preview handler
   const handleViewDocument = (user: User) => {
+    const userId = getUserId(user);
+    console.log("📄 Viewing document for user:", userId);
+    
     if (!user.govId?.documentUrl || user.govId.documentUrl === "/placeholder.svg") {
+      console.warn("⚠️ No document available for user:", userId);
       Swal.fire('Info', 'No document available to view.', 'info');
       return;
     }
@@ -284,7 +414,13 @@ export default function UserIdVerification() {
     if (!documentPreview) return;
 
     try {
+      console.log("📥 Downloading document:", documentPreview.url);
+      
       const response = await fetch(documentPreview.url);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const blob = await response.blob();
       
       // Create download link
@@ -301,9 +437,10 @@ export default function UserIdVerification() {
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
       
+      console.log("✅ Document downloaded successfully");
       Swal.fire('Success!', 'Document downloaded successfully.', 'success');
     } catch (error) {
-      console.error('Download failed:', error);
+      console.error('❌ Download failed:', error);
       Swal.fire('Error!', 'Failed to download document.', 'error');
     }
   };
@@ -335,7 +472,13 @@ export default function UserIdVerification() {
   const formatDate = (dateString: string) => {
     if (!dateString) return "N/A";
     try {
-      return new Date(dateString).toLocaleDateString();
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
     } catch {
       return "Invalid Date";
     }
@@ -345,20 +488,29 @@ export default function UserIdVerification() {
     switch (status) {
       case "Verified":
         return (
-          <Badge variant="outline" className="bg-blue-500/20 text-blue-400 border-blue-500">
-            ✓ Verified
+          <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500">
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+              Verified
+            </div>
           </Badge>
         );
       case "Rejected":
         return (
           <Badge variant="outline" className="bg-red-500/20 text-red-400 border-red-500">
-            ✗ Rejected
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 bg-red-400 rounded-full"></div>
+              Rejected
+            </div>
           </Badge>
         );
       default:
         return (
-          <Badge variant="outline" className="bg-orange-500/20 text-orange-400 border-orange-500">
-            ⏳ Pending
+          <Badge variant="outline" className="bg-yellow-500/20 text-yellow-400 border-yellow-500">
+            <div className="flex items-center gap-1">
+              <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
+              Pending
+            </div>
           </Badge>
         );
     }
@@ -371,28 +523,47 @@ export default function UserIdVerification() {
         <Button
           variant="ghost"
           onClick={() => handleSort("fullName")}
-          className="flex items-center space-x-1 p-0 hover:bg-transparent text-gray-300"
+          className="flex items-center space-x-1 p-0 hover:bg-transparent text-gray-300 font-semibold"
         >
+          <User className="h-4 w-4" />
           <span>Name</span>
-          <ArrowUpDown className="h-4 w-4" />
+          <ArrowUpDown className="h-3 w-3" />
         </Button>
       ),
-      render: (fullName: string) => (
-        <span className="font-medium text-white">{fullName}</span>
-      )
+      render: (fullName: string, user: User) => {
+        const userId = getUserId(user);
+        return (
+          <div>
+            <span className="font-medium text-white block">{fullName || "Unknown User"}</span>
+            <span className="text-xs text-gray-400">
+              ID: {safeSubstring(userId, 0, 8)}...
+              {userId.startsWith('unknown-') && (
+                <span className="text-red-400 ml-1">(Invalid ID)</span>
+              )}
+            </span>
+          </div>
+        );
+      }
     },
     { 
       key: "email", 
-      header: "Email",
+      header: () => (
+        <div className="flex items-center space-x-1 text-gray-300 font-semibold">
+          <Mail className="h-4 w-4" />
+          <span>Email</span>
+        </div>
+      ),
       render: (email: string) => (
-        <span className="text-gray-300">{email}</span>
+        <span className="text-gray-300 text-sm">{email || "No email"}</span>
       )
     },
     { 
       key: "govId.idNumber", 
       header: "ID Number",
       render: (idNumber: string, user: User) => (
-        <span className="font-mono text-blue-300">{user.govId?.idNumber || "N/A"}</span>
+        <div className="font-mono text-blue-300 bg-blue-500/10 px-2 py-1 rounded text-xs">
+          {user.govId?.idNumber || "N/A"}
+        </div>
       )
     },
     { 
@@ -401,13 +572,18 @@ export default function UserIdVerification() {
         <Button
           variant="ghost"
           onClick={() => handleSort("createdAt")}
-          className="flex items-center space-x-1 p-0 hover:bg-transparent text-gray-300"
+          className="flex items-center space-x-1 p-0 hover:bg-transparent text-gray-300 font-semibold"
         >
+          <Calendar className="h-4 w-4" />
           <span>Submitted On</span>
-          <ArrowUpDown className="h-4 w-4" />
+          <ArrowUpDown className="h-3 w-3" />
         </Button>
       ),
-      render: (createdAt: string) => formatDate(createdAt)
+      render: (createdAt: string) => (
+        <div className="text-gray-300 text-sm">
+          {formatDate(createdAt)}
+        </div>
+      )
     },
     { 
       key: "govId.verificationStatus", 
@@ -423,7 +599,7 @@ export default function UserIdVerification() {
           variant="outline"
           size="sm"
           disabled={!user.govId?.documentUrl || user.govId.documentUrl === "/placeholder.svg"}
-          className="bg-purple-600 text-white hover:bg-purple-700 border-purple-500 disabled:bg-gray-700 disabled:text-gray-400 disabled:border-gray-600"
+          className="bg-purple-600 text-white hover:bg-purple-700 border-purple-500 disabled:bg-gray-700 disabled:text-gray-400 disabled:border-gray-600 text-xs"
         >
           {user.govId?.documentUrl && user.govId.documentUrl !== "/placeholder.svg" ? "View Document" : "No Document"}
         </Button>
@@ -432,26 +608,36 @@ export default function UserIdVerification() {
   ];
 
   const renderActions = (user: User) => {
+    const userId = getUserId(user);
+    console.log("🔧 Rendering actions for user:", userId, user.fullName);
+    
     const status = user.govId?.verificationStatus || "Pending";
     
     if (status === "Pending") {
+      const isProcessing = processingUser === userId;
+      const hasValidId = !userId.startsWith('unknown-');
+      
       return (
         <div className="flex space-x-2">
           <Button
-            onClick={() => handleApproveUser(user.id)}
+            onClick={() => handleApproveUser(user)}
             variant="default"
             size="sm"
-            className="bg-green-600 text-white hover:bg-green-700 border-green-500"
+            disabled={isProcessing || !hasValidId}
+            className="bg-green-600 text-white hover:bg-green-700 border-green-500 disabled:bg-gray-600 disabled:opacity-50 text-xs"
+            title={!hasValidId ? "Cannot approve: Invalid user ID" : ""}
           >
-            Approve
+            {isProcessing ? "Processing..." : "Approve"}
           </Button>
           <Button
-            onClick={() => openRejectionModal(user.id)}
+            onClick={() => openRejectionModal(user)}
             variant="destructive"
             size="sm"
-            className="bg-red-600 hover:bg-red-700 border-red-500"
+            disabled={isProcessing || !hasValidId}
+            className="bg-red-600 hover:bg-red-700 border-red-500 disabled:bg-gray-600 disabled:opacity-50 text-xs"
+            title={!hasValidId ? "Cannot reject: Invalid user ID" : ""}
           >
-            Reject
+            {isProcessing ? "Processing..." : "Reject"}
           </Button>
         </div>
       );
@@ -459,9 +645,13 @@ export default function UserIdVerification() {
     
     return (
       <div className="text-sm text-gray-400 px-2">
-        {status === "Verified" ? "Already Verified" : "Rejected"}
+        {status === "Verified" ? "✅ Verified" : "❌ Rejected"}
       </div>
     );
+  };
+
+  const handleRetry = () => {
+    fetchUsers(currentPage);
   };
 
   return (
@@ -472,10 +662,33 @@ export default function UserIdVerification() {
             <h1 className="text-3xl font-bold text-white">User ID Verification Management</h1>
             <p className="text-gray-400">Verify and manage user government ID documents</p>
           </div>
-          <div className="text-sm text-gray-400">
-            Total: {pagination.totalItems} users
+          <div className="flex items-center gap-4">
+            <div className="text-sm text-gray-400">
+              Total: {pagination.totalItems} users
+            </div>
+            <Button
+              onClick={handleRetry}
+              variant="outline"
+              size="sm"
+              className="bg-gray-800 border-gray-600 text-white hover:bg-gray-700"
+            >
+              <RotateCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
           </div>
         </div>
+
+        {/* Data Quality Warning */}
+        {processedUsers.some(user => getUserId(user).startsWith('unknown-')) && (
+          <div className="mb-4 p-4 bg-yellow-500/20 border border-yellow-500 rounded-lg">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+              <span className="text-yellow-400">
+                Warning: Some users have invalid IDs and cannot be processed. This indicates a data issue with the backend API.
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Enhanced Search and Filter Controls */}
         <div className="flex flex-col sm:flex-row gap-4 mb-6">
@@ -505,6 +718,26 @@ export default function UserIdVerification() {
           </div>
         </div>
 
+        {/* Error Display */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-500/20 border border-red-500 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                <span className="text-red-400">{error}</span>
+              </div>
+              <Button
+                onClick={handleRetry}
+                variant="outline"
+                size="sm"
+                className="bg-red-500/20 border-red-500 text-red-400 hover:bg-red-500/30"
+              >
+                Retry
+              </Button>
+            </div>
+          </div>
+        )}
+
         <DataTable
           columns={columns}
           data={processedUsers}
@@ -520,7 +753,7 @@ export default function UserIdVerification() {
             hasPrev: pagination.hasPrev,
           }}
           onPageChange={handlePageChange}
-          keyField="id"
+          keyField={(user: User) => getUserId(user)}
         />
 
         {/* Secure Document Preview Dialog */}
@@ -528,10 +761,13 @@ export default function UserIdVerification() {
           <DialogContent className="max-w-4xl max-h-[90vh] bg-gray-800 border-gray-600">
             <DialogHeader>
               <DialogTitle className="text-white flex items-center justify-between">
-                <div>
-                  ID Document Preview - {documentPreview?.user.fullName}
-                  <div className="text-sm text-gray-400 mt-1">
-                    ID Number: {documentPreview?.user.idNumber}
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                  <div>
+                    ID Document Preview - {documentPreview?.user.fullName}
+                    <div className="text-sm text-gray-400 mt-1">
+                      ID Number: {documentPreview?.user.idNumber}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -611,6 +847,10 @@ export default function UserIdVerification() {
                     style={{
                       transform: `scale(${zoom}) rotate(${rotation}deg)`,
                     }}
+                    onError={(e) => {
+                      console.error("❌ Failed to load document image");
+                      e.currentTarget.src = "/placeholder.svg";
+                    }}
                   />
                 )}
               </div>
@@ -622,12 +862,15 @@ export default function UserIdVerification() {
         {showRejectionModal && (
           <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
             <div className="bg-gray-800 p-6 rounded-lg w-full max-w-md border border-gray-600">
-              <h3 className="text-xl font-semibold text-white mb-4">Rejection Reason</h3>
+              <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
+                <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                Rejection Reason
+              </h3>
               <p className="text-gray-300 mb-4">
                 Please provide a reason why this user ID verification is being rejected:
               </p>
               <textarea
-                className="w-full p-3 bg-gray-700 text-white rounded border border-gray-600 focus:outline-none focus:border-blue-500"
+                className="w-full p-3 bg-gray-700 text-white rounded border border-gray-600 focus:outline-none focus:border-red-500"
                 rows={4}
                 placeholder="Enter rejection reason..."
                 value={rejectionNote}
@@ -638,6 +881,7 @@ export default function UserIdVerification() {
                   variant="outline"
                   onClick={() => setShowRejectionModal(false)}
                   className="bg-gray-700 text-white border-gray-600 hover:bg-gray-600"
+                  disabled={!!processingUser}
                 >
                   Cancel
                 </Button>
@@ -645,8 +889,9 @@ export default function UserIdVerification() {
                   onClick={handleRejectUser}
                   variant="destructive"
                   className="bg-red-600 hover:bg-red-700 border-red-500"
+                  disabled={!!processingUser || !rejectionNote.trim()}
                 >
-                  Reject User ID
+                  {processingUser ? "Processing..." : "Reject User ID"}
                 </Button>
               </div>
             </div>

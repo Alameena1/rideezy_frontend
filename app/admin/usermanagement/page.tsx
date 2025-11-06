@@ -62,6 +62,8 @@ export default function UserManagement() {
   const fetchUsers = async () => {
     try {
       setLoading(true);
+      setError(null);
+      
       const params: any = {
         page,
         limit,
@@ -74,20 +76,40 @@ export default function UserManagement() {
         params.status = statusFilter;
       }
 
+      console.log("📡 Fetching users with params:", params);
       const response: PaginatedResponse = await apiService.user.getUsers(params);
       
-      const mappedUsers: User[] = response.data.map((user: any) => ({
-        id: user.id,
-        fullName: user.fullName,
-        email: user.email,
-        phoneNumber: user.phoneNumber || "N/A",
-        totalRides: user.totalRides || 0,
-        registrationDate: user.createdAt,
-        status: user.status,
-        isSubscribed: user.isSubscribed || false,
-        govIdStatus: user.govIdStatus || "Pending",
-        hasOngoingRides: user.hasOngoingRides || false,
-      }));
+      if (!response.success) {
+        throw new Error("Failed to fetch users");
+      }
+
+      // FIX: Enhanced validation for user data with proper ID handling
+      const mappedUsers: User[] = response.data
+        .map((user: any) => {
+          // Handle both id and _id fields from backend
+          const userId = user.id || user._id || '';
+          
+          if (!userId) {
+            console.warn("⚠️ User without ID found:", user);
+            return null;
+          }
+
+          return {
+            id: userId,
+            fullName: user.fullName || 'Unknown User',
+            email: user.email || 'No email',
+            phoneNumber: user.phoneNumber || "N/A",
+            totalRides: user.totalRides || 0,
+            registrationDate: user.createdAt || user.registrationDate || new Date().toISOString(),
+            status: user.status || "Active",
+            isSubscribed: user.isSubscribed || false,
+            govIdStatus: user.govIdStatus || user.govId?.status || "Pending",
+            hasOngoingRides: user.hasOngoingRides || false,
+          };
+        })
+        .filter((user): user is User => user !== null); // Type guard to filter out nulls
+
+      console.log("✅ Mapped users:", mappedUsers);
       
       setUsers(mappedUsers);
       setTotalPages(response.pagination.totalPages);
@@ -96,8 +118,17 @@ export default function UserManagement() {
       setHasPrev(response.pagination.hasPrev);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to fetch users";
-      console.error("Fetch users failed:", err);
+      console.error("❌ Fetch users failed:", err);
       setError(errorMessage);
+      
+      // Show error to user
+      Swal.fire({
+        title: 'Error!',
+        text: errorMessage,
+        icon: 'error',
+        confirmButtonText: 'OK',
+        confirmButtonColor: '#d33',
+      });
     } finally {
       setLoading(false);
     }
@@ -109,10 +140,24 @@ export default function UserManagement() {
 
   const checkOngoingRides = async (userId: string): Promise<OngoingRidesResponse> => {
     try {
+      // FIX: Enhanced validation for userId
+      if (!userId || userId === 'undefined' || userId === 'null') {
+        console.error("❌ Invalid user ID for ongoing rides check:", userId);
+        return {
+          success: false,
+          hasOngoingRides: false,
+          ongoingRides: [],
+          message: "Invalid user ID",
+          length: 0
+        };
+      }
+
+      console.log("🔍 Checking ongoing rides for user:", userId);
       const response = await apiService.user.checkUserOngoingRides(userId);
+      console.log("📊 Ongoing rides check result:", response);
       return response;
     } catch (error) {
-      console.error("Error checking ongoing rides:", error);
+      console.error("❌ Error checking ongoing rides:", error);
       return {
         success: false,
         hasOngoingRides: false,
@@ -124,26 +169,46 @@ export default function UserManagement() {
   };
 
   const handleToggleStatus = async (user: User) => {
+    // FIX: Comprehensive validation for user ID
+    if (!user.id || user.id === 'undefined' || user.id === 'null') {
+      console.error("❌ User ID is invalid:", user);
+      await Swal.fire({
+        title: 'Error!',
+        text: 'Invalid user data. Please refresh the page and try again.',
+        icon: 'error',
+        confirmButtonText: 'OK',
+        confirmButtonColor: '#d33',
+      });
+      return;
+    }
+
     if (blockingUser === user.id) return;
     
     try {
       setBlockingUser(user.id);
       
       if (user.status === "Active") {
+        console.log("🔄 Checking ongoing rides before blocking user:", user.id);
         const ongoingRidesCheck = await checkOngoingRides(user.id);
         
         if (ongoingRidesCheck.hasOngoingRides && ongoingRidesCheck.ongoingRides.length > 0) {
-          const rideDetails = ongoingRidesCheck.ongoingRides.map((ride, index) => 
-            `• Ride ${index + 1}: ${ride.startPlaceName} to ${ride.endPlaceName} (${ride.status})`
-          ).join('\n');
+          const rideDetails = ongoingRidesCheck.ongoingRides
+            .slice(0, 5) // Limit to 5 rides to avoid huge modal
+            .map((ride, index) => 
+              `• Ride ${index + 1}: ${ride.startPlaceName || 'Unknown'} to ${ride.endPlaceName || 'Unknown'} (${ride.status || 'Unknown'})`
+            )
+            .join('\n');
+          
+          const remainingRides = Math.max(0, ongoingRidesCheck.ongoingRides.length - 5);
+          const remainingText = remainingRides > 0 ? `\n\n...and ${remainingRides} more ride(s)` : '';
           
           await Swal.fire({
             title: 'Cannot Block User',
             html: `
               <div class="text-left">
                 <p class="mb-3"><strong>${user.fullName}</strong> has ${ongoingRidesCheck.ongoingRides.length} ongoing ride(s):</p>
-                <div class="bg-gray-100 p-3 rounded text-sm mb-4 max-h-32 overflow-y-auto">
-                  ${rideDetails}
+                <div class="bg-gray-100 p-3 rounded text-sm mb-4 max-h-32 overflow-y-auto font-mono text-xs">
+                  ${rideDetails}${remainingText}
                 </div>
                 <p class="text-orange-600 font-semibold text-sm">
                   ❌ User cannot be blocked while they have ongoing rides.<br/>
@@ -168,16 +233,23 @@ export default function UserManagement() {
       const action = user.status === "Active" ? "block" : "activate";
       const actionText = user.status === "Active" ? "Block" : "Activate";
       const confirmColor = user.status === "Active" ? "#d33" : "#3085d6";
+      const statusText = user.status === "Active" ? "blocked" : "activated";
       
       const result = await Swal.fire({
         title: `${actionText} User?`,
-        text: `Are you sure you want to ${action} ${user.fullName}?`,
+        html: `
+          <div class="text-left">
+            <p>Are you sure you want to ${action} <strong>${user.fullName}</strong>?</p>
+            <p class="text-sm text-gray-600">Email: ${user.email}</p>
+          </div>
+        `,
         icon: 'question',
         showCancelButton: true,
         confirmButtonText: `Yes, ${actionText}`,
         cancelButtonText: 'Cancel',
         confirmButtonColor: confirmColor,
-        cancelButtonColor: user.status === "Active" ? '#3085d6' : '#d33',
+        cancelButtonColor: '#6b7280',
+        focusCancel: true
       });
       
       if (!result.isConfirmed) {
@@ -186,31 +258,64 @@ export default function UserManagement() {
       }
       
       const newStatus = user.status === "Active" ? "Blocked" : "Active";
+      
+      console.log("🔄 Updating user status:", { 
+        userId: user.id, 
+        userName: user.fullName,
+        oldStatus: user.status, 
+        newStatus 
+      });
+      
       await apiService.user.toggleUserStatus(user.id, newStatus);
       
-      setUsers(users.map((u) => (u.id === user.id ? { ...u, status: newStatus } : u)));
+      // Update local state
+      setUsers(prevUsers => 
+        prevUsers.map((u) => 
+          u.id === user.id ? { ...u, status: newStatus } : u
+        )
+      );
       
-      Swal.fire({
+      await Swal.fire({
         title: 'Success!',
-        text: `User ${user.fullName} has been ${newStatus === "Blocked" ? "blocked" : "activated"}`,
+        html: `
+          <div class="text-left">
+            <p>User <strong>${user.fullName}</strong> has been ${statusText} successfully.</p>
+            <p class="text-sm text-gray-600 mt-2">Status changed from <span class="font-semibold">${user.status}</span> to <span class="font-semibold">${newStatus}</span></p>
+          </div>
+        `,
         icon: 'success',
         confirmButtonText: 'OK',
         confirmButtonColor: '#3085d6',
       });
       
     } catch (err: any) {
-      const errorMessage = err.response?.data?.message || err.message || "Failed to update user status";
-      console.error("Toggle status failed:", err);
+      console.error("❌ Toggle status failed:", err);
       
-      Swal.fire({
+      let errorMessage = "Failed to update user status";
+      if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      await Swal.fire({
         title: 'Error!',
-        text: errorMessage,
+        html: `
+          <div class="text-left">
+            <p>${errorMessage}</p>
+            <p class="text-sm text-gray-600 mt-2">User: ${user.fullName}</p>
+            <p class="text-sm text-gray-600">ID: ${user.id}</p>
+          </div>
+        `,
         icon: 'error',
         confirmButtonText: 'OK',
         confirmButtonColor: '#d33',
       });
       
       setError(errorMessage);
+      
+      // Refresh users to get current state
+      fetchUsers();
     } finally {
       setBlockingUser(null);
     }
@@ -239,34 +344,41 @@ export default function UserManagement() {
   const formatDate = (dateString: string) => {
     if (!dateString) return "N/A";
     try {
-      return new Date(dateString).toLocaleDateString();
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
     } catch {
       return "Invalid Date";
     }
   };
 
   const renderStatus = (status: string) => {
-    const color = status === "Active" ? "text-green-500" : "text-red-500";
+    const color = status === "Active" 
+      ? "text-green-500 bg-green-500/20 px-2 py-1 rounded text-xs font-medium" 
+      : "text-red-500 bg-red-500/20 px-2 py-1 rounded text-xs font-medium";
     return <span className={color}>{status}</span>;
   };
 
   const renderGovtIdStatus = (status: string) => {
     const color =
-      status === "Verified" ? "text-blue-500" : 
-      status === "Pending" ? "text-orange-500" : "text-red-500";
+      status === "Verified" ? "text-blue-500 bg-blue-500/20 px-2 py-1 rounded text-xs font-medium" : 
+      status === "Pending" ? "text-orange-500 bg-orange-500/20 px-2 py-1 rounded text-xs font-medium" : 
+      "text-red-500 bg-red-500/20 px-2 py-1 rounded text-xs font-medium";
     return <span className={color}>{status}</span>;
   };
 
   const renderOngoingRides = (hasOngoingRides: boolean) => {
     if (hasOngoingRides) {
       return (
-        <Badge variant="outline" className="bg-orange-500/20 text-orange-400 border-orange-500">
+        <Badge variant="outline" className="bg-orange-500/20 text-orange-400 border-orange-500 text-xs">
           Yes
         </Badge>
       );
     }
     return (
-      <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500">
+      <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500 text-xs">
         No
       </Badge>
     );
@@ -274,11 +386,11 @@ export default function UserManagement() {
 
   const renderSubscribed = (subscribed: boolean) => {
     return subscribed ? (
-      <Badge variant="outline" className="bg-blue-500/20 text-blue-400 border-blue-500">
+      <Badge variant="outline" className="bg-blue-500/20 text-blue-400 border-blue-500 text-xs">
         Subscribed
       </Badge>
     ) : (
-      <Badge variant="outline" className="bg-gray-500/20 text-gray-400 border-gray-500">
+      <Badge variant="outline" className="bg-gray-500/20 text-gray-400 border-gray-500 text-xs">
         Not Subscribed
       </Badge>
     );
@@ -291,7 +403,7 @@ export default function UserManagement() {
         <Button
           variant="ghost"
           onClick={() => handleSort("fullName")}
-          className="flex items-center space-x-1 p-0 hover:bg-transparent text-gray-300"
+          className="flex items-center space-x-1 p-0 hover:bg-transparent text-gray-300 font-semibold"
         >
           <span>Name</span>
           <ArrowUpDown className="h-4 w-4" />
@@ -299,10 +411,26 @@ export default function UserManagement() {
       ),
       render: (name: string) => <span className="text-gray-300 font-medium">{name}</span>
     },
-    { key: "email", header: "Email", render: (email: string) => <span className="text-gray-300">{email}</span> },
-    { key: "phoneNumber", header: "Phone", render: (phone: string) => <span className="text-gray-300">{phone}</span> },
-    { key: "totalRides", header: "Total Rides", render: (totalRides: number) => <span className="text-gray-300">{totalRides}</span> },
-    { key: "registrationDate", header: "Registration Date", render: (date: string) => <span className="text-gray-300">{formatDate(date)}</span> },
+    { 
+      key: "email", 
+      header: "Email", 
+      render: (email: string) => <span className="text-gray-300 text-sm">{email}</span> 
+    },
+    { 
+      key: "phoneNumber", 
+      header: "Phone", 
+      render: (phone: string) => <span className="text-gray-300 text-sm">{phone}</span> 
+    },
+    { 
+      key: "totalRides", 
+      header: "Total Rides", 
+      render: (totalRides: number) => <span className="text-gray-300 font-medium">{totalRides}</span> 
+    },
+    { 
+      key: "registrationDate", 
+      header: "Registration Date", 
+      render: (date: string) => <span className="text-gray-300 text-sm">{formatDate(date)}</span> 
+    },
     { 
       key: "status", 
       header: "Status",
@@ -325,27 +453,60 @@ export default function UserManagement() {
     },
   ];
 
-  const renderActions = (user: User) => (
-    <Button
-      onClick={() => handleToggleStatus(user)}
-      variant={user.status === "Active" ? "destructive" : "default"}
-      size="sm"
-      disabled={blockingUser === user.id || (user.status === "Active" && user.hasOngoingRides)}
-      title={user.status === "Active" && user.hasOngoingRides ? "Cannot block user with ongoing rides" : ""}
-      className={user.status === "Active" ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"}
-    >
-      {blockingUser === user.id ? "Processing..." : user.status === "Active" ? "Block" : "Activate"}
-    </Button>
-  );
+  const renderActions = (user: User) => {
+    const isInvalidUser = !user.id || user.id === 'undefined' || user.id === 'null';
+    const isBlocking = blockingUser === user.id;
+    const hasOngoingRidesBlock = user.status === "Active" && user.hasOngoingRides;
+    
+    return (
+      <Button
+        onClick={() => handleToggleStatus(user)}
+        variant={user.status === "Active" ? "destructive" : "default"}
+        size="sm"
+        disabled={isBlocking || hasOngoingRidesBlock || isInvalidUser}
+        title={
+          isInvalidUser ? "Invalid user data" :
+          hasOngoingRidesBlock ? "Cannot block user with ongoing rides" :
+          user.status === "Active" ? "Block user" : "Activate user"
+        }
+        className={`
+          text-xs font-medium
+          ${user.status === "Active" 
+            ? "bg-red-600 hover:bg-red-700 text-white" 
+            : "bg-green-600 hover:bg-green-700 text-white"
+          }
+          ${isInvalidUser ? "opacity-50 cursor-not-allowed bg-gray-600" : ""}
+        `}
+      >
+        {isInvalidUser ? "Invalid User" :
+         isBlocking ? "Processing..." : 
+         user.status === "Active" ? "Block" : "Activate"}
+      </Button>
+    );
+  };
+
+  const handleRefresh = () => {
+    fetchUsers();
+  };
 
   return (
     <div className="bg-gray-900 min-h-screen text-white p-6">
       <div className="container mx-auto">
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-6 gap-4">
           <div>
             <h1 className="text-3xl font-bold text-white">User Management</h1>
             <p className="text-gray-400">Manage and monitor all users in the system</p>
+            <p className="text-gray-500 text-sm mt-1">
+              Showing {users.length} of {totalItems} users • Page {page} of {totalPages}
+            </p>
           </div>
+          <Button
+            onClick={handleRefresh}
+            variant="outline"
+            className="bg-gray-800 border-gray-600 text-white hover:bg-gray-700"
+          >
+            Refresh
+          </Button>
         </div>
 
         {/* Enhanced Filters */}
@@ -387,9 +548,27 @@ export default function UserManagement() {
             hasPrev,
           }}
           onPageChange={setPage}
-          emptyMessage="No users found."
+          emptyMessage={
+            loading ? "Loading users..." : 
+            error ? "Error loading users" : 
+            "No users found matching your criteria"
+          }
           actions={renderActions}
         />
+
+        {/* Debug Info (remove in production) */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-6 p-4 bg-gray-800 rounded-lg">
+            <h3 className="text-sm font-semibold text-gray-400 mb-2">Debug Info:</h3>
+            <div className="text-xs text-gray-500 space-y-1">
+              <div>Total Users: {totalItems}</div>
+              <div>Current Page: {page}</div>
+              <div>Valid Users: {users.filter(u => u.id).length}</div>
+              <div>Search: "{search}"</div>
+              <div>Status Filter: {statusFilter}</div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

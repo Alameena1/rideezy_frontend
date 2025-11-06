@@ -33,6 +33,7 @@ interface RideFormFieldsProps {
   platformFee: number | null;
   selectedVehicleId: string;
   isLoading?: boolean;
+  onVehicleChange?: (value: string) => void; // Add this prop
 }
 
 const RideFormFields: React.FC<RideFormFieldsProps> = ({
@@ -44,10 +45,23 @@ const RideFormFields: React.FC<RideFormFieldsProps> = ({
   platformFee,
   selectedVehicleId,
   isLoading = false,
+  onVehicleChange,
 }) => {
   const selectedVehicle = vehicles.find((v) => v._id === selectedVehicleId);
   const maxPassengerCount = selectedVehicle?.seatCapacity || 4;
-  const availableSeats = maxPassengerCount - 1; // Subtract driver seat
+  const availableSeats = maxPassengerCount - 1;
+
+  console.log("xxxxxxxxxxxxxxxxxxxmaxPassengerCount", maxPassengerCount);
+  console.log("selectedVehicle", selectedVehicle);
+  console.log("selectedVehicleId from prop", selectedVehicleId);
+
+  // Handle vehicle selection change
+  const handleVehicleSelect = (value: string) => {
+    console.log("🚗 Vehicle selected in RideFormFields:", value);
+    if (onVehicleChange) {
+      onVehicleChange(value);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -96,7 +110,8 @@ const RideFormFields: React.FC<RideFormFieldsProps> = ({
           Vehicle
         </Label>
         <Select
-          {...register("vehicleId", { required: "Vehicle is required" })}
+          value={selectedVehicleId} // Use controlled value
+          onValueChange={handleVehicleSelect} // Use manual handler
           disabled={isLoading || vehicles.length === 0}
         >
           <SelectTrigger className="w-full">
@@ -120,10 +135,33 @@ const RideFormFields: React.FC<RideFormFieldsProps> = ({
           <p className="text-red-600 text-sm mt-1">{errors.vehicleId.message}</p>
         )}
         {selectedVehicle && (
-          <p className="text-xs text-gray-500 mt-1 flex items-center gap-1">
-            <Users className="h-3 w-3" />
-            Available passenger seats: {availableSeats}
-          </p>
+          <div className="mt-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Car className="h-4 w-4 text-blue-600" />
+                <span className="text-sm font-medium text-blue-800">
+                  {selectedVehicle.vehicleName}
+                </span>
+              </div>
+              <Badge variant="outline" className="bg-blue-100 text-blue-700">
+                {selectedVehicle.vehicleType || "Vehicle"}
+              </Badge>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-blue-600">
+              <div className="flex items-center gap-1">
+                <Users className="h-3 w-3" />
+                <span>{selectedVehicle.seatCapacity} seats total</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <Fuel className="h-3 w-3" />
+                <span>{selectedVehicle.mileage} km/l</span>
+              </div>
+            </div>
+            <div className="mt-2 text-xs text-green-600 font-medium flex items-center gap-1">
+              <Users className="h-3 w-3" />
+              Available passenger seats: {availableSeats}
+            </div>
+          </div>
         )}
       </div>
 
@@ -151,10 +189,16 @@ const RideFormFields: React.FC<RideFormFieldsProps> = ({
           className="w-full"
           min="1"
           max={availableSeats}
-          disabled={isLoading}
+          disabled={isLoading || !selectedVehicle}
+          placeholder={selectedVehicle ? `1 to ${availableSeats}` : "Select a vehicle first"}
         />
         {errors.passengerCount && (
           <p className="text-red-600 text-sm mt-1">{errors.passengerCount.message}</p>
+        )}
+        {selectedVehicle && (
+          <p className="text-xs text-gray-500 mt-1">
+            You can take up to {availableSeats} passengers (driver excluded)
+          </p>
         )}
       </div>
 
@@ -261,6 +305,10 @@ const RideFormFields: React.FC<RideFormFieldsProps> = ({
             <p className="flex items-center gap-2">
               <Fuel className="h-3 w-3" />
               Fuel cost is calculated based on vehicle mileage and distance
+            </p>
+            <p className="flex items-center gap-2">
+              <Users className="h-3 w-3" />
+              Passenger count excludes the driver
             </p>
           </div>
         </CardContent>

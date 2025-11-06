@@ -38,6 +38,7 @@ interface Vehicle {
   vehicleName: string;
   mileage: number;
   seatCapacity: number;
+  vehicleType?: string;
 }
 
 const RideFormContainer: React.FC = () => {
@@ -53,6 +54,7 @@ const RideFormContainer: React.FC = () => {
   const [dataLoaded, setDataLoaded] = useState<boolean>(false);
   const [authReady, setAuthReady] = useState<boolean>(false);
   const [hasValidRoute, setHasValidRoute] = useState<boolean>(false);
+  const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
 
   const {
     register,
@@ -60,6 +62,7 @@ const RideFormContainer: React.FC = () => {
     formState: { errors },
     setValue,
     watch,
+    getValues,
   } = useForm<FormData>({
     defaultValues: {
       driverId: "",
@@ -87,6 +90,20 @@ const RideFormContainer: React.FC = () => {
     month: "short",
     year: "numeric",
   });
+
+  // Watch for vehicleId changes and update selectedVehicleId
+  useEffect(() => {
+    if (vehicleId && vehicleId !== selectedVehicleId) {
+      console.log("🔄 Vehicle selection changed from:", selectedVehicleId, "to:", vehicleId);
+      setSelectedVehicleId(vehicleId);
+      
+      // Debug: Log all vehicles and find the selected one
+      console.log("📋 All vehicles:", vehicles);
+      const selectedVehicle = vehicles.find((v) => v._id === vehicleId);
+      console.log("🎯 Selected vehicle found:", selectedVehicle);
+      console.log("🎯 Selected vehicle seat capacity:", selectedVehicle?.seatCapacity);
+    }
+  }, [vehicleId, selectedVehicleId, vehicles]);
 
   const handleAuthError = (error: any) => {
     console.error("[RideFormContainer] Authentication error:", error);
@@ -147,7 +164,7 @@ const RideFormContainer: React.FC = () => {
         let vehiclesData;
         try {
           vehiclesData = await clientApiService.vehicle.getVehicles();
-          console.log("[RideFormContainer] Fetched vehicles:", vehiclesData);
+          console.log("[RideFormContainer] Raw vehicles response:", vehiclesData);
         } catch (vehicleError: any) {
           console.error("[RideFormContainer] Vehicles fetch error:", vehicleError);
           if (vehicleError.response?.status === 401) {
@@ -159,7 +176,9 @@ const RideFormContainer: React.FC = () => {
         }
 
         // Handle different possible response structures for vehicles
-        let vehicles = [];
+        let vehicles: Vehicle[] = [];
+        
+        // First, try to extract vehicles array from response
         if (Array.isArray(vehiclesData)) {
           vehicles = vehiclesData;
         } else if (Array.isArray(vehiclesData.data)) {
@@ -169,16 +188,38 @@ const RideFormContainer: React.FC = () => {
         } else if (vehiclesData.data && typeof vehiclesData.data === 'object') {
           // Handle case where data is an object with vehicles array
           vehicles = vehiclesData.data.vehicles || vehiclesData.data.data || [];
+        } else if (vehiclesData.vehicles && Array.isArray(vehiclesData.vehicles)) {
+          vehicles = vehiclesData.vehicles;
         } else {
           console.warn("[RideFormContainer] Unexpected vehicles data structure:", vehiclesData);
           vehicles = [];
         }
+
+        // Filter only approved vehicles and map to proper structure
+        const approvedVehicles: Vehicle[] = vehicles
+          .filter((vehicle: any) => vehicle.status === "Approved")
+          .map((vehicle: any) => ({
+            _id: vehicle._id || vehicle.id,
+            vehicleName: vehicle.vehicleName || "Unknown Vehicle",
+            mileage: vehicle.mileage || 15,
+            seatCapacity: vehicle.seatCapacity || 4,
+            vehicleType: vehicle.vehicleType || "Car",
+          }));
+
+        console.log("✅ Processed approved vehicles:", approvedVehicles);
+        console.log("📊 Vehicle seat capacities:", approvedVehicles.map(v => `${v.vehicleName} (${v._id}): ${v.seatCapacity} seats`));
         
-        setVehicles(vehicles);
-        if (vehicles.length > 0) {
-          setValue("vehicleId", vehicles[0]._id);
+        setVehicles(approvedVehicles);
+        
+        // Auto-select the first vehicle if available
+        if (approvedVehicles.length > 0) {
+          const firstVehicleId = approvedVehicles[0]._id;
+          setValue("vehicleId", firstVehicleId);
+          setSelectedVehicleId(firstVehicleId);
+          console.log("🚗 Auto-selected first vehicle:", firstVehicleId, "with", approvedVehicles[0].seatCapacity, "seats");
+        } else {
+          console.warn("⚠️ No approved vehicles available");
         }
-        console.log("vehicles", vehicles);
 
         // Fetch subscription status
         try {
@@ -246,6 +287,8 @@ const RideFormContainer: React.FC = () => {
         ? vehicles.find((v) => v._id === vehicleId)
         : null;
         
+      console.log("📐 Calculating rates for vehicle:", selectedVehicle?.vehicleName, "with", selectedVehicle?.seatCapacity, "seats");
+      
       const fuelNeeded = distanceInKm / (selectedVehicle?.mileage || 1);
       const totalFuelCost = fuelNeeded * fuelPrice;
       const platformFee = isSubscribed ? 0 : Math.ceil(totalFuelCost * 0.1);
@@ -254,6 +297,26 @@ const RideFormContainer: React.FC = () => {
       setPerKmRate(totalRideCost / distanceInKm);
     }
   }, [routeData, vehicleId, passengerCount, fuelPrice, vehicles, isSubscribed]);
+
+  // Handle manual vehicle selection change
+  const handleVehicleChange = (value: string) => {
+    console.log("🚗 Manual vehicle selection:", value);
+    setValue("vehicleId", value);
+    setSelectedVehicleId(value);
+    
+    // Force form validation update
+    const selectedVehicle = vehicles.find((v) => v._id === value);
+    console.log("🎯 Manually selected vehicle:", selectedVehicle);
+    
+    // Reset passenger count if it exceeds new vehicle capacity
+    const currentPassengerCount = getValues("passengerCount");
+    const maxPassengers = (selectedVehicle?.seatCapacity || 1) - 1;
+    
+    if (currentPassengerCount > maxPassengers) {
+      setValue("passengerCount", maxPassengers);
+      console.log("🔄 Reset passenger count to:", maxPassengers);
+    }
+  };
 
   const onSubmit = async (data: FormData) => {
     if (!routeData || !routeData.distance || !routeData.geometry) {
@@ -441,7 +504,7 @@ const RideFormContainer: React.FC = () => {
                 </Badge>
               )}
               <Badge variant="outline" className="bg-blue-50 text-blue-700">
-                {vehicles.length} Vehicles
+                {vehicles.length} Vehicles Available
               </Badge>
             </div>
           </CardHeader>
@@ -471,16 +534,18 @@ const RideFormContainer: React.FC = () => {
 
               <Separator />
 
+
               {/* Ride Form Fields */}
               <RideFormFields
-                vehicles={Array.isArray(vehicles) ? vehicles : []}
+                vehicles={vehicles}
                 register={register}
                 errors={errors}
                 distanceInKm={distanceInKm}
                 perKmRate={perKmRate}
                 platformFee={platformFee}
-                selectedVehicleId={vehicleId}
+                selectedVehicleId={selectedVehicleId}
                 isLoading={isLoading}
+                onVehicleChange={handleVehicleChange} // Pass the change handler
               />
 
               <Separator />

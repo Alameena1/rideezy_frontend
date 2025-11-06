@@ -790,21 +790,21 @@ export function useRideSimulation() {
   }, []);
 
   const handleEmergencyStop = useCallback(async (rideId: string) => {
-    try {
-      const ride = ridesRef.current.find((r) => r._id === rideId);
-      if (!ride) return;
+  try {
+    const ride = ridesRef.current.find((r) => r._id === rideId);
+    if (!ride) return;
 
-      setSimulationPaused(prev => ({ ...prev, [rideId]: true }));
-      isPausedRef.current[rideId] = true;
-      
-      await clientApiService.ride.updateRide(ride._id, { status: "Emergency" }, ride.driverId);
-      updateRideRef.current(rideId, { status: "Emergency" });
-      
-    } catch (error) {
-      console.error("[RideSimulation] Error during emergency stop:", error);
-      throw error;
-    }
-  }, []);
+    setSimulationPaused(prev => ({ ...prev, [rideId]: true }));
+    isPausedRef.current[rideId] = true;
+    
+    await clientApiService.ride.updateRide(ride._id, { status: "EmergencyStopped" }, ride.driverId);
+    updateRideRef.current(rideId, { status: "EmergencyStopped" });
+    
+  } catch (error) {
+    console.error("[RideSimulation] Error during emergency stop:", error);
+    throw error;
+  }
+}, []);
 
   const handleJoinRequest = useCallback(async (rideId: string, passengerId: string, action: "accept" | "reject") => {
     try {

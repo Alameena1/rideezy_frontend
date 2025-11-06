@@ -21,8 +21,12 @@ import {
   RotateCw,
   Calendar,
   Shield,
-  Leaf
+  Leaf,
+  AlertCircle,
+  CheckCircle,
+  XCircle
 } from "lucide-react";
+import Swal from 'sweetalert2';
 
 interface Vehicle {
   id: string;
@@ -77,22 +81,29 @@ const isPublicId = (imageString: string): boolean => {
 
 // Function to generate signed URL
 const generateSignedUrl = async (publicId: string): Promise<string> => {
-  const response = await fetch("/api/signed-url", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      public_id: publicId,
-      expiration: 3600,
-    }),
-  });
+  try {
+    const response = await fetch("/api/signed-url", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        public_id: publicId,
+        expiration: 3600,
+      }),
+    });
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.error || "Failed to generate signed URL");
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || "Failed to generate signed URL");
+    }
+
+    const data = await response.json();
+    return data.signed_url;
+  } catch (error) {
+    console.error("❌ Failed to generate signed URL:", error);
+    throw error;
   }
-  return data.signed_url;
 };
 
 export default function VehicleVerification() {
@@ -113,6 +124,7 @@ export default function VehicleVerification() {
   const [totalItems, setTotalItems] = useState(0);
   const [hasNext, setHasNext] = useState(false);
   const [hasPrev, setHasPrev] = useState(false);
+  const [processingVehicle, setProcessingVehicle] = useState<string | null>(null);
 
   // Document preview states
   const [documentPreview, setDocumentPreview] = useState<DocumentPreview | null>(null);
@@ -122,6 +134,7 @@ export default function VehicleVerification() {
   const fetchVehicles = async () => {
     try {
       setLoading(true);
+      setError(null);
       const params: any = {
         page,
         limit,
@@ -134,39 +147,48 @@ export default function VehicleVerification() {
         params.status = statusFilter;
       }
 
+      console.log("📤 Fetching vehicles with params:", params);
+
       const response: PaginatedResponse = await apiService.vehicle.getVehicles(params);
+      console.log("📥 Fetched vehicles response:", response);
       
-      const mappedVehicles: Vehicle[] = response.data.map((vehicle: any) => ({
-        id: vehicle.id,
-        userId: vehicle.userId,
-        userName: vehicle.userName,
-        userEmail: vehicle.userEmail,
-        vehicleName: vehicle.vehicleName,
-        vehicleType: vehicle.vehicleType,
-        licensePlate: vehicle.licensePlate,
-        color: vehicle.color,
-        insuranceNumber: vehicle.insuranceNumber,
-        insuranceImage: vehicle.insuranceImage,
-        insuranceEndDate: vehicle.insuranceEndDate,
-        pollutionNumber: vehicle.pollutionNumber,
-        pollutionImage: vehicle.pollutionImage,
-        pollutionEndDate: vehicle.pollutionEndDate,
-        vehicleImage: vehicle.vehicleImage,
-        status: vehicle.status,
-        note: vehicle.note,
-        mileage: vehicle.mileage,
-        seatCapacity: vehicle.seatCapacity,
-        createdAt: vehicle.createdAt,
-      }));
-      
-      setVehicles(mappedVehicles);
-      setTotalPages(response.pagination.totalPages);
-      setTotalItems(response.pagination.totalItems);
-      setHasNext(response.pagination.hasNext);
-      setHasPrev(response.pagination.hasPrev);
+      if (response && response.success && Array.isArray(response.data)) {
+        const mappedVehicles: Vehicle[] = response.data.map((vehicle: any) => ({
+          id: vehicle.id || vehicle._id || `unknown-${Math.random().toString(36).substr(2, 9)}`,
+          userId: vehicle.userId,
+          userName: vehicle.userName || "Unknown User",
+          userEmail: vehicle.userEmail || "No email",
+          vehicleName: vehicle.vehicleName || "Unknown Vehicle",
+          vehicleType: vehicle.vehicleType || "N/A",
+          licensePlate: vehicle.licensePlate || "N/A",
+          color: vehicle.color || "N/A",
+          insuranceNumber: vehicle.insuranceNumber || "N/A",
+          insuranceImage: vehicle.insuranceImage || "",
+          insuranceEndDate: vehicle.insuranceEndDate || "",
+          pollutionNumber: vehicle.pollutionNumber || "N/A",
+          pollutionImage: vehicle.pollutionImage || "",
+          pollutionEndDate: vehicle.pollutionEndDate || "",
+          vehicleImage: vehicle.vehicleImage || "",
+          status: vehicle.status || "Pending",
+          note: vehicle.note || "",
+          mileage: vehicle.mileage || 0,
+          seatCapacity: vehicle.seatCapacity || 0,
+          createdAt: vehicle.createdAt || new Date().toISOString(),
+        }));
+        
+        setVehicles(mappedVehicles);
+        setTotalPages(response.pagination.totalPages);
+        setTotalItems(response.pagination.totalItems);
+        setHasNext(response.pagination.hasNext);
+        setHasPrev(response.pagination.hasPrev);
+      } else {
+        console.error("❌ Unexpected response format:", response);
+        setError("Invalid response format from server");
+        setVehicles([]);
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to fetch vehicles";
-      console.error("Fetch vehicles failed:", err);
+      console.error("❌ Fetch vehicles failed:", err);
       setError(errorMessage);
       setVehicles([]);
     } finally {
@@ -189,9 +211,10 @@ export default function VehicleVerification() {
             let vehicleImageUrl = vehicle.vehicleImage;
             if (vehicle.vehicleImage && isPublicId(vehicle.vehicleImage)) {
               try {
+                console.log(`🔄 Generating signed URL for vehicle image: ${vehicle.vehicleImage}`);
                 vehicleImageUrl = await generateSignedUrl(vehicle.vehicleImage);
               } catch (error) {
-                console.error("Failed to generate signed URL for vehicle image:", vehicle.vehicleImage, error);
+                console.error("❌ Failed to generate signed URL for vehicle image:", vehicle.vehicleImage, error);
                 vehicleImageUrl = "/placeholder.svg";
               }
             }
@@ -200,9 +223,10 @@ export default function VehicleVerification() {
             let insuranceImageUrl = vehicle.insuranceImage;
             if (vehicle.insuranceImage && isPublicId(vehicle.insuranceImage)) {
               try {
+                console.log(`🔄 Generating signed URL for insurance image: ${vehicle.insuranceImage}`);
                 insuranceImageUrl = await generateSignedUrl(vehicle.insuranceImage);
               } catch (error) {
-                console.error("Failed to generate signed URL for insurance image:", vehicle.insuranceImage, error);
+                console.error("❌ Failed to generate signed URL for insurance image:", vehicle.insuranceImage, error);
                 insuranceImageUrl = "/placeholder.svg";
               }
             }
@@ -211,9 +235,10 @@ export default function VehicleVerification() {
             let pollutionImageUrl = vehicle.pollutionImage;
             if (vehicle.pollutionImage && isPublicId(vehicle.pollutionImage)) {
               try {
+                console.log(`🔄 Generating signed URL for pollution image: ${vehicle.pollutionImage}`);
                 pollutionImageUrl = await generateSignedUrl(vehicle.pollutionImage);
               } catch (error) {
-                console.error("Failed to generate signed URL for pollution image:", vehicle.pollutionImage, error);
+                console.error("❌ Failed to generate signed URL for pollution image:", vehicle.pollutionImage, error);
                 pollutionImageUrl = "/placeholder.svg";
               }
             }
@@ -229,7 +254,7 @@ export default function VehicleVerification() {
 
         setProcessedVehicles(vehiclesWithSignedUrls);
       } catch (error) {
-        console.error("Failed to process vehicle images:", error);
+        console.error("❌ Failed to process vehicle images:", error);
         setProcessedVehicles(vehicles);
       }
     };
@@ -243,41 +268,100 @@ export default function VehicleVerification() {
 
   const handleApproveVehicle = async (vehicleId: string) => {
     try {
+      console.log("🟢 Approving vehicle:", vehicleId);
+      setProcessingVehicle(vehicleId);
+      
       await apiService.vehicle.updateVehicleStatus(vehicleId, "Approved");
+      
+      // Update local state
       setVehicles(vehicles.map((vehicle) =>
         vehicle.id === vehicleId ? { ...vehicle, status: "Approved" } : vehicle
       ));
+      
+      Swal.fire({
+        title: 'Success!',
+        text: 'Vehicle approved successfully.',
+        icon: 'success',
+        timer: 2000,
+        showConfirmButton: false
+      });
+      
+      console.log("✅ Vehicle approved successfully");
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to approve vehicle";
-      console.error("Approve vehicle failed:", err);
+      console.error("❌ Approve vehicle failed:", err);
       setError(errorMessage);
+      
+      Swal.fire({
+        title: 'Error!',
+        text: errorMessage,
+        icon: 'error',
+        confirmButtonText: 'OK'
+      });
+    } finally {
+      setProcessingVehicle(null);
     }
   };
 
   const openRejectionModal = (vehicleId: string) => {
+    console.log("🔴 Opening rejection modal for vehicle:", vehicleId);
     setSelectedVehicle(vehicleId);
     setRejectionNote("");
     setShowRejectionModal(true);
   };
 
   const handleRejectVehicle = async () => {
-    if (!selectedVehicle || !rejectionNote.trim()) {
-      setError("Rejection reason is required");
+    if (!selectedVehicle) {
+      const errorMsg = "No vehicle selected for rejection";
+      console.error("❌", errorMsg);
+      Swal.fire('Error!', errorMsg, 'error');
+      return;
+    }
+
+    if (!rejectionNote.trim()) {
+      const errorMsg = "Rejection reason is required";
+      console.error("❌", errorMsg);
+      Swal.fire('Error!', 'Please provide a rejection reason.', 'error');
       return;
     }
 
     try {
+      console.log("🔴 Rejecting vehicle:", selectedVehicle, "Reason:", rejectionNote);
+      setProcessingVehicle(selectedVehicle);
+      
       await apiService.vehicle.updateVehicleStatus(selectedVehicle, "Rejected", rejectionNote);
+      
+      // Update local state
       setVehicles(vehicles.map((vehicle) =>
         vehicle.id === selectedVehicle ? { ...vehicle, status: "Rejected", note: rejectionNote } : vehicle
       ));
+      
       setShowRejectionModal(false);
       setSelectedVehicle(null);
       setRejectionNote("");
+      
+      Swal.fire({
+        title: 'Success!',
+        text: 'Vehicle rejected successfully.',
+        icon: 'success',
+        timer: 2000,
+        showConfirmButton: false
+      });
+      
+      console.log("✅ Vehicle rejected successfully");
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to reject vehicle";
-      console.error("Reject vehicle failed:", err);
+      console.error("❌ Reject vehicle failed:", err);
       setError(errorMessage);
+      
+      Swal.fire({
+        title: 'Error!',
+        text: errorMessage,
+        icon: 'error',
+        confirmButtonText: 'OK'
+      });
+    } finally {
+      setProcessingVehicle(null);
     }
   };
 
@@ -322,7 +406,7 @@ export default function VehicleVerification() {
     }
     
     if (!imageUrl || imageUrl === "/placeholder.svg") {
-      alert(`No ${title.toLowerCase()} available to view.`);
+      Swal.fire('Info', `No ${title.toLowerCase()} available to view.`, 'info');
       return;
     }
 
@@ -345,7 +429,13 @@ export default function VehicleVerification() {
     if (!documentPreview) return;
 
     try {
+      console.log("📥 Downloading document:", documentPreview.url);
+      
       const response = await fetch(documentPreview.url);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const blob = await response.blob();
       
       // Create download link
@@ -361,9 +451,11 @@ export default function VehicleVerification() {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
+      
+      Swal.fire('Success!', 'Document downloaded successfully.', 'success');
     } catch (error) {
-      console.error('Download failed:', error);
-      alert('Failed to download document.');
+      console.error('❌ Download failed:', error);
+      Swal.fire('Error!', 'Failed to download document.', 'error');
     }
   };
 
@@ -377,7 +469,11 @@ export default function VehicleVerification() {
   const formatDate = (dateString: string) => {
     if (!dateString) return "N/A";
     try {
-      return new Date(dateString).toLocaleDateString();
+      return new Date(dateString).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
     } catch {
       return "Invalid Date";
     }
@@ -412,27 +508,35 @@ export default function VehicleVerification() {
   };
 
   const renderStatus = (status: string) => {
-    const badgeVariant = 
-      status === "Approved" 
-        ? "default" 
-        : status === "Rejected" 
-        ? "destructive" 
-        : "secondary";
-    
-    return (
-      <Badge 
-        variant={badgeVariant} 
-        className={
-          status === "Approved" 
-            ? "bg-green-500/20 text-green-400 border-green-500" 
-            : status === "Rejected" 
-            ? "bg-red-500/20 text-red-400 border-red-500"
-            : "bg-orange-500/20 text-orange-400 border-orange-500"
-        }
-      >
-        {status}
-      </Badge>
-    );
+    switch (status) {
+      case "Approved":
+        return (
+          <Badge variant="outline" className="bg-green-500/20 text-green-400 border-green-500">
+            <div className="flex items-center gap-1">
+              <CheckCircle className="h-3 w-3" />
+              Approved
+            </div>
+          </Badge>
+        );
+      case "Rejected":
+        return (
+          <Badge variant="outline" className="bg-red-500/20 text-red-400 border-red-500">
+            <div className="flex items-center gap-1">
+              <XCircle className="h-3 w-3" />
+              Rejected
+            </div>
+          </Badge>
+        );
+      default:
+        return (
+          <Badge variant="outline" className="bg-yellow-500/20 text-yellow-400 border-yellow-500">
+            <div className="flex items-center gap-1">
+              <AlertCircle className="h-3 w-3" />
+              Pending
+            </div>
+          </Badge>
+        );
+    }
   };
 
   const renderDocumentStatus = (endDate: string) => {
@@ -458,27 +562,52 @@ export default function VehicleVerification() {
         <Button
           variant="ghost"
           onClick={() => handleSort("userName")}
-          className="flex items-center space-x-1 p-0 hover:bg-transparent text-gray-300"
+          className="flex items-center space-x-1 p-0 hover:bg-transparent text-gray-300 font-semibold"
         >
           <span>Owner</span>
           <ArrowUpDown className="h-4 w-4" />
         </Button>
       ),
-      render: (name: string) => <span className="text-gray-300 font-medium">{name}</span>
+      render: (name: string, vehicle: Vehicle) => (
+        <div>
+          <span className="text-white font-medium block">{name}</span>
+          <span className="text-gray-400 text-xs">{vehicle.userEmail}</span>
+        </div>
+      )
     },
-    { key: "vehicleName", header: "Vehicle Name", render: (name: string) => <span className="text-gray-300">{name}</span> },
-    { key: "vehicleType", header: "Type", render: (type: string) => <span className="text-gray-300">{type}</span> },
-    { key: "licensePlate", header: "License Plate", render: (plate: string) => <span className="text-gray-300 font-mono">{plate}</span> },
-    { key: "color", header: "Color", render: (color: string) => <span className="text-gray-300">{color}</span> },
+    { 
+      key: "vehicleName", 
+      header: "Vehicle Name", 
+      render: (name: string) => <span className="text-white">{name}</span> 
+    },
+    { 
+      key: "vehicleType", 
+      header: "Type", 
+      render: (type: string) => <span className="text-gray-300">{type}</span> 
+    },
+    { 
+      key: "licensePlate", 
+      header: "License Plate", 
+      render: (plate: string) => (
+        <span className="text-white font-mono bg-blue-500/10 px-2 py-1 rounded text-sm">
+          {plate}
+        </span>
+      ) 
+    },
+    { 
+      key: "color", 
+      header: "Color", 
+      render: (color: string) => <span className="text-gray-300">{color}</span> 
+    },
     { 
       key: "insurance", 
       header: "Insurance",
       render: (_: any, vehicle: Vehicle) => (
         <div className="space-y-1">
-          <div className="text-gray-300 text-sm">{vehicle.insuranceNumber}</div>
+          <div className="text-white text-sm font-mono">{vehicle.insuranceNumber}</div>
           <div className="flex items-center gap-1 text-xs">
             <Calendar className="h-3 w-3 text-gray-400" />
-            <span className="text-gray-400">Valid until: {formatDate(vehicle.insuranceEndDate)}</span>
+            <span className="text-gray-400">Until: {formatDate(vehicle.insuranceEndDate)}</span>
           </div>
           {renderDocumentStatus(vehicle.insuranceEndDate)}
         </div>
@@ -489,16 +618,20 @@ export default function VehicleVerification() {
       header: "Pollution",
       render: (_: any, vehicle: Vehicle) => (
         <div className="space-y-1">
-          <div className="text-gray-300 text-sm">{vehicle.pollutionNumber}</div>
+          <div className="text-white text-sm font-mono">{vehicle.pollutionNumber}</div>
           <div className="flex items-center gap-1 text-xs">
             <Calendar className="h-3 w-3 text-gray-400" />
-            <span className="text-gray-400">Valid until: {formatDate(vehicle.pollutionEndDate)}</span>
+            <span className="text-gray-400">Until: {formatDate(vehicle.pollutionEndDate)}</span>
           </div>
           {renderDocumentStatus(vehicle.pollutionEndDate)}
         </div>
       )
     },
-    { key: "createdAt", header: "Submitted On", render: (date: string) => <span className="text-gray-300">{formatDate(date)}</span> },
+    { 
+      key: "createdAt", 
+      header: "Submitted On", 
+      render: (date: string) => <span className="text-gray-300 text-sm">{formatDate(date)}</span> 
+    },
     { 
       key: "status", 
       header: "Status",
@@ -549,28 +682,41 @@ export default function VehicleVerification() {
 
   const renderActions = (vehicle: Vehicle) => {
     if (vehicle.status === "Pending") {
+      const isProcessing = processingVehicle === vehicle.id;
+      
       return (
         <div className="flex space-x-2">
           <Button
             onClick={() => handleApproveVehicle(vehicle.id)}
             variant="default"
             size="sm"
-            className="bg-green-600 hover:bg-green-700 text-white"
+            disabled={isProcessing}
+            className="bg-green-600 hover:bg-green-700 text-white disabled:bg-gray-600 disabled:opacity-50 text-xs"
           >
-            Approve
+            {isProcessing ? "Processing..." : "Approve"}
           </Button>
           <Button
             onClick={() => openRejectionModal(vehicle.id)}
             variant="destructive"
             size="sm"
-            className="bg-red-600 hover:bg-red-700 text-white"
+            disabled={isProcessing}
+            className="bg-red-600 hover:bg-red-700 text-white disabled:bg-gray-600 disabled:opacity-50 text-xs"
           >
-            Reject
+            {isProcessing ? "Processing..." : "Reject"}
           </Button>
         </div>
       );
     }
-    return null;
+    
+    return (
+      <div className="text-sm text-gray-400 px-2">
+        {vehicle.status === "Approved" ? "✅ Approved" : "❌ Rejected"}
+      </div>
+    );
+  };
+
+  const handleRetry = () => {
+    fetchVehicles();
   };
 
   return (
@@ -580,6 +726,20 @@ export default function VehicleVerification() {
           <div>
             <h1 className="text-3xl font-bold text-white">Vehicle Verification</h1>
             <p className="text-gray-400">Manage and verify vehicle submissions</p>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-sm text-gray-400">
+              Total: {totalItems} vehicles
+            </div>
+            <Button
+              onClick={handleRetry}
+              variant="outline"
+              size="sm"
+              className="bg-gray-800 border-gray-600 text-white hover:bg-gray-700"
+            >
+              <RotateCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
           </div>
         </div>
 
@@ -609,6 +769,26 @@ export default function VehicleVerification() {
             </Select>
           </div>
         </div>
+
+        {/* Error Display */}
+        {error && (
+          <div className="mb-4 p-4 bg-red-500/20 border border-red-500 rounded-lg">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 bg-red-500 rounded-full"></div>
+                <span className="text-red-400">{error}</span>
+              </div>
+              <Button
+                onClick={handleRetry}
+                variant="outline"
+                size="sm"
+                className="bg-red-500/20 border-red-500 text-red-400 hover:bg-red-500/30"
+              >
+                Retry
+              </Button>
+            </div>
+          </div>
+        )}
         
         <DataTable
           columns={columns}
@@ -625,6 +805,7 @@ export default function VehicleVerification() {
           onPageChange={setPage}
           emptyMessage="No vehicles found for verification."
           actions={renderActions}
+          keyField="id"
         />
 
         {/* Secure Document Preview Dialog */}
@@ -632,11 +813,14 @@ export default function VehicleVerification() {
           <DialogContent className="max-w-4xl max-h-[90vh] bg-gray-800 border-gray-600">
             <DialogHeader>
               <DialogTitle className="text-white flex items-center justify-between">
-                <div>
-                  {documentPreview?.title} - {documentPreview?.vehicle.userName}
-                  <div className="text-sm text-gray-400 mt-1">
-                    License Plate: {documentPreview?.vehicle.licensePlate} | 
-                    Vehicle: {documentPreview?.vehicle.vehicleName}
+                <div className="flex items-center gap-3">
+                  <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                  <div>
+                    {documentPreview?.title} - {documentPreview?.vehicle.userName}
+                    <div className="text-sm text-gray-400 mt-1">
+                      License Plate: {documentPreview?.vehicle.licensePlate} | 
+                      Vehicle: {documentPreview?.vehicle.vehicleName}
+                    </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -716,6 +900,10 @@ export default function VehicleVerification() {
                     style={{
                       transform: `scale(${zoom}) rotate(${rotation}deg)`,
                     }}
+                    onError={(e) => {
+                      console.error("❌ Failed to load document image");
+                      e.currentTarget.src = "/placeholder.svg";
+                    }}
                   />
                 )}
               </div>
@@ -727,14 +915,17 @@ export default function VehicleVerification() {
         <Dialog open={showRejectionModal} onOpenChange={setShowRejectionModal}>
           <DialogContent className="bg-gray-800 border-gray-600 text-white">
             <DialogHeader>
-              <DialogTitle className="text-xl font-semibold">Rejection Reason</DialogTitle>
+              <DialogTitle className="text-xl font-semibold flex items-center gap-2">
+                <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                Rejection Reason
+              </DialogTitle>
             </DialogHeader>
             <div className="py-4">
               <p className="text-gray-300 mb-4">
                 Please provide a reason why this vehicle verification is being rejected:
               </p>
               <Textarea
-                className="bg-gray-700 text-white border-gray-600 placeholder-gray-400 focus:border-blue-500"
+                className="bg-gray-700 text-white border-gray-600 placeholder-gray-400 focus:border-red-500"
                 rows={4}
                 placeholder="Enter rejection reason..."
                 value={rejectionNote}
@@ -746,6 +937,7 @@ export default function VehicleVerification() {
                 variant="outline"
                 onClick={() => setShowRejectionModal(false)}
                 className="border-gray-600 text-gray-300 hover:bg-gray-700"
+                disabled={!!processingVehicle}
               >
                 Cancel
               </Button>
@@ -753,8 +945,9 @@ export default function VehicleVerification() {
                 variant="destructive"
                 onClick={handleRejectVehicle}
                 className="bg-red-600 hover:bg-red-700"
+                disabled={!!processingVehicle || !rejectionNote.trim()}
               >
-                Reject Vehicle
+                {processingVehicle ? "Processing..." : "Reject Vehicle"}
               </Button>
             </DialogFooter>
           </DialogContent>
