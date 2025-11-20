@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { adminClientApiService } from "@/services/client/adminClientApi";
+import { adminClientApiService, useAdminApiInterceptors } from "@/services/client/adminClientApi";
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -290,6 +290,10 @@ export default function RideManagement() {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [activeTabs, setActiveTabs] = useState<{ [rideId: string]: string }>({});
 
+  useAdminApiInterceptors();
+
+
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       console.log("🚀 Loading Leaflet...");
@@ -549,8 +553,6 @@ export default function RideManagement() {
       render: (name: string) => <span className="text-gray-300">{name}</span> 
     },
     { key: "date", header: "Date", render: (date: string) => <span className="text-gray-300">{date}</span> },
-    { key: "startPlaceName", header: "Start Location", render: (location: string) => <span className="text-gray-300">{location}</span> },
-    { key: "endPlaceName", header: "End Location", render: (location: string) => <span className="text-gray-300">{location}</span> },
     { 
       key: "status", 
       header: "Status",

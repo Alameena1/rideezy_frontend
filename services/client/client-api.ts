@@ -1,7 +1,7 @@
 "use client";
 
 import axios from "axios";
-import { createUserApiInstance } from "../userInterceptors";
+import { createUserApiInstance } from "../unifiedInterceptor";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3001/api";
 
@@ -9,7 +9,7 @@ let clientApiInstance: ReturnType<typeof createUserApiInstance> | null = null;
 
 const getClientApiInstance = () => {
   if (!clientApiInstance) {
-    clientApiInstance = createUserApiInstance(API_BASE_URL);
+    clientApiInstance = createUserApiInstance();
   }
   return clientApiInstance;
 };
@@ -201,20 +201,29 @@ ride: {
       
     findNearestRides: (data: { userLocation: string; destination: string }) =>
       clientApi.api.post("/api/join-rides/nearest", data).then((res) => res.data),
-    joinRide: (rideId: string, passengerId: string, pickupLocation: string, dropoffLocation: string) =>
-      clientApi.api.post("/api/join-rides/join", { rideId, passengerId, pickupLocation, dropoffLocation }).then((res) => res.data),
+// Fix the joinRide method - remove rideId from body when it's in URL
+joinRide: (rideId: string, data: { 
+  pickupLocation: string; 
+  dropoffLocation: string;
+  pickupPlaceName?: string;
+  dropoffPlaceName?: string;
+}) =>
+  clientApi.api.post(`/api/join-rides/join/${rideId}`, data).then((res) => res.data),
     handleJoinRequest: (rideId: string, driverId: string, passengerId: string, action: "accept" | "reject") =>
-      clientApi.api.put(`/api/join-rides/${rideId}/requests/${passengerId}`, { driverId, action }).then((res) => res.data),
+  clientApi.api.put(`/api/join-rides/${rideId}/requests/${passengerId}`, { 
+    action 
+  }).then((res) => res.data),
     createRidePaymentOrder: (rideId: string) =>
       clientApi.api.post("/api/join-rides/create-ride-order", { rideId }).then((res) => res.data),
-    verifyAndJoinRide: (data: {
-      rideId: string;
-      pickupLocation: string;
-      dropoffLocation: string;
-      paymentId: string;
-      orderId: string;
-      signature: string;
-    }) => clientApi.api.post("/api/join-rides/verify-and-join", data).then((res) => res.data),
+verifyAndJoinRide: (rideId: string, data: {
+  pickupLocation: string;
+  dropoffLocation: string;
+  pickupPlaceName: string;
+  dropoffPlaceName: string;
+  paymentId: string;
+  orderId: string;
+  signature: string;
+}) => clientApi.api.post(`/api/join-rides/verify-and-join/${rideId}`, data).then((res) => res.data),
     cancelJoinedRide: (rideId: string) => clientApi.api.delete(`/api/join-rides/joined/${rideId}`).then((res) => res.data),
     updateRide: (id: string, updates: { currentPosition?: [number, number]; passengerId: string; action: "picked" | "dropped" }, driverId: string) =>
       clientApi.api.put(`/api/initiate-rides/${id}/update`, updates, { headers: { "Driver-Id": driverId } }).then((res) => res.data),

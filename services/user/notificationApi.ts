@@ -1,9 +1,10 @@
 import { serverApiInstance } from "../api";
+import { NOTIFICATION_ROUTES } from "../../constants/apiRoutes";
 
 export const notificationApi = {
   getUserNotifications: async (userId: string) => {
     try {
-      const response = await serverApiInstance.get(`/notifications/${userId}`);
+      const response = await serverApiInstance.get(NOTIFICATION_ROUTES.GET_USER_NOTIFICATIONS(userId));
       return {
         success: response.data.success,
         notifications: response.data.notifications || [],
@@ -16,7 +17,7 @@ export const notificationApi = {
 
   markAsRead: async (notificationId: string) => {
     try {
-      const response = await serverApiInstance.put(`/notifications/${notificationId}/read`);
+      const response = await serverApiInstance.put(NOTIFICATION_ROUTES.MARK_AS_READ(notificationId));
       return {
         success: response.data.success,
         notification: response.data.notification,

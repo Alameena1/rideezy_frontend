@@ -1,10 +1,8 @@
-// services/client/adminClientApi.ts
 "use client";
 
 import axios from "axios";
 import Cookies from "js-cookie";
-import { createAdminApiInstance } from "../adminInterceptors"; // Adjust path to your adminInterceptors file
-// Assuming you have or extend auth utils for admin; if not, implement getAdminValidToken and getAdminRefreshToken
+import { createAdminApiInstance } from "../unifiedInterceptor";
 
 const API_BASE_URL =  "http://localhost:3001";
 
@@ -12,7 +10,7 @@ let adminClientApiInstance: ReturnType<typeof createAdminApiInstance> | null = n
 
 const getAdminClientApiInstance = () => {
   if (!adminClientApiInstance) {
-    adminClientApiInstance = createAdminApiInstance(API_BASE_URL);
+    adminClientApiInstance = createAdminApiInstance();
   }
   return adminClientApiInstance;
 };
@@ -100,7 +98,7 @@ export interface User {
 export const clientAdminAuthApi = {
   login: async (email: string, password: string) => {
     try {
-      const response = await adminClientApi.post("/admin/login", { email, password });
+      const response = await adminClientApi.api.post("/admin/login", { email, password });
       console.log("Admin Login response:", response.data);
       // Assuming your interceptor or utils handle cookie setting on success
       return response.data;
@@ -114,7 +112,7 @@ export const clientAdminAuthApi = {
 
   logout: async () => {
     try {
-      const response = await adminClientApi.post("/admin/logout");
+      const response = await adminClientApi.api.post("/admin/logout");
       console.log("Admin Logout response:", response.data);
       Cookies.remove("adminAuthToken", { path: "/" });
       Cookies.remove("refreshToken", { path: "/" });
@@ -131,7 +129,7 @@ export const clientAdminAuthApi = {
     try {
       const refreshToken = Cookies.get("refreshToken");
       if (!refreshToken) throw new Error("No refresh token found");
-      const response = await adminClientApi.post("/admin/refresh-token", { refreshToken });
+      const response = await adminClientApi.api.post("/admin/refresh-token", { refreshToken });
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -146,7 +144,7 @@ export const clientAdminAuthApi = {
 export const clientAdminUserApi = {
   getUsers: async (query: PaginationQuery = {}) => {
     try {
-      const response = await adminClientApi.get("/admin/users", { params: query });
+      const response = await adminClientApi.api.get("/admin/users", { params: query });
       console.log("Fetched Admin Users:", response.data);
       return response.data; // { success: boolean, data: User[], pagination: {...} }
     } catch (error) {
@@ -159,7 +157,7 @@ export const clientAdminUserApi = {
 
   toggleUserStatus: async (userId: string, newStatus: "Active" | "Blocked") => {
     try {
-      const response = await adminClientApi.patch(`/admin/users/${userId}/status`, { status: newStatus });
+      const response = await adminClientApi.api.patch(`/admin/users/${userId}/status`, { status: newStatus });
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -171,7 +169,7 @@ export const clientAdminUserApi = {
 
   verifyGovId: async (userId: string, status: "Verified" | "Rejected", rejectionNote?: string) => {
     try {
-      const response = await adminClientApi.post("/admin/verify-gov-id", { userId, status, rejectionNote });
+      const response = await adminClientApi.api.post("/admin/verify-gov-id", { userId, status, rejectionNote });
       console.log("Admin Gov ID Verification:", response.data);
       return response.data;
     } catch (error) {
@@ -190,7 +188,7 @@ export const clientAdminUserApi = {
     message: string;
   }> => {
     try {
-      const response = await adminClientApi.get(`/admin/users/${userId}/ongoing-rides`);
+      const response = await adminClientApi.api.get(`/admin/users/${userId}/ongoing-rides`);
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -205,7 +203,7 @@ export const clientAdminUserApi = {
 export const clientAdminVehicleApi = {
   getVehicles: async (query: PaginationQuery = {}) => {
     try {
-      const response = await adminClientApi.get("/admin/vehicles", { params: query });
+      const response = await adminClientApi.api.get("/admin/vehicles", { params: query });
       console.log("Fetched Admin Vehicles:", response.data);
       return response.data; // { success: boolean, data: Vehicle[], pagination: {...} }
     } catch (error) {
@@ -218,7 +216,7 @@ export const clientAdminVehicleApi = {
 
   updateVehicleStatus: async (vehicleId: string, status: "Approved" | "Rejected", note?: string) => {
     try {
-      const response = await adminClientApi.patch(`/admin/vehicles/${vehicleId}/status`, { status, note });
+      const response = await adminClientApi.api.patch(`/admin/vehicles/${vehicleId}/status`, { status, note });
       console.log("Updated Admin Vehicle Status:", response.data);
       return response.data;
     } catch (error) {
@@ -237,7 +235,7 @@ export const clientAdminSubscriptionApi = {
   pagination: any 
 }> => {
   try {
-    const response = await adminClientApi.get("/admin/subscriptions", { params: query });
+    const response = await adminClientApi.api.get("/admin/subscriptions", { params: query });
     console.log("Admin Subscription Plans Response:", response.data);
     
     // Ensure consistent response format
@@ -287,7 +285,7 @@ export const clientAdminSubscriptionApi = {
 
   createSubscriptionPlan: async (planData: Partial<SubscriptionPlan>) => {
     try {
-      const response = await adminClientApi.post("/admin/subscriptions", planData);
+      const response = await adminClientApi.api.post("/admin/subscriptions", planData);
       return response.data.plan;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -299,7 +297,7 @@ export const clientAdminSubscriptionApi = {
 
   updateSubscriptionPlan: async (planId: string, planData: Partial<SubscriptionPlan>) => {
     try {
-      const response = await adminClientApi.patch(`/admin/subscriptions/${planId}`, planData);
+      const response = await adminClientApi.api.patch(`/admin/subscriptions/${planId}`, planData);
       return response.data.plan;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -311,7 +309,7 @@ export const clientAdminSubscriptionApi = {
 
   deleteSubscriptionPlan: async (planId: string) => {
     try {
-      const response = await adminClientApi.delete(`/admin/subscriptions/${planId}`);
+      const response = await adminClientApi.api.delete(`/admin/subscriptions/${planId}`);
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -323,7 +321,7 @@ export const clientAdminSubscriptionApi = {
 
   toggleSubscriptionPlanStatus: async (planId: string, newStatus: "Active" | "Blocked") => {
     try {
-      const response = await adminClientApi.patch(`/admin/subscriptions/${planId}/status`, { status: newStatus });
+      const response = await adminClientApi.api.patch(`/admin/subscriptions/${planId}/status`, { status: newStatus });
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -338,7 +336,7 @@ export const clientAdminSubscriptionApi = {
 export const clientAdminRideApi = {
   getRides: async (query: PaginationQuery = {}): Promise<{ success: boolean; data: Ride[]; pagination: any }> => {
     try {
-      const response = await adminClientApi.get("/admin/rides", { params: query });
+      const response = await adminClientApi.api.get("/admin/rides", { params: query });
       return response.data; // { success: boolean, data: Ride[], pagination: {...} }
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -350,7 +348,7 @@ export const clientAdminRideApi = {
 
   getRideById: async (rideId: string): Promise<Ride> => {
     try {
-      const response = await adminClientApi.get(`/admin/rides/${rideId}`);
+      const response = await adminClientApi.api.get(`/admin/rides/${rideId}`);
       return response.data.ride;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -362,7 +360,7 @@ export const clientAdminRideApi = {
 
   cancelRide: async (rideId: string): Promise<void> => {
     try {
-      const response = await adminClientApi.patch(`/admin/rides/${rideId}/cancel`, {});
+      const response = await adminClientApi.api.patch(`/admin/rides/${rideId}/cancel`, {});
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -374,7 +372,7 @@ export const clientAdminRideApi = {
 
   blockRide: async (rideId: string): Promise<void> => {
     try {
-      const response = await adminClientApi.patch(`/admin/rides/${rideId}/block`, {});
+      const response = await adminClientApi.api.patch(`/admin/rides/${rideId}/block`, {});
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -386,7 +384,7 @@ export const clientAdminRideApi = {
 
   getUserById: async (userId: string): Promise<User> => {
     try {
-      const response = await adminClientApi.get(`/admin/users/${userId}`);
+      const response = await adminClientApi.api.get(`/admin/users/${userId}`);
       return response.data.user;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -401,7 +399,7 @@ export const clientAdminRideApi = {
 export const clientAdminDashboardApi = {
   getDashboardMetrics: async (params?: { startDate?: string; endDate?: string }): Promise<DashboardMetricsResponse> => {
     try {
-      const response = await adminClientApi.get("/admin/dashboard-metrics", { params });
+      const response = await adminClientApi.api.get("/admin/dashboard-metrics", { params });
       console.log("Admin Dashboard Metrics:", response.data);
       return {
         success: response.data.success,
@@ -429,10 +427,7 @@ export const adminClientApiService = {
   dashboard: clientAdminDashboardApi,
 };
 
-// Export interceptor hook (if your createAdminApiInstance exposes it; otherwise, omit or implement)
-export const useAdminApiInterceptors = () => {
-  // Placeholder: Implement if needed, similar to useApiInterceptors in clientApiService
-  console.warn("useAdminApiInterceptors not fully implemented; extend as needed.");
-};
+// Export interceptor hook
+export const useAdminApiInterceptors = adminClientApi.useTokenInterceptor;
 
 export default adminClientApiService;

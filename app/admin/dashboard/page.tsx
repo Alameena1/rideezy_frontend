@@ -1,4 +1,3 @@
-// app/admin/dashboard/page.tsx - UPDATED WITH DARK THEME
 "use client";
 import React, { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
@@ -18,7 +17,7 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts";
-import { adminClientApiService as apiService } from "@/services/api";
+import { adminClientApiService, useAdminApiInterceptors } from "@/services/client/adminClientApi";
 import {
   Card,
   CardContent,
@@ -117,6 +116,10 @@ const CustomAxisTick = ({ x, y, payload }: any) => {
 export default function Dashboard() {
   const { data: session, status } = useSession();
   const router = useRouter();
+  
+  // Initialize the admin API interceptors
+  useAdminApiInterceptors();
+  
   const [dashboardData, setDashboardData] = useState<DashboardMetrics>({
     metrics: {
       totalUsers: 0,
@@ -157,7 +160,7 @@ export default function Dashboard() {
         setLoading(true);
         console.log("📊 Fetching dashboard data...");
         
-        const response = await apiService.dashboard.getDashboardMetrics({
+        const response = await adminClientApiService.dashboard.getDashboardMetrics({
           timeRange,
         });
         

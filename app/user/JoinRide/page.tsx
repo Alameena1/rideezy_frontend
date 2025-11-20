@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import useAuth from "@/app/hooks/useAuth";
-import { clientApiService } from "@/services/client/client-api"; // Updated import
+import { clientApiService } from "@/services/client/client-api";
 import "leaflet/dist/leaflet.css";
 import Swal from "sweetalert2";
 import { useForm } from "react-hook-form";
@@ -91,36 +91,36 @@ const JoinRidePage: React.FC = () => {
   const [L, setL] = useState<any>(null);
 
   const { handleRidePayment, paymentLoading } = useRidePayment({
-  userId: user?._id || "",
-  pickupLocation: userLocation,
-  dropoffLocation: destination,
-  pickupPlaceName: userLocationName, // Add this
-  dropoffPlaceName: destinationName, // Add this
-  onSuccess: (ride) => {
-    setJoinLocation(userLocation);
-    setError(null);
-    Swal.fire({
-      icon: "success",
-      title: "Successfully Joined the Ride!",
-      text: "Would you like to view the ride details or continue searching?",
-      showCancelButton: true,
-      confirmButtonText: "View Ride",
-      cancelButtonText: "Continue Searching",
-      confirmButtonColor: "#3085d6",
-      cancelButtonColor: "#d33",
-    }).then((result) => {
-      if (result.isConfirmed) {
-        window.location.href = `/user/joinedRideDetails?rideId=${ride.rideId}`;
-      } else {
-        handleSearch();
-      }
-    });
-  },
-  onError: (errorMessage) => {
-    setError(errorMessage);
-    setIsCostLoading(false);
-  },
-});
+    userId: user?._id || "",
+    pickupLocation: userLocation,
+    dropoffLocation: destination,
+    pickupPlaceName: userLocationName,
+    dropoffPlaceName: destinationName,
+    onSuccess: (ride) => {
+      setJoinLocation(userLocation);
+      setError(null);
+      Swal.fire({
+        icon: "success",
+        title: "Successfully Joined the Ride!",
+        text: "Would you like to view the ride details or continue searching?",
+        showCancelButton: true,
+        confirmButtonText: "View Ride",
+        cancelButtonText: "Continue Searching",
+        confirmButtonColor: "#3085d6",
+        cancelButtonColor: "#d33",
+      }).then((result) => {
+        if (result.isConfirmed) {
+          window.location.href = `/user/joinedRideDetails?rideId=${ride.rideId}`;
+        } else {
+          handleSearch();
+        }
+      });
+    },
+    onError: (errorMessage) => {
+      setError(errorMessage);
+      setIsCostLoading(false);
+    },
+  });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -212,113 +212,98 @@ const JoinRidePage: React.FC = () => {
     }
   };
 
-  const fetchPassengerCost = useCallback(
-    async (ride: Ride) => {
-      if (!userLocation || !destination || !user?._id) {
-        console.warn("[JoinRidePage] Missing userLocation, destination, or user ID:", {
-          userLocation,
-          destination,
-          userId: user?._id,
-        });
-        setError("Please provide valid pickup and drop-off locations and ensure you are logged in.");
-        setIsCostLoading(false);
-        return;
-      }
+const fetchPassengerCost = useCallback(
+  async (ride: Ride) => {
+    if (!userLocation || !destination || !user?._id) {
+      console.warn("[JoinRidePage] Missing userLocation, destination, or user ID:", {
+        userLocation,
+        destination,
+        userId: user?._id,
+      });
+      setError("Please provide valid pickup and drop-off locations and ensure you are logged in.");
+      setIsCostLoading(false);
+      return;
+    }
 
-      setIsCostLoading(true);
-      setError(null);
-      
+    setIsCostLoading(true);
+    setError(null);
+    
+    try {
+      console.log("[JoinRidePage] Step 1: Calling joinRide API with:", {
+        rideId: ride.rideId,
+        userLocation,
+        destination,
+        userLocationName,
+        destinationName
+      });
+
+      // STEP 1: First create the join request (pending request)
       try {
-        console.log("[JoinRidePage] Calling joinRide API with:", {
-          rideId: ride.rideId,
-          userId: user?._id,
-          userLocation,
-          destination,
-          userLocationName,
-          destinationName,
-        });
-
-        let backendDistance: number | null = null;
-        let pendingRequestId: string | null = null;
-        
-        try {
-          const response = await clientApiService.ride.joinRide( // Updated to clientApiService
-            ride.rideId,
-            user?._id || "",
-            userLocation,
-            destination
-          );
-          
-          console.log("[JoinRidePage] joinRide response:", response);
-          
-          if (response.data && response.data.pendingRequests) {
-            const pendingRequest = response.data.pendingRequests.find(
-              (req: any) => req.passengerId === user?._id
-            );
-            
-            if (pendingRequest && pendingRequest.distanceKm !== undefined) {
-              backendDistance = pendingRequest.distanceKm;
-              pendingRequestId = pendingRequest._id || pendingRequest.passengerId;
-              console.log("[JoinRidePage] Got distance from backend:", backendDistance);
-            }
+        const joinResponse = await clientApiService.ride.joinRide(
+          ride.rideId,
+          {
+            pickupLocation: userLocation,
+            dropoffLocation: destination,
+            pickupPlaceName: userLocationName || "Pickup Location",
+            dropoffPlaceName: destinationName || "Drop-off Location"
           }
-        } catch (apiError: any) {
-          console.warn("[JoinRidePage] API call failed, using fallback calculation:", apiError.message);
-        }
-
-        let finalDistance = backendDistance;
-        if (finalDistance === null || finalDistance === undefined) {
-          console.log("[JoinRidePage] Calculating distance locally");
-          finalDistance = calculateDistanceBetweenPoints(userLocation, destination);
-          
-          if (finalDistance <= 0) {
-            finalDistance = ride.distanceKm * 0.7;
-            console.log("[JoinRidePage] Using estimated distance:", finalDistance);
-          }
-        }
-
-        const perKmRate = ride.perKmRate ?? 6.37;
-        const cost = Math.max(finalDistance * perKmRate, 20);
-        
-        console.log(
-          `[JoinRidePage] Final calculation: ₹${cost} (distanceKm: ${finalDistance}, perKmRate: ${perKmRate})`
         );
         
-        setPassengerDistance(finalDistance);
-        setPassengerCost(cost);
-        setIsJoinRideSuccessful(true);
+        console.log("[JoinRidePage] Join ride response:", joinResponse);
         
-        localStorage.setItem('pendingRideRequest', JSON.stringify({
-          rideId: ride.rideId,
-          passengerId: user?._id,
-          distance: finalDistance,
-          cost: cost,
-          timestamp: Date.now()
-        }));
+        if (!joinResponse.success) {
+          // If it's a duplicate request, that's okay - we can proceed
+          if (joinResponse.message?.includes("already") || joinResponse.message?.includes("Already")) {
+            console.log("[JoinRidePage] Request already exists, proceeding with payment...");
+          } else {
+            throw new Error(joinResponse.message || "Failed to join ride");
+          }
+        }
         
-      } catch (error: any) {
-        console.error("[JoinRidePage] Error in fetchPassengerCost:", {
-          error: error.message,
-          response: error.response?.data,
-          status: error.response?.status,
-          userId: user?._id,
-          rideId: ride.rideId,
-        });
+        console.log("[JoinRidePage] ✅ Successfully created pending request");
         
-        const perKmRate = ride.perKmRate ?? 6.37;
-        const estimatedDistance = ride.distanceKm * 0.7;
-        const cost = Math.max(estimatedDistance * perKmRate, 20);
-        
-        setPassengerDistance(estimatedDistance);
-        setPassengerCost(cost);
-        setIsJoinRideSuccessful(false);
-        setError("Using estimated fare. " + (error.response?.data?.message || "Please verify locations."));
-      } finally {
-        setIsCostLoading(false);
+      } catch (joinError: any) {
+        console.error("[JoinRidePage] ❌ Join ride failed:", joinError);
+        // If it's a duplicate request error, we can still proceed
+        if (joinError.response?.data?.message?.includes("already") || 
+            joinError.response?.data?.message?.includes("Already") ||
+            joinError.message?.includes("already")) {
+          console.log("[JoinRidePage] Request already exists, proceeding with payment...");
+        } else {
+          setError("Join request failed. Using estimated fare: " + (joinError.response?.data?.message || joinError.message));
+        }
       }
-    },
-    [userLocation, destination, userLocationName, destinationName, user?._id]
-  );
+
+      // STEP 2: Calculate cost for display
+      const perKmRate = ride.perKmRate ?? 6.37;
+      const estimatedDistance = calculateDistanceBetweenPoints(userLocation, destination) || (ride.distanceKm * 0.7);
+      const cost = Math.max(estimatedDistance * perKmRate, 20);
+      
+      setPassengerDistance(estimatedDistance);
+      setPassengerCost(cost);
+      setIsJoinRideSuccessful(true);
+      
+    } catch (error: any) {
+      console.error("[JoinRidePage] Error in fetchPassengerCost:", error);
+      
+      // Fallback: calculate cost anyway
+      const perKmRate = ride.perKmRate ?? 6.37;
+      const estimatedDistance = calculateDistanceBetweenPoints(userLocation, destination) || (ride.distanceKm * 0.7);
+      const cost = Math.max(estimatedDistance * perKmRate, 20);
+      
+      setPassengerDistance(estimatedDistance);
+      setPassengerCost(cost);
+      setIsJoinRideSuccessful(true); // Still allow payment attempt
+      
+      if (error.response?.data?.message) {
+        setError("Using estimated fare. " + error.response.data.message);
+      }
+    } finally {
+      setIsCostLoading(false);
+    }
+  },
+  [userLocation, destination, userLocationName, destinationName, user?._id]
+);
 
   useEffect(() => {
     if (selectedRide && userLocation && destination && user?._id) {
@@ -332,62 +317,62 @@ const JoinRidePage: React.FC = () => {
   }, [selectedRide, userLocation, destination, user?._id, fetchPassengerCost]);
 
   const handleSearch = async () => {
-  if (!userLocation || !destination) {
-    setError("Please select both your location and destination.");
-    return;
-  }
-
-  setIsLoading(true);
-  setError(null);
-  
-  try {
-    const response = await clientApiService.ride.findNearestRides({ userLocation, destination });
-    console.log("[JoinRidePage] Fetched rides response:", response);
-    
-    // Handle different response formats
-    let ridesData = [];
-    
-    if (Array.isArray(response)) {
-      // Response is already an array
-      ridesData = response;
-    } else if (response && Array.isArray(response.data)) {
-      // Response has data property that's an array
-      ridesData = response.data;
-    } else if (response && response.data && Array.isArray(response.data.data)) {
-      // Response has nested data property
-      ridesData = response.data.data;
-    } else if (response && response.success && Array.isArray(response.data)) {
-      // Response has success flag and data array
-      ridesData = response.data;
-    } else {
-      console.warn("[JoinRidePage] Unexpected response format:", response);
-      setError("No rides found matching your criteria.");
-      setRides([]);
+    if (!userLocation || !destination) {
+      setError("Please select both your location and destination.");
       return;
     }
+
+    setIsLoading(true);
+    setError(null);
     
-    console.log("[JoinRidePage] Processed rides data:", ridesData);
-    setRides(ridesData);
-    setSelectedRide(null);
-    setJoinLocation(null);
-    setPassengerDistance(null);
-    setPassengerCost(null);
-    setIsCostLoading(false);
-    setIsJoinRideSuccessful(false);
-    
-    if (ridesData.length === 0) {
-      setError("No rides found matching your criteria. Try adjusting your search locations.");
+    try {
+      const response = await clientApiService.ride.findNearestRides({ userLocation, destination });
+      console.log("[JoinRidePage] Fetched rides response:", response);
+      
+      // Handle different response formats
+      let ridesData = [];
+      
+      if (Array.isArray(response)) {
+        // Response is already an array
+        ridesData = response;
+      } else if (response && Array.isArray(response.data)) {
+        // Response has data property that's an array
+        ridesData = response.data;
+      } else if (response && response.data && Array.isArray(response.data.data)) {
+        // Response has nested data property
+        ridesData = response.data.data;
+      } else if (response && response.success && Array.isArray(response.data)) {
+        // Response has success flag and data array
+        ridesData = response.data;
+      } else {
+        console.warn("[JoinRidePage] Unexpected response format:", response);
+        setError("No rides found matching your criteria.");
+        setRides([]);
+        return;
+      }
+      
+      console.log("[JoinRidePage] Processed rides data:", ridesData);
+      setRides(ridesData);
+      setSelectedRide(null);
+      setJoinLocation(null);
+      setPassengerDistance(null);
+      setPassengerCost(null);
+      setIsCostLoading(false);
+      setIsJoinRideSuccessful(false);
+      
+      if (ridesData.length === 0) {
+        setError("No rides found matching your criteria. Try adjusting your search locations.");
+      }
+    } catch (err: any) {
+      console.error("[JoinRidePage] Error fetching rides:", err);
+      const message =
+        err.response?.data?.message || err.message || "Failed to fetch rides. Please try again.";
+      setError(message);
+      setRides([]); // Ensure rides is always an array
+    } finally {
+      setIsLoading(false);
     }
-  } catch (err: any) {
-    console.error("[JoinRidePage] Error fetching rides:", err);
-    const message =
-      err.response?.data?.message || err.message || "Failed to fetch rides. Please try again.";
-    setError(message);
-    setRides([]); // Ensure rides is always an array
-  } finally {
-    setIsLoading(false);
-  }
-};
+  };
 
   const validateLocationFormat = (location: string): boolean => {
     const [lat, lng] = location.split(",").map(Number);

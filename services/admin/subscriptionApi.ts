@@ -15,10 +15,9 @@ export interface SubscriptionPlan {
 export const adminSubscriptionApi = {
   getSubscriptionPlans: async (): Promise<SubscriptionPlan[]> => {
     try {
-      const response = await adminApi.get("/subscriptions");
+      const response = await adminApi.get("/admin/subscriptions"); // Added /admin prefix
       console.log("Subscription Plans Response:", response);
-      // Change from response.data.data to just response.data
-      return response.data;  // The data is returned directly as an array
+      return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.message || "Failed to fetch subscription plans");
@@ -29,7 +28,7 @@ export const adminSubscriptionApi = {
 
   createSubscriptionPlan: async (planData: Partial<SubscriptionPlan>) => {
     try {
-      const response = await adminApi.post("/subscriptions", planData);
+      const response = await adminApi.post("/admin/subscriptions", planData); // Added /admin prefix
       return response.data.plan;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -41,7 +40,7 @@ export const adminSubscriptionApi = {
 
   updateSubscriptionPlan: async (planId: string, planData: Partial<SubscriptionPlan>) => {
     try {
-      const response = await adminApi.patch(`/subscriptions/${planId}`, planData);
+      const response = await adminApi.patch(`/admin/subscriptions/${planId}`, planData); // Added /admin prefix
       return response.data.plan;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -53,7 +52,7 @@ export const adminSubscriptionApi = {
 
   deleteSubscriptionPlan: async (planId: string) => {
     try {
-      const response = await adminApi.delete(`/subscriptions/${planId}`);
+      const response = await adminApi.delete(`/admin/subscriptions/${planId}`); // Added /admin prefix
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -65,7 +64,7 @@ export const adminSubscriptionApi = {
 
   toggleSubscriptionPlanStatus: async (planId: string, newStatus: "Active" | "Blocked") => {
     try {
-      const response = await adminApi.patch(`/subscriptions/${planId}/status`, { status: newStatus });
+      const response = await adminApi.patch(`/admin/subscriptions/${planId}/status`, { status: newStatus }); // Added /admin prefix
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {

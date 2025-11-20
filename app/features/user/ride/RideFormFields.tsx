@@ -14,6 +14,8 @@ interface FormData {
   vehicleId: string;
   passengerCount: number;
   fuelPrice: number;
+  startPlaceName: string;
+  endPlaceName: string;
 }
 
 interface Vehicle {
@@ -33,7 +35,11 @@ interface RideFormFieldsProps {
   platformFee: number | null;
   selectedVehicleId: string;
   isLoading?: boolean;
-  onVehicleChange?: (value: string) => void; // Add this prop
+  onVehicleChange?: (value: string) => void;
+  startPlaceName?: string;
+  endPlaceName?: string;
+  onStartPlaceNameChange?: (value: string) => void;
+  onEndPlaceNameChange?: (value: string) => void;
 }
 
 const RideFormFields: React.FC<RideFormFieldsProps> = ({
@@ -46,18 +52,16 @@ const RideFormFields: React.FC<RideFormFieldsProps> = ({
   selectedVehicleId,
   isLoading = false,
   onVehicleChange,
+  startPlaceName = "",
+  endPlaceName = "",
+  onStartPlaceNameChange,
+  onEndPlaceNameChange,
 }) => {
   const selectedVehicle = vehicles.find((v) => v._id === selectedVehicleId);
   const maxPassengerCount = selectedVehicle?.seatCapacity || 4;
   const availableSeats = maxPassengerCount - 1;
 
-  console.log("xxxxxxxxxxxxxxxxxxxmaxPassengerCount", maxPassengerCount);
-  console.log("selectedVehicle", selectedVehicle);
-  console.log("selectedVehicleId from prop", selectedVehicleId);
-
-  // Handle vehicle selection change
   const handleVehicleSelect = (value: string) => {
-    console.log("🚗 Vehicle selected in RideFormFields:", value);
     if (onVehicleChange) {
       onVehicleChange(value);
     }
@@ -65,7 +69,6 @@ const RideFormFields: React.FC<RideFormFieldsProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Date and Time */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <Label htmlFor="date" className="text-sm font-medium flex items-center gap-2">
@@ -103,15 +106,56 @@ const RideFormFields: React.FC<RideFormFieldsProps> = ({
         </div>
       </div>
 
-      {/* Vehicle Selection */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label htmlFor="startPlaceName" className="text-sm font-medium flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-green-600" />
+            Start Location Name
+          </Label>
+          <Input
+            id="startPlaceName"
+            type="text"
+            {...register("startPlaceName", { required: "Start location name is required" })}
+            className="w-full"
+            placeholder="e.g., Home, Office, Airport"
+            disabled={isLoading}
+            value={startPlaceName}
+            onChange={(e) => onStartPlaceNameChange?.(e.target.value)}
+          />
+          {errors.startPlaceName && (
+            <p className="text-red-600 text-sm mt-1">{errors.startPlaceName.message}</p>
+          )}
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="endPlaceName" className="text-sm font-medium flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-red-600" />
+            End Location Name
+          </Label>
+          <Input
+            id="endPlaceName"
+            type="text"
+            {...register("endPlaceName", { required: "End location name is required" })}
+            className="w-full"
+            placeholder="e.g., Work, Mall, Station"
+            disabled={isLoading}
+            value={endPlaceName}
+            onChange={(e) => onEndPlaceNameChange?.(e.target.value)}
+          />
+          {errors.endPlaceName && (
+            <p className="text-red-600 text-sm mt-1">{errors.endPlaceName.message}</p>
+          )}
+        </div>
+      </div>
+
       <div className="space-y-2">
         <Label htmlFor="vehicleId" className="text-sm font-medium flex items-center gap-2">
           <Car className="h-4 w-4 text-blue-600" />
           Vehicle
         </Label>
         <Select
-          value={selectedVehicleId} // Use controlled value
-          onValueChange={handleVehicleSelect} // Use manual handler
+          value={selectedVehicleId}
+          onValueChange={handleVehicleSelect}
           disabled={isLoading || vehicles.length === 0}
         >
           <SelectTrigger className="w-full">
@@ -165,7 +209,6 @@ const RideFormFields: React.FC<RideFormFieldsProps> = ({
         )}
       </div>
 
-      {/* Passenger Count */}
       <div className="space-y-2">
         <Label htmlFor="passengerCount" className="text-sm font-medium flex items-center gap-2">
           <Users className="h-4 w-4 text-blue-600" />
@@ -202,7 +245,6 @@ const RideFormFields: React.FC<RideFormFieldsProps> = ({
         )}
       </div>
 
-      {/* Fuel Price */}
       <div className="space-y-2">
         <Label htmlFor="fuelPrice" className="text-sm font-medium flex items-center gap-2">
           <Fuel className="h-4 w-4 text-blue-600" />
@@ -230,7 +272,6 @@ const RideFormFields: React.FC<RideFormFieldsProps> = ({
         )}
       </div>
 
-      {/* Ride Summary Card */}
       <Card className="border-0 shadow-lg bg-gradient-to-br from-gray-50 to-white">
         <CardHeader className="pb-4">
           <CardTitle className="text-lg flex items-center gap-2">
@@ -239,7 +280,6 @@ const RideFormFields: React.FC<RideFormFieldsProps> = ({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* Distance */}
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
               <MapPin className="h-4 w-4 text-blue-500" />
@@ -250,7 +290,6 @@ const RideFormFields: React.FC<RideFormFieldsProps> = ({
             </span>
           </div>
 
-          {/* Platform Fee */}
           <div className="flex justify-between items-center">
             <div className="flex items-center gap-2">
               <Shield className="h-4 w-4 text-orange-500" />
@@ -266,7 +305,6 @@ const RideFormFields: React.FC<RideFormFieldsProps> = ({
             </span>
           </div>
 
-          {/* Rate Per Kilometer */}
           {perKmRate !== null && (
             <div className="flex justify-between items-center">
               <div className="flex items-center gap-2">
@@ -279,7 +317,6 @@ const RideFormFields: React.FC<RideFormFieldsProps> = ({
             </div>
           )}
 
-          {/* Total Cost Estimate */}
           {distanceInKm !== null && perKmRate !== null && (
             <>
               <Separator />
@@ -294,7 +331,6 @@ const RideFormFields: React.FC<RideFormFieldsProps> = ({
         </CardContent>
       </Card>
 
-      {/* Help Text */}
       <Card className="border-0 bg-blue-50">
         <CardContent className="p-4">
           <div className="text-sm text-blue-700 space-y-1">

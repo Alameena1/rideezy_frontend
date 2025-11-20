@@ -1,12 +1,13 @@
 import { serverApiInstance } from "../api";
+import { WALLET_ROUTES } from "../../constants/apiRoutes";
 
 export const walletApi = {
   getWallet: async (userId: string, page: number = 1, limit: number = 10) => {
     try {
       // Fetch balance
-      const balanceResponse = await serverApiInstance.get(`/wallet/balance/${userId}`);
+      const balanceResponse = await serverApiInstance.get(WALLET_ROUTES.BALANCE(userId));
       // Fetch paginated transactions
-      const transactionsResponse = await serverApiInstance.get(`/wallet/transactions/${userId}`, {
+      const transactionsResponse = await serverApiInstance.get(WALLET_ROUTES.TRANSACTIONS(userId), {
         params: { page, limit },
       });
 
@@ -28,7 +29,7 @@ export const walletApi = {
 
   createOrder: async (data: { userId: string; amount: number; currency: string }) => {
     try {
-      const response = await serverApiInstance.post("/wallet/create-deposit-order", data);
+      const response = await serverApiInstance.post(WALLET_ROUTES.CREATE_DEPOSIT_ORDER, data);
       return response.data;
     } catch (error) {
       console.error("Failed to create Razorpay order:", error);
@@ -44,7 +45,7 @@ export const walletApi = {
     signature: string;
   }) => {
     try {
-      const response = await serverApiInstance.post("/wallet/deposit", data);
+      const response = await serverApiInstance.post(WALLET_ROUTES.DEPOSIT, data);
       console.log("Add funds response:", response);
       return response.data;
     } catch (error) {

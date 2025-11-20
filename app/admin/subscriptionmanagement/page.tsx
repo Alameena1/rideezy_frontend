@@ -2,7 +2,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { adminClientApiService as apiService } from "@/services/api";
+import { adminClientApiService as apiService, useAdminApiInterceptors } from "@/services/client/adminClientApi"; // ✅ CORRECTED PATH
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
@@ -98,6 +98,9 @@ export default function Subscription() {
     status: "Active"
   });
   const [modalError, setModalError] = useState<string | null>(null);
+
+    useAdminApiInterceptors();
+
 
   const fetchSubscriptions = async (page: number = 1) => {
     try {
@@ -537,7 +540,7 @@ export default function Subscription() {
                   <div className="space-y-2">
                     <Label htmlFor="duration" className="text-white flex items-center gap-2">
                       <Calendar className="h-4 w-4" />
-                      Duration (Months)
+                      Duration(M)
                     </Label>
                     <Input
                       id="duration"

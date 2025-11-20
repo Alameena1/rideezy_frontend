@@ -119,43 +119,53 @@ export const useRidePayment = ({
         name: "Ride Sharing App",
         description: `Payment for Ride ${ride.rideId}`,
         order_id: orderId,
-        handler: async (response: RazorpayResponse) => {
-          console.log("[useRidePayment] Payment successful, verifying:", response);
-          try {
-            const verifyData = {
-              rideId: ride.rideId,
-              pickupLocation,
-              dropoffLocation,
-              pickupPlaceName: pickupPlaceName || "",
-              dropoffPlaceName: dropoffPlaceName || "",
-              paymentId: response.razorpay_payment_id,
-              orderId: response.razorpay_order_id,
-              signature: response.razorpay_signature,
-            };
-            
-            console.log("[useRidePayment] Verifying payment with data:", verifyData);
-            
-            const verifyResponse = await clientApiService.ride.verifyAndJoinRide(verifyData);
-            console.log("[useRidePayment] Verification response:", verifyResponse);
+       // In your useRidePayment hook - update the handler function
+handler: async (response: RazorpayResponse) => {
+  console.log("[useRidePayment] Payment successful, verifying:", response);
+  try {
+    const verifyData = {
+      pickupLocation,
+      dropoffLocation,
+      pickupPlaceName: pickupPlaceName || "Pickup Location",
+      dropoffPlaceName: dropoffPlaceName || "Drop-off Location",
+      paymentId: response.razorpay_payment_id,
+      orderId: response.razorpay_order_id,
+      signature: response.razorpay_signature,
+    };
+    
+    console.log("[useRidePayment] Verifying payment with data:", verifyData);
+    
+    // FIX: Use the correct endpoint with rideId in URL
+    const verifyResponse = await clientApiService.ride.verifyAndJoinRide(ride.rideId, verifyData);
+    console.log("[useRidePayment] Verification response:", verifyResponse);
 
-            // Handle different response formats for success
-            let successData;
-            if (verifyResponse.data) {
-              successData = verifyResponse.data;
-            } else if (verifyResponse.ride) {
-              successData = verifyResponse.ride;
-            } else {
-              successData = verifyResponse;
-            }
+    // Handle different response formats for success
+    let successData;
+    if (verifyResponse.data) {
+      successData = verifyResponse.data;
+    } else if (verifyResponse.ride) {
+      successData = verifyResponse.ride;
+    } else {
+      successData = verifyResponse;
+    }
 
-            console.log("[useRidePayment] Payment successful! Ride joined:", successData);
-            onSuccess(successData);
-          } catch (err: any) {
-            console.error("[useRidePayment] Payment verification failed:", err);
-            const errorMessage = err.response?.data?.message || err.message || "Payment verification failed. Please contact support.";
-            onError(errorMessage);
-          }
-        },
+    console.log("[useRidePayment] Payment successful! Ride joined:", successData);
+    
+    // FIX: Clear payment loading state BEFORE calling onSuccess
+    setPaymentLoading(null);
+    
+    // FIX: Add small delay to ensure state is cleared
+    setTimeout(() => {
+      onSuccess(successData);
+    }, 100);
+    
+  } catch (err: any) {
+    console.error("[useRidePayment] Payment verification failed:", err);
+    const errorMessage = err.response?.data?.message || err.message || "Payment verification failed. Please contact support.";
+    setPaymentLoading(null);
+    onError(errorMessage);
+  }
+},
         prefill: {
           name: user?.name || "Passenger",
           email: user?.email || "",

@@ -1,4 +1,5 @@
 import { clientApi } from "../client/client-api";
+import { CHAT_ROUTES } from "../../constants/apiRoutes";
 
 export interface Message {
   _id: string;
@@ -38,7 +39,7 @@ export const chatApi = {
   getConversation: async (conversationId: string): Promise<ChatResponse> => {
     try {
       console.log("Fetching conversation:", conversationId);
-      const response = await clientApi.api.get(`/api/chat/conversations/${conversationId}`);
+      const response = await clientApi.api.get(CHAT_ROUTES.CONVERSATIONS.GET(conversationId));
       console.log("getConversation response:", response);
       return {
         success: response.data.success,
@@ -53,7 +54,7 @@ export const chatApi = {
   getMessages: async (conversationId: string): Promise<ChatResponse> => {
     try {
       console.log("Fetching messages for conversation:", conversationId);
-      const response = await clientApi.api.get(`/api/chat/conversations/${conversationId}/messages`);
+      const response = await clientApi.api.get(CHAT_ROUTES.CONVERSATIONS.MESSAGES(conversationId));
       console.log("getMessages response:", response);
       return {
         success: response.data.success,
@@ -68,7 +69,7 @@ export const chatApi = {
   createConversation: async (participants: string[]): Promise<ChatResponse> => {
     try {
       console.log("Creating conversation with participants:", participants);
-      const response = await clientApi.api.post("/api/chat/conversations", { participants });
+      const response = await clientApi.api.post(CHAT_ROUTES.CONVERSATIONS.BASE, { participants });
       console.log("createConversation response:", response);
       return {
         success: response.data.success,
@@ -82,7 +83,7 @@ export const chatApi = {
 
   sendMessage: async (conversationId: string, content: string): Promise<ChatResponse> => {
     try {
-      const response = await clientApi.api.post(`/api/chat/conversations/${conversationId}/messages`, { content });
+      const response = await clientApi.api.post(CHAT_ROUTES.CONVERSATIONS.SEND_MESSAGE(conversationId), { content });
       return {
         success: response.data.success,
         message: response.data.message,
@@ -96,7 +97,7 @@ export const chatApi = {
   sendImageMessage: async (conversationId: string, formData: FormData): Promise<ChatResponse> => {
     try {
       console.log("Sending image message to conversation:", conversationId);
-      const response = await clientApi.api.post(`/api/chat/conversations/${conversationId}/image`, formData, {
+      const response = await clientApi.api.post(CHAT_ROUTES.CONVERSATIONS.SEND_IMAGE(conversationId), formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       console.log("sendImageMessage response:", response);
@@ -113,7 +114,7 @@ export const chatApi = {
   deleteMessage: async (messageId: string): Promise<ChatResponse> => {
     try {
       console.log("Deleting message:", messageId);
-      const response = await clientApi.api.delete(`/api/chat/messages/${messageId}`);
+      const response = await clientApi.api.delete(CHAT_ROUTES.MESSAGES.DELETE(messageId));
       console.log("deleteMessage response:", response);
       return {
         success: response.data.success,
@@ -129,8 +130,7 @@ export const chatApi = {
   uploadChatImage: async (formData: FormData): Promise<ChatResponse> => {
     try {
       console.log("Uploading chat image");
-      // FIXED: Added /api prefix to match backend route
-      const response = await clientApi.api.post('/api/chat/upload-image', formData, {
+      const response = await clientApi.api.post(CHAT_ROUTES.UPLOAD.IMAGE, formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       console.log("uploadChatImage response:", response);
@@ -147,7 +147,7 @@ export const chatApi = {
   getUserConversations: async (userId: string): Promise<ChatResponse> => {
     try {
       console.log("Fetching conversations for user:", userId);
-      const response = await clientApi.api.get(`/api/chat/users/${userId}/conversations`);
+      const response = await clientApi.api.get(CHAT_ROUTES.CONVERSATIONS.USER_CONVERSATIONS(userId));
       console.log("getUserConversations response:", response.data);
       return {
         success: response.data.success,
@@ -162,7 +162,7 @@ export const chatApi = {
   getOrCreateRideConversation: async (data: { rideId: string; driverId: string; userId: string }): Promise<ChatResponse> => {
     try {
       console.log("Getting or creating ride conversation:", data);
-      const response = await clientApi.api.post("/api/chat/ride-conversation", data);
+      const response = await clientApi.api.post(CHAT_ROUTES.RIDE_CONVERSATION, data);
       console.log("getOrCreateRideConversation response:", response);
       return {
         success: response.data.success,

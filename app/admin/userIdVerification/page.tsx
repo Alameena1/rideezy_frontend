@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { adminClientApiService as apiService } from "@/services/api";
+import { adminClientApiService as apiService, useAdminApiInterceptors } from "@/services/client/adminClientApi"; // ✅ CORRECTED PATH
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
@@ -149,6 +149,9 @@ export default function UserIdVerification() {
   const [selectedUser, setSelectedUser] = useState<string | null>(null);
   const [showRejectionModal, setShowRejectionModal] = useState(false);
   const [processingUser, setProcessingUser] = useState<string | null>(null);
+
+  useAdminApiInterceptors();
+
 
   const fetchUsers = async (page: number = 1) => {
     try {

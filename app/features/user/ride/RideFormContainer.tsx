@@ -55,6 +55,7 @@ const RideFormContainer: React.FC = () => {
   const [authReady, setAuthReady] = useState<boolean>(false);
   const [hasValidRoute, setHasValidRoute] = useState<boolean>(false);
   const [selectedVehicleId, setSelectedVehicleId] = useState<string>("");
+  const [driverId, setDriverId] = useState<string>("");
 
   const {
     register,
@@ -80,6 +81,8 @@ const RideFormContainer: React.FC = () => {
 
   const startPoint = watch("startPoint");
   const endPoint = watch("endPoint");
+  const startPlaceName = watch("startPlaceName");
+  const endPlaceName = watch("endPlaceName");
   const vehicleId = watch("vehicleId");
   const passengerCount = watch("passengerCount");
   const fuelPrice = watch("fuelPrice");
@@ -91,22 +94,13 @@ const RideFormContainer: React.FC = () => {
     year: "numeric",
   });
 
-  // Watch for vehicleId changes and update selectedVehicleId
   useEffect(() => {
     if (vehicleId && vehicleId !== selectedVehicleId) {
-      console.log("🔄 Vehicle selection changed from:", selectedVehicleId, "to:", vehicleId);
       setSelectedVehicleId(vehicleId);
-      
-      // Debug: Log all vehicles and find the selected one
-      console.log("📋 All vehicles:", vehicles);
-      const selectedVehicle = vehicles.find((v) => v._id === vehicleId);
-      console.log("🎯 Selected vehicle found:", selectedVehicle);
-      console.log("🎯 Selected vehicle seat capacity:", selectedVehicle?.seatCapacity);
     }
   }, [vehicleId, selectedVehicleId, vehicles]);
 
   const handleAuthError = (error: any) => {
-    console.error("[RideFormContainer] Authentication error:", error);
     Swal.fire({
       icon: "error",
       title: "Session Expired",
@@ -119,66 +113,78 @@ const RideFormContainer: React.FC = () => {
     });
   };
 
-  // Wait for authentication to be ready
+  const extractDriverId = (userData: any): string => {
+    if (userData?._id) return userData._id;
+    if (userData?.id) return userData.id;
+    if (userData?.data?._id) return userData.data._id;
+    if (userData?.data?.id) return userData.data.id;
+    if (userData?.user?._id) return userData.user._id;
+    if (userData?.user?.id) return userData.user.id;
+    if (typeof userData === 'string') return userData;
+    
+    throw new Error("Failed to extract driver ID from user data");
+  };
+
   useEffect(() => {
     if (status === "authenticated" && session?.user) {
-      console.log("[RideFormContainer] Auth ready, session:", session);
       setAuthReady(true);
     } else if (status === "unauthenticated") {
-      console.log("[RideFormContainer] User not authenticated");
       router.push("/user/login");
     }
   }, [status, session, router]);
 
   useEffect(() => {
     const fetchData = async () => {
-      // Don't fetch data until auth is ready
       if (!authReady || status !== "authenticated") {
-        console.log("[RideFormContainer] Auth not ready yet, skipping fetch");
         return;
       }
 
       try {
         setIsLoading(true);
-        console.log("[RideFormContainer] Starting data fetch...");
 
-        // Check if we have access token
         const accessToken = (session?.user as any)?.accessToken;
         if (!accessToken) {
-          console.error("[RideFormContainer] No access token available");
           handleAuthError(new Error("No access token"));
           return;
         }
 
-        // Fetch user profile
-        const userData = await clientApiService.user.getProfile();
-        console.log("[RideFormContainer] Fetched user data:", userData);
-        
-        const driverId = userData.data?._id || userData._id;
-        if (!driverId) {
-          throw new Error("Failed to fetch driver ID. Please log in again.");
+        let userData;
+        try {
+          userData = await clientApiService.user.getProfile();
+        } catch (userError: any) {
+          if (userError.response?.status === 401) {
+            handleAuthError(userError);
+            return;
+          }
+          throw new Error("Failed to fetch user profile. Please try again.");
         }
-        setValue("driverId", driverId);
 
-        // Fetch vehicles with better error handling
+        let extractedDriverId: string;
+        try {
+          extractedDriverId = extractDriverId(userData);
+        } catch (idError) {
+          extractedDriverId = (session?.user as any)?.id || (session?.user as any)?._id;
+          if (!extractedDriverId) {
+            throw new Error("Could not determine your user ID. Please log in again.");
+          }
+        }
+
+        setDriverId(extractedDriverId);
+        setValue("driverId", extractedDriverId);
+
         let vehiclesData;
         try {
           vehiclesData = await clientApiService.vehicle.getVehicles();
-          console.log("[RideFormContainer] Raw vehicles response:", vehiclesData);
         } catch (vehicleError: any) {
-          console.error("[RideFormContainer] Vehicles fetch error:", vehicleError);
           if (vehicleError.response?.status === 401) {
             handleAuthError(vehicleError);
             return;
           }
-          // Continue without vehicles if there's an error (other than auth)
           vehiclesData = { data: [] };
         }
 
-        // Handle different possible response structures for vehicles
         let vehicles: Vehicle[] = [];
         
-        // First, try to extract vehicles array from response
         if (Array.isArray(vehiclesData)) {
           vehicles = vehiclesData;
         } else if (Array.isArray(vehiclesData.data)) {
@@ -186,16 +192,13 @@ const RideFormContainer: React.FC = () => {
         } else if (Array.isArray(vehiclesData.data?.data)) {
           vehicles = vehiclesData.data.data;
         } else if (vehiclesData.data && typeof vehiclesData.data === 'object') {
-          // Handle case where data is an object with vehicles array
           vehicles = vehiclesData.data.vehicles || vehiclesData.data.data || [];
         } else if (vehiclesData.vehicles && Array.isArray(vehiclesData.vehicles)) {
           vehicles = vehiclesData.vehicles;
         } else {
-          console.warn("[RideFormContainer] Unexpected vehicles data structure:", vehiclesData);
           vehicles = [];
         }
 
-        // Filter only approved vehicles and map to proper structure
         const approvedVehicles: Vehicle[] = vehicles
           .filter((vehicle: any) => vehicle.status === "Approved")
           .map((vehicle: any) => ({
@@ -205,50 +208,35 @@ const RideFormContainer: React.FC = () => {
             seatCapacity: vehicle.seatCapacity || 4,
             vehicleType: vehicle.vehicleType || "Car",
           }));
-
-        console.log("✅ Processed approved vehicles:", approvedVehicles);
-        console.log("📊 Vehicle seat capacities:", approvedVehicles.map(v => `${v.vehicleName} (${v._id}): ${v.seatCapacity} seats`));
         
         setVehicles(approvedVehicles);
         
-        // Auto-select the first vehicle if available
         if (approvedVehicles.length > 0) {
           const firstVehicleId = approvedVehicles[0]._id;
           setValue("vehicleId", firstVehicleId);
           setSelectedVehicleId(firstVehicleId);
-          console.log("🚗 Auto-selected first vehicle:", firstVehicleId, "with", approvedVehicles[0].seatCapacity, "seats");
-        } else {
-          console.warn("⚠️ No approved vehicles available");
         }
 
-        // Fetch subscription status
         try {
           const subscriptionData = await clientApiService.subscription.getSubscriptionStatus();
-          console.log("[RideFormContainer] Subscription status:", subscriptionData);
           setIsSubscribed(subscriptionData.data?.isSubscribed || false);
         } catch (subscriptionError: any) {
-          console.error("[RideFormContainer] Subscription fetch error:", subscriptionError);
           if (subscriptionError.response?.status === 401) {
             handleAuthError(subscriptionError);
             return;
           }
-          // Continue with default subscription status if there's an error
           setIsSubscribed(false);
         }
 
         setDataLoaded(true);
 
       } catch (error: any) {
-        console.error("[RideFormContainer] Fetch error:", error);
-        
         if (error.response?.status === 401) {
           handleAuthError(error);
           return;
         }
 
-        // Don't show error for development mode network issues
         if (process.env.NODE_ENV === 'development' && error.code === 'ERR_NETWORK') {
-          console.log("[RideFormContainer] Development network error, ignoring");
           return;
         }
 
@@ -267,13 +255,12 @@ const RideFormContainer: React.FC = () => {
     fetchData();
   }, [authReady, status, session, setValue, router]);
 
-  // Update hasValidRoute when both start and end points are provided
   useEffect(() => {
     if (startPoint && endPoint) {
       setHasValidRoute(true);
     } else {
       setHasValidRoute(false);
-      setRouteData(null); // Reset route data when points are cleared
+      setRouteData(null);
     }
   }, [startPoint, endPoint]);
 
@@ -282,12 +269,9 @@ const RideFormContainer: React.FC = () => {
       const distanceInKm = routeData.distance / 1000;
       setDistanceInKm(distanceInKm);
       
-      // Add safety check for vehicles array
       const selectedVehicle = Array.isArray(vehicles) 
         ? vehicles.find((v) => v._id === vehicleId)
         : null;
-        
-      console.log("📐 Calculating rates for vehicle:", selectedVehicle?.vehicleName, "with", selectedVehicle?.seatCapacity, "seats");
       
       const fuelNeeded = distanceInKm / (selectedVehicle?.mileage || 1);
       const totalFuelCost = fuelNeeded * fuelPrice;
@@ -298,27 +282,31 @@ const RideFormContainer: React.FC = () => {
     }
   }, [routeData, vehicleId, passengerCount, fuelPrice, vehicles, isSubscribed]);
 
-  // Handle manual vehicle selection change
   const handleVehicleChange = (value: string) => {
-    console.log("🚗 Manual vehicle selection:", value);
     setValue("vehicleId", value);
     setSelectedVehicleId(value);
     
-    // Force form validation update
     const selectedVehicle = vehicles.find((v) => v._id === value);
-    console.log("🎯 Manually selected vehicle:", selectedVehicle);
-    
-    // Reset passenger count if it exceeds new vehicle capacity
     const currentPassengerCount = getValues("passengerCount");
     const maxPassengers = (selectedVehicle?.seatCapacity || 1) - 1;
     
     if (currentPassengerCount > maxPassengers) {
       setValue("passengerCount", maxPassengers);
-      console.log("🔄 Reset passenger count to:", maxPassengers);
     }
   };
 
   const onSubmit = async (data: FormData) => {
+    if (!driverId) {
+      Swal.fire({
+        icon: "error",
+        title: "Authentication Error",
+        text: "Your session is invalid. Please log in again.",
+        background: '#fff',
+        color: '#374151',
+      });
+      return;
+    }
+
     if (!routeData || !routeData.distance || !routeData.geometry) {
       Swal.fire({
         icon: "error",
@@ -330,7 +318,17 @@ const RideFormContainer: React.FC = () => {
       return;
     }
 
-    // Add safety check for vehicles array
+    if (!data.startPlaceName || !data.endPlaceName) {
+      Swal.fire({
+        icon: "error",
+        title: "Missing Location Names",
+        text: "Please provide names for both start and end locations.",
+        background: '#fff',
+        color: '#374151',
+      });
+      return;
+    }
+
     const selectedVehicle = Array.isArray(vehicles) 
       ? vehicles.find((v) => v._id === data.vehicleId)
       : null;
@@ -351,6 +349,8 @@ const RideFormContainer: React.FC = () => {
       time: data.time,
       startPoint: data.startPoint,
       endPoint: data.endPoint,
+      startPlaceName: data.startPlaceName,
+      endPlaceName: data.endPlaceName,
       passengerCount: Number(data.passengerCount),
       fuelPrice: Number(data.fuelPrice),
       vehicleId: data.vehicleId,
@@ -358,15 +358,12 @@ const RideFormContainer: React.FC = () => {
       distance: Number(routeData.distance) / 1000,
       routeGeometry: JSON.stringify(routeData.geometry),
       platformFee: platformFee || 0,
-      driverId: data.driverId,
+      driverId: driverId,
     };
-
-    console.log("[RideFormContainer] Submitting rideData:", rideData);
 
     setIsLoading(true);
     try {
       const response = await clientApiService.ride.startRide(rideData);
-      console.log("[RideFormContainer] Start ride response:", response);
       Swal.fire({
         icon: "success",
         title: "Ride Initiated Successfully!",
@@ -388,8 +385,6 @@ const RideFormContainer: React.FC = () => {
         }
       });
     } catch (error: any) {
-      console.error("[RideFormContainer] Ride submit error:", error);
-      
       if (error.response?.status === 401) {
         handleAuthError(error);
         return;
@@ -408,7 +403,6 @@ const RideFormContainer: React.FC = () => {
     }
   };
 
-  // Show loading state while checking authentication or fetching initial data
   if (status === "loading" || (!dataLoaded && isLoading)) {
     return (
       <div className="mx-auto max-w-7xl p-6 space-y-6">
@@ -425,14 +419,12 @@ const RideFormContainer: React.FC = () => {
     );
   }
 
-  // Redirect if not authenticated
   if (status === "unauthenticated") {
-    return null; // The useEffect will handle the redirect
+    return null;
   }
 
   return (
     <div className="mx-auto max-w-7xl p-6 space-y-6">
-      {/* Header */}
       <div className="text-center space-y-2">
         <h1 className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
           Create New Ride
@@ -445,7 +437,6 @@ const RideFormContainer: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-8">
-        {/* Map Section - Always render MapComponent when both points are provided */}
         <Card className="border-0 shadow-lg">
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center gap-2 text-xl">
@@ -490,7 +481,6 @@ const RideFormContainer: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Form Section */}
         <Card className="border-0 shadow-lg">
           <CardHeader className="pb-4">
             <CardTitle className="flex items-center gap-2 text-xl">
@@ -510,7 +500,6 @@ const RideFormContainer: React.FC = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-              {/* Address Search */}
               <div className="space-y-4">
                 <AddressSearch
                   label="Start Point"
@@ -518,7 +507,7 @@ const RideFormContainer: React.FC = () => {
                   placeNameField="startPlaceName"
                   register={register}
                   setValue={setValue}
-                  error={errors.startPoint?.message}
+                  error={errors.startPlaceName?.message}
                   allowCurrentLocation={true}
                 />
                 <AddressSearch
@@ -527,15 +516,13 @@ const RideFormContainer: React.FC = () => {
                   placeNameField="endPlaceName"
                   register={register}
                   setValue={setValue}
-                  error={errors.endPoint?.message}
+                  error={errors.endPlaceName?.message}
                   allowCurrentLocation={false}
                 />
               </div>
 
               <Separator />
 
-
-              {/* Ride Form Fields */}
               <RideFormFields
                 vehicles={vehicles}
                 register={register}
@@ -545,15 +532,14 @@ const RideFormContainer: React.FC = () => {
                 platformFee={platformFee}
                 selectedVehicleId={selectedVehicleId}
                 isLoading={isLoading}
-                onVehicleChange={handleVehicleChange} // Pass the change handler
+                onVehicleChange={handleVehicleChange}
               />
 
               <Separator />
 
-              {/* Submit Button */}
               <Button
                 type="submit"
-                disabled={isLoading || !routeData || !dataLoaded}
+                disabled={isLoading || !routeData || !dataLoaded || !startPlaceName || !endPlaceName || !driverId}
                 className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white py-3 text-lg font-medium shadow-lg transition-all duration-200"
                 size="lg"
               >
@@ -570,6 +556,12 @@ const RideFormContainer: React.FC = () => {
                 )}
               </Button>
 
+              {!driverId && (
+                <p className="text-center text-sm text-red-600">
+                  Unable to identify your account. Please refresh the page.
+                </p>
+              )}
+
               {!routeData && hasValidRoute && (
                 <p className="text-center text-sm text-orange-600">
                   Calculating route... Please wait a moment
@@ -581,6 +573,12 @@ const RideFormContainer: React.FC = () => {
                   Please set both start and end points to calculate route
                 </p>
               )}
+
+              {(!startPlaceName || !endPlaceName) && (
+                <p className="text-center text-sm text-red-600">
+                  Please provide names for both start and end locations
+                </p>
+              )}
             </form>
           </CardContent>
         </Card>
@@ -589,4 +587,4 @@ const RideFormContainer: React.FC = () => {
   );
 };
 
-export default RideFormContainer;
+export default RideFormContainer; 

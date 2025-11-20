@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { adminClientApiService as apiService } from "@/services/api";
+import { adminClientApiService as apiService, useAdminApiInterceptors } from "@/services/client/adminClientApi";
+
 import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -125,6 +126,10 @@ export default function VehicleVerification() {
   const [hasNext, setHasNext] = useState(false);
   const [hasPrev, setHasPrev] = useState(false);
   const [processingVehicle, setProcessingVehicle] = useState<string | null>(null);
+
+
+  useAdminApiInterceptors();
+
 
   // Document preview states
   const [documentPreview, setDocumentPreview] = useState<DocumentPreview | null>(null);

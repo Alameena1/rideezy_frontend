@@ -14,7 +14,7 @@ interface PaginationQuery {
 export const adminUserApi = {
   getUsers: async (query: PaginationQuery = {}) => {
     try {
-      const response = await adminApi.get("/users", { params: query });
+      const response = await adminApi.get("/admin/users", { params: query }); // Added /admin prefix
       console.log("Fetched Users:", response.data);
       return response.data; 
     } catch (error) {
@@ -27,7 +27,7 @@ export const adminUserApi = {
 
   toggleUserStatus: async (userId: string, newStatus: "Active" | "Blocked") => {
     try {
-      const response = await adminApi.patch(`/users/${userId}/status`, { status: newStatus });
+      const response = await adminApi.patch(`/admin/users/${userId}/status`, { status: newStatus }); // Added /admin prefix
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -36,9 +36,10 @@ export const adminUserApi = {
       throw new Error("An unknown error occurred");
     }
   },
-   verifyGovId: async (userId: string, status: "Verified" | "Rejected", rejectionNote?: string) => {
+  
+  verifyGovId: async (userId: string, status: "Verified" | "Rejected", rejectionNote?: string) => {
     try {
-      const response = await adminApi.post("/verify-gov-id", { userId, status, rejectionNote });
+      const response = await adminApi.post("/admin/verify-gov-id", { userId, status, rejectionNote }); // Added /admin prefix
       console.log("Gov ID Verification:", response.data);
       return response.data;
     } catch (error) {

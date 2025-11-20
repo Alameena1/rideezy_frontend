@@ -1,5 +1,5 @@
-// services/user/rideApi.ts
-import { serverApiInstance } from "../serverInstance"; // Use serverApiInstance to break cycle
+import { serverApiInstance } from "../serverInstance";
+import { RIDE_ROUTES } from "../../constants/apiRoutes";
 import { EditRideDto } from "../../types/ride.types";
 
 export interface Ride {
@@ -44,7 +44,7 @@ export const rideApi = {
     platformFee?: number;
   }) => {
     try {
-      const response = await serverApiInstance.post("/initiate-rides/start", data);
+      const response = await serverApiInstance.post(RIDE_ROUTES.START_RIDE, data);
       return response.data;
     } catch (error: any) {
       console.error("[rideApi] Error starting ride:", error.response?.data || error.message);
@@ -54,7 +54,7 @@ export const rideApi = {
 
   getRides: async () => {
     try {
-      const response = await serverApiInstance.get("/initiate-rides/rides", {
+      const response = await serverApiInstance.get(RIDE_ROUTES.GET_RIDES, {
         withCredentials: true,
       });
       return response.data;
@@ -66,7 +66,7 @@ export const rideApi = {
 
   editRide: async (rideId: string, driverId: string, dto: EditRideDto) => {
     try {
-      const response = await serverApiInstance.put(`/initiate-rides/${rideId}`, dto, {
+      const response = await serverApiInstance.put(RIDE_ROUTES.EDIT_RIDE(rideId), dto, {
         withCredentials: true,
         headers: { "Driver-Id": driverId },
       });
@@ -79,7 +79,7 @@ export const rideApi = {
 
   cancelRide: async (rideId: string) => {
     try {
-      const response = await serverApiInstance.delete(`/initiate-rides/${rideId}`, {
+      const response = await serverApiInstance.delete(RIDE_ROUTES.CANCEL_RIDE(rideId), {
         withCredentials: true,
       });
       return response.data;
@@ -91,7 +91,7 @@ export const rideApi = {
 
   startTracking: async (rideId: string, driverId: string) => {
     try {
-      const response = await serverApiInstance.put(`/initiate-rides/${rideId}/start-tracking`, {}, {
+      const response = await serverApiInstance.put(RIDE_ROUTES.START_TRACKING(rideId), {}, {
         withCredentials: true,
         headers: { "Driver-Id": driverId },
       });
@@ -106,7 +106,7 @@ export const rideApi = {
   // JOIN RIDE ENDPOINTS
   getJoinedRides: async () => {
     try {
-      const response = await serverApiInstance.get("/join-rides/joined", {
+      const response = await serverApiInstance.get(RIDE_ROUTES.GET_JOINED_RIDES, {
         withCredentials: true,
       });
       console.log("[rideApi] Get joined rides response:", response);
@@ -122,7 +122,7 @@ export const rideApi = {
 
   findNearestRides: async (data: { userLocation: string; destination: string }) => {
     try {
-      const response = await serverApiInstance.post("/join-rides/nearest", data, {
+      const response = await serverApiInstance.post(RIDE_ROUTES.FIND_NEAREST_RIDES, data, {
         withCredentials: true,
       });
       return response.data.data as Ride[];
@@ -147,7 +147,7 @@ export const rideApi = {
       });
 
       const response = await serverApiInstance.post(
-        `/join-rides/join`,
+        RIDE_ROUTES.JOIN_RIDE,
         {
           rideId,
           passengerId,
@@ -167,8 +167,7 @@ export const rideApi = {
 
   handleJoinRequest: async (rideId: string, driverId: string, passengerId: string, action: "accept" | "reject") => {
     try {
-      // Use serverApiInstance instead of apiService to avoid cycle
-      const ridesResponse = await serverApiInstance.get("/initiate-rides/rides", { withCredentials: true });
+      const ridesResponse = await serverApiInstance.get(RIDE_ROUTES.GET_RIDES, { withCredentials: true });
       const ride = ridesResponse.data.data?.find((r: Ride) => r.rideId === rideId);
 
       if (!ride) {
@@ -176,7 +175,7 @@ export const rideApi = {
       }
 
       const response = await serverApiInstance.put(
-        `/join-rides/${ride._id}/requests/${passengerId}`,
+        RIDE_ROUTES.HANDLE_JOIN_REQUEST(ride._id, passengerId),
         {
           driverId,
           action,
@@ -198,7 +197,7 @@ export const rideApi = {
 
   createRidePaymentOrder: async (rideId: string) => {
     try {
-      const response = await serverApiInstance.post("/join-rides/create-ride-order", { rideId }, {
+      const response = await serverApiInstance.post(RIDE_ROUTES.CREATE_RIDE_PAYMENT_ORDER, { rideId }, {
         withCredentials: true,
       });
       return response.data;
@@ -217,7 +216,7 @@ export const rideApi = {
     signature: string;
   }) => {
     try {
-      const response = await serverApiInstance.post("/join-rides/verify-and-join", data, {
+      const response = await serverApiInstance.post(RIDE_ROUTES.VERIFY_AND_JOIN, data, {
         withCredentials: true,
       });
       return response.data.data as Ride;
@@ -229,7 +228,7 @@ export const rideApi = {
 
   cancelJoinedRide: async (rideId: string) => {
     try {
-      const response = await serverApiInstance.delete(`/join-rides/joined/${rideId}`, {
+      const response = await serverApiInstance.delete(RIDE_ROUTES.CANCEL_JOINED_RIDE(rideId), {
         withCredentials: true,
       });
       return response.data;
@@ -242,11 +241,11 @@ export const rideApi = {
   updateRide: async (id: string, updates: { currentPosition?: [number, number]; passengerId: string; action: "picked" | "dropped" }, driverId: string) => {
     try {
       console.log("[rideApi] Sending updateRide request:", {
-        url: `/initiate-rides/${id}/update`,
+        url: RIDE_ROUTES.UPDATE_RIDE(id),
         updates,
         driverId,
       });
-      const response = await serverApiInstance.put(`/initiate-rides/${id}/update`, updates, {
+      const response = await serverApiInstance.put(RIDE_ROUTES.UPDATE_RIDE(id), updates, {
         withCredentials: true,
         headers: { "Driver-Id": driverId },
       });

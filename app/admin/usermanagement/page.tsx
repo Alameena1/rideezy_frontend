@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { adminClientApiService as apiService } from "@/services/api";
-import { Button } from "@/components/ui/button";
+import { adminClientApiService, useAdminApiInterceptors } from "@/services/client/adminClientApi"; // ✅ ADDED: Import interceptor
+  import { Button } from "@/components/ui/button";
 import { DataTable } from "@/components/ui/data-table";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -59,6 +59,8 @@ export default function UserManagement() {
   const [hasPrev, setHasPrev] = useState(false);
   const [blockingUser, setBlockingUser] = useState<string | null>(null);
 
+   useAdminApiInterceptors();
+
   const fetchUsers = async () => {
     try {
       setLoading(true);
@@ -77,7 +79,7 @@ export default function UserManagement() {
       }
 
       console.log("📡 Fetching users with params:", params);
-      const response: PaginatedResponse = await apiService.user.getUsers(params);
+      const response: PaginatedResponse = await adminClientApiService.user.getUsers(params);
       
       if (!response.success) {
         throw new Error("Failed to fetch users");
@@ -153,7 +155,7 @@ export default function UserManagement() {
       }
 
       console.log("🔍 Checking ongoing rides for user:", userId);
-      const response = await apiService.user.checkUserOngoingRides(userId);
+      const response = await adminClientApiService.user.checkUserOngoingRides(userId);
       console.log("📊 Ongoing rides check result:", response);
       return response;
     } catch (error) {
@@ -266,7 +268,7 @@ export default function UserManagement() {
         newStatus 
       });
       
-      await apiService.user.toggleUserStatus(user.id, newStatus);
+      await adminClientApiService.user.toggleUserStatus(user.id, newStatus);
       
       // Update local state
       setUsers(prevUsers => 

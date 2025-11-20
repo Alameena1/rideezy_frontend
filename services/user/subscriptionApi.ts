@@ -1,4 +1,5 @@
 import { serverApiInstance } from "../api";
+import { SUBSCRIPTION_ROUTES } from "../../constants/apiRoutes";
 
 export interface SubscriptionPlan {
   _id: string;
@@ -57,7 +58,7 @@ export interface ErrorResponse {
 export const subscriptionApi = {
   getSubscriptionPlans: async (): Promise<{ success: boolean; data: SubscriptionPlan[] }> => {
     try {
-      const response = await serverApiInstance.get("/subscriptions/plans"); 
+      const response = await serverApiInstance.get(SUBSCRIPTION_ROUTES.PLANS);
       return response.data;
     } catch (error: any) {
       console.error("Failed to fetch subscription plans:", error.response?.status, error.response?.data);
@@ -67,7 +68,7 @@ export const subscriptionApi = {
 
   checkSubscription: async (userId: string): Promise<SubscriptionStatusResponse> => {
     try {
-      const response = await serverApiInstance.get(`/subscriptions/check/${userId}`); 
+      const response = await serverApiInstance.get(SUBSCRIPTION_ROUTES.CHECK(userId));
       return response.data;
     } catch (error: any) {
       console.error(`Failed to check subscription for user ${userId}:`, error.response?.status, error.response?.data);
@@ -77,12 +78,11 @@ export const subscriptionApi = {
 
   createOrder: async (planId: string): Promise<OrderResponse> => {
     try {
-      const response = await serverApiInstance.post("/subscriptions/create-order", { planId });
+      const response = await serverApiInstance.post(SUBSCRIPTION_ROUTES.CREATE_ORDER, { planId });
       return response.data;
     } catch (error: any) {
       console.error("Failed to create Razorpay order:", error.response?.status, error.response?.data);
       
-      // Handle Zod validation errors from backend
       if (error.response?.data?.errors) {
         const validationError = error.response.data as ErrorResponse;
         throw new Error(validationError.message || "Validation failed");
@@ -100,12 +100,11 @@ export const subscriptionApi = {
     signature: string;
   }): Promise<SubscribeResponse> => {
     try {
-      const response = await serverApiInstance.post("/subscriptions/verify", data); 
+      const response = await serverApiInstance.post(SUBSCRIPTION_ROUTES.VERIFY, data);
       return response.data;
     } catch (error: any) {
       console.error("Failed to verify and subscribe:", error.response?.status, error.response?.data);
       
-      // Handle Zod validation errors from backend
       if (error.response?.data?.errors) {
         const validationError = error.response.data as ErrorResponse;
         throw new Error(validationError.message || "Validation failed");
@@ -117,12 +116,11 @@ export const subscriptionApi = {
 
   subscribeWithWallet: async (data: { userId: string; planId: string }): Promise<SubscribeResponse> => {
     try {
-      const response = await serverApiInstance.post("/subscriptions/subscribe-wallet", data); 
+      const response = await serverApiInstance.post(SUBSCRIPTION_ROUTES.SUBSCRIBE_WALLET, data);
       return response.data;
     } catch (error: any) {
       console.error("Failed to subscribe with wallet:", error.response?.status, error.response?.data);
       
-      // Handle Zod validation errors from backend
       if (error.response?.data?.errors) {
         const validationError = error.response.data as ErrorResponse;
         throw new Error(validationError.message || "Validation failed");
@@ -134,7 +132,7 @@ export const subscriptionApi = {
 
   getSubscriptionStatus: async (): Promise<{ success: boolean; isSubscribed: boolean }> => {
     try {
-      const response = await serverApiInstance.get("/subscriptions/status", {
+      const response = await serverApiInstance.get(SUBSCRIPTION_ROUTES.STATUS, {
         withCredentials: true,
       });
       return response.data;

@@ -46,8 +46,8 @@ interface PaginationQuery {
 export const adminRideApi = {
   getRides: async (query: PaginationQuery = {}): Promise<{ success: boolean; data: Ride[]; pagination: any }> => {
     try {
-      const response = await adminApi.get("/rides", { params: query });
-      return response.data; // Expecting { success: boolean, data: Ride[], pagination: { currentPage, totalPages, totalItems, hasNext, hasPrev } }
+      const response = await adminApi.get("/admin/rides", { params: query }); // Added /admin prefix
+      return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         throw new Error(error.response?.data?.message || "Failed to fetch rides");
@@ -58,7 +58,7 @@ export const adminRideApi = {
 
   getRideById: async (rideId: string): Promise<Ride> => {
     try {
-      const response = await adminApi.get(`/rides/${rideId}`);
+      const response = await adminApi.get(`/admin/rides/${rideId}`); // Added /admin prefix
       return response.data.ride;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -70,7 +70,7 @@ export const adminRideApi = {
 
   cancelRide: async (rideId: string): Promise<void> => {
     try {
-      const response = await adminApi.patch(`/rides/${rideId}/cancel`, {});
+      const response = await adminApi.patch(`/admin/rides/${rideId}/cancel`, {}); // Added /admin prefix
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -82,7 +82,7 @@ export const adminRideApi = {
 
   blockRide: async (rideId: string): Promise<void> => {
     try {
-      const response = await adminApi.patch(`/rides/${rideId}/block`, {});
+      const response = await adminApi.patch(`/admin/rides/${rideId}/block`, {}); // Added /admin prefix
       return response.data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
@@ -94,7 +94,7 @@ export const adminRideApi = {
 
   getUserById: async (userId: string): Promise<User> => {
     try {
-      const response = await adminApi.get(`/users/${userId}`);
+      const response = await adminApi.get(`/admin/users/${userId}`); // Added /admin prefix
       return response.data.user;
     } catch (error) {
       if (axios.isAxiosError(error)) {
