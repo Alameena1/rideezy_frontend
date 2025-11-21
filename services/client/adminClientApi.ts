@@ -397,7 +397,7 @@ export const clientAdminRideApi = {
 
 // Adapted Dashboard API (using adminClientApi)
 export const clientAdminDashboardApi = {
-  getDashboardMetrics: async (params?: { startDate?: string; endDate?: string }): Promise<DashboardMetricsResponse> => {
+  getDashboardMetrics: async (params?: { startDate?: string; endDate?: string; timeRange?: string }): Promise<DashboardMetricsResponse> => {
     try {
       const response = await adminClientApi.api.get("/admin/dashboard-metrics", { params });
       console.log("Admin Dashboard Metrics:", response.data);
@@ -415,7 +415,56 @@ export const clientAdminDashboardApi = {
       throw new Error("An unknown error occurred");
     }
   },
+
+  // NEW: Revenue analytics
+  getRevenueAnalytics: async (params?: { timeRange?: string }): Promise<any> => {
+    try {
+      const response = await adminClientApi.api.get("/admin/dashboard/revenue-analytics", { params });
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.message || "Failed to fetch revenue analytics");
+      }
+      throw new Error("An unknown error occurred");
+    }
+  },
 };
+
+// NEW: Transactions API
+export const clientAdminTransactionApi = {
+  getTransactionHistory: async (params?: { 
+    page?: number; 
+    limit?: number; 
+    search?: string;
+    type?: 'SUBSCRIPTION' | 'PLATFORM_FEE' | 'ALL';
+  }): Promise<any> => {
+    try {
+      const response = await adminClientApi.api.get("/admin/transactions", { params });
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.message || "Failed to fetch transaction history");
+      }
+      throw new Error("An unknown error occurred");
+    }
+  },
+};
+
+// NEW: Wallet API
+export const clientAdminWalletApi = {
+  getAdminWallet: async (): Promise<any> => {
+    try {
+      const response = await adminClientApi.api.get("/admin/wallet");
+      return response.data;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        throw new Error(error.response?.data?.message || "Failed to fetch admin wallet");
+      }
+      throw new Error("An unknown error occurred");
+    }
+  },
+};
+
 
 // Main Admin Client API Service
 export const adminClientApiService = {
@@ -425,6 +474,8 @@ export const adminClientApiService = {
   subscription: clientAdminSubscriptionApi,
   ride: clientAdminRideApi,
   dashboard: clientAdminDashboardApi,
+  transactions: clientAdminTransactionApi,
+  wallet: clientAdminWalletApi, 
 };
 
 // Export interceptor hook

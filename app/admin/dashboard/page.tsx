@@ -36,6 +36,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 
 // Dark theme chart colors
 const CHART_COLORS = {
@@ -54,6 +55,15 @@ const CHART_COLORS = {
 
 const REVENUE_COLORS = [CHART_COLORS.blue, CHART_COLORS.green, CHART_COLORS.yellow, CHART_COLORS.orange];
 
+interface RevenueData {
+  totalRevenue: number;
+  subscriptionRevenue: number;
+  platformFeeRevenue: number;
+  revenueByPeriod: { period: string; revenue: number }[];
+  topPlans: { planName: string; revenue: number; subscribers: number }[];
+  recentTransactions: any[];
+}
+
 interface DashboardMetrics {
   metrics: {
     totalUsers: number;
@@ -69,6 +79,30 @@ interface DashboardMetrics {
   rideCount: { month: string; rides: number; completed: number; cancelled: number }[];
   revenueDistribution: { name: string; value: number; color: string }[];
   platformRevenue: { month: string; revenue: number; rides: number }[];
+}
+
+interface Transaction {
+  _id: string;
+  type: 'SUBSCRIPTION' | 'PLATFORM_FEE';
+  amount: number;
+  status: string;
+  description: string;
+  paymentGateway: string;
+  createdAt: string;
+  userId?: {
+    _id: string;
+    name: string;
+    email: string;
+  };
+  subscriptionPlanId?: {
+    _id: string;
+    name: string;
+    price: number;
+  };
+  rideId?: {
+    _id: string;
+    rideId: string;
+  };
 }
 
 type TimeRange = "7days" | "30days" | "90days" | "1year" | "all";
@@ -136,10 +170,27 @@ export default function Dashboard() {
     revenueDistribution: [],
     platformRevenue: [],
   });
+
+  const [revenueData, setRevenueData] = useState<RevenueData | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [transactionPagination, setTransactionPagination] = useState({
+    currentPage: 1,
+    totalPages: 1,
+    totalItems: 0,
+    hasNext: false,
+    hasPrev: false
+  });
   const [timeRange, setTimeRange] = useState<TimeRange>("30days");
   const [activeTab, setActiveTab] = useState("overview");
   const [loading, setLoading] = useState(true);
+  const [revenueLoading, setRevenueLoading] = useState(false);
+  const [transactionsLoading, setTransactionsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [transactionFilters, setTransactionFilters] = useState({
+    search: '',
+    page: 1,
+    limit: 10
+  });
 
   // Redirect if not admin
   useEffect(() => {
@@ -176,10 +227,51 @@ export default function Dashboard() {
     fetchDashboardData();
   }, [session, status, timeRange]);
 
+  // Fetch revenue data when Revenue tab is active
+  useEffect(() => {
+    const fetchRevenueData = async () => {
+      if (activeTab !== "revenue") return;
+
+      try {
+        setRevenueLoading(true);
+        const response = await adminClientApiService.dashboard.getRevenueAnalytics({
+          timeRange,
+        });
+        setRevenueData(response);
+      } catch (err: any) {
+        console.error("❌ Revenue data fetch error:", err);
+      } finally {
+        setRevenueLoading(false);
+      }
+    };
+
+    fetchRevenueData();
+  }, [activeTab, timeRange]);
+
+  // Fetch transactions when Revenue tab is active
+  useEffect(() => {
+    const fetchTransactions = async () => {
+      if (activeTab !== "revenue") return;
+
+      try {
+        setTransactionsLoading(true);
+        const response = await adminClientApiService.transactions.getTransactionHistory(transactionFilters);
+        setTransactions(response.data);
+        setTransactionPagination(response.pagination);
+      } catch (err: any) {
+        console.error("❌ Transactions fetch error:", err);
+      } finally {
+        setTransactionsLoading(false);
+      }
+    };
+
+    fetchTransactions();
+  }, [activeTab, transactionFilters]);
+
   const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
+    return new Intl.NumberFormat('en-IN', {
       style: 'currency',
-      currency: 'USD',
+      currency: 'INR'
     }).format(amount);
   };
 
@@ -187,11 +279,28 @@ export default function Dashboard() {
     return new Intl.NumberFormat('en-US').format(num);
   };
 
+  const getTypeColor = (type: string) => {
+    switch (type) {
+      case 'SUBSCRIPTION': return 'bg-purple-500';
+      case 'PLATFORM_FEE': return 'bg-blue-500';
+      default: return 'bg-gray-500';
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'COMPLETED': return 'bg-green-500';
+      case 'PENDING': return 'bg-yellow-500';
+      case 'FAILED': return 'bg-red-500';
+      default: return 'bg-gray-500';
+    }
+  };
+
   if (status === "loading") {
     return <DashboardSkeleton />;
   }
 
-  if (loading) {
+  if (loading && activeTab === "overview") {
     return <DashboardSkeleton />;
   }
 
@@ -448,37 +557,275 @@ export default function Dashboard() {
         </TabsContent>
 
         {/* Revenue Tab */}
-        <TabsContent value="revenue">
+        <TabsContent value="revenue" className="space-y-6">
+          {/* Revenue Summary Cards */}
+          {revenueLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {[...Array(3)].map((_, i) => (
+                <Card key={i} className="bg-gray-800 border-gray-700">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <Skeleton className="h-4 w-24 bg-gray-700" />
+                    <Skeleton className="h-6 w-6 rounded-full bg-gray-700" />
+                  </CardHeader>
+                  <CardContent>
+                    <Skeleton className="h-8 w-20 mb-2 bg-gray-700" />
+                    <Skeleton className="h-3 w-32 bg-gray-700" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : revenueData && (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <Card className="bg-gray-800 border-gray-700">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-blue-400">
+                      Total Revenue
+                    </CardTitle>
+                    <span className="text-2xl">💰</span>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-blue-400">
+                      {formatCurrency(revenueData.totalRevenue)}
+                    </div>
+                    <p className="text-xs text-gray-400">
+                      All time earnings
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gray-800 border-gray-700">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-purple-400">
+                      Subscription Revenue
+                    </CardTitle>
+                    <span className="text-2xl">⭐</span>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-purple-400">
+                      {formatCurrency(revenueData.subscriptionRevenue)}
+                    </div>
+                    <p className="text-xs text-gray-400">
+                      From subscription plans
+                    </p>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-gray-800 border-gray-700">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                    <CardTitle className="text-sm font-medium text-green-400">
+                      Platform Fees
+                    </CardTitle>
+                    <span className="text-2xl">🚗</span>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-green-400">
+                      {formatCurrency(revenueData.platformFeeRevenue)}
+                    </div>
+                    <p className="text-xs text-gray-400">
+                      From ride commissions
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Charts Row */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Revenue Trend */}
+                <Card className="bg-gray-800 border-gray-700">
+                  <CardHeader>
+                    <CardTitle className="text-white">Revenue Trend</CardTitle>
+                    <CardDescription className="text-gray-400">
+                      Revenue over time
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={revenueData.revenueByPeriod}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#4B5563" />
+                          <XAxis 
+                            dataKey="period" 
+                            tick={{ fill: '#9CA3AF', fontSize: 12 }}
+                          />
+                          <YAxis tick={{ fill: '#9CA3AF', fontSize: 12 }} />
+                          <Tooltip 
+                            contentStyle={{ 
+                              backgroundColor: '#1F2937', 
+                              borderColor: '#374151',
+                              color: '#F9FAFB'
+                            }}
+                            formatter={(value) => [formatCurrency(Number(value)), 'Revenue']}
+                          />
+                          <Area
+                            type="monotone"
+                            dataKey="revenue"
+                            stroke={CHART_COLORS.primary}
+                            fill={CHART_COLORS.primary}
+                            fillOpacity={0.3}
+                            strokeWidth={2}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Revenue Distribution */}
+                <Card className="bg-gray-800 border-gray-700">
+                  <CardHeader>
+                    <CardTitle className="text-white">Revenue Distribution</CardTitle>
+                    <CardDescription className="text-gray-400">
+                      Breakdown by source
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-80">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={[
+                              { name: 'Subscriptions', value: revenueData.subscriptionRevenue, color: CHART_COLORS.purple },
+                              { name: 'Platform Fees', value: revenueData.platformFeeRevenue, color: CHART_COLORS.blue }
+                            ]}
+                            dataKey="value"
+                            nameKey="name"
+                            cx="50%"
+                            cy="50%"
+                            outerRadius={100}
+                            label={({ name, percent }) => 
+                              `${name}: ${(percent * 100).toFixed(0)}%`
+                            }
+                            labelStyle={{ fill: '#E5E7EB', fontSize: '12px' }}
+                          >
+                            {[
+                              { name: 'Subscriptions', value: revenueData.subscriptionRevenue, color: CHART_COLORS.purple },
+                              { name: 'Platform Fees', value: revenueData.platformFeeRevenue, color: CHART_COLORS.blue }
+                            ].map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip 
+                            formatter={(value) => [formatCurrency(Number(value)), 'Amount']}
+                            contentStyle={{ 
+                              backgroundColor: '#1F2937', 
+                              borderColor: '#374151',
+                              color: '#F9FAFB'
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          )}
+
+          {/* Transaction History */}
           <Card className="bg-gray-800 border-gray-700">
             <CardHeader>
-              <CardTitle className="text-white">Platform Revenue</CardTitle>
+              <CardTitle className="text-white">Transaction History</CardTitle>
               <CardDescription className="text-gray-400">
-                Revenue trends and breakdown
+                All subscription payments and platform fees
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="h-96">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={dashboardData.platformRevenue}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#4B5563" />
-                    <XAxis 
-                      dataKey="month" 
-                      tick={<CustomAxisTick />}
-                    />
-                    <YAxis tick={<CustomAxisTick />} />
-                    <Tooltip content={<CustomTooltip formatter={formatCurrency} />} />
-                    <Area
-                      type="monotone"
-                      dataKey="revenue"
-                      stroke={CHART_COLORS.purple}
-                      fill={CHART_COLORS.purple}
-                      fillOpacity={0.3}
-                      name="Revenue"
-                      strokeWidth={2}
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+              {/* Search Filter */}
+              <div className="mb-6">
+                <Input
+                  placeholder="Search transactions..."
+                  value={transactionFilters.search}
+                  onChange={(e) => setTransactionFilters(prev => ({ 
+                    ...prev, 
+                    search: e.target.value, 
+                    page: 1 
+                  }))}
+                  className="bg-gray-700 border-gray-600 text-white max-w-md"
+                />
               </div>
+
+              {/* Transactions List */}
+              <div className="space-y-4">
+                {transactionsLoading ? (
+                  // Skeleton loading for transactions
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="flex items-center justify-between p-4 bg-gray-700 rounded-lg">
+                      <div className="space-y-2">
+                        <Skeleton className="h-4 w-32 bg-gray-600" />
+                        <Skeleton className="h-3 w-48 bg-gray-600" />
+                      </div>
+                      <Skeleton className="h-6 w-20 bg-gray-600" />
+                    </div>
+                  ))
+                ) : transactions.length === 0 ? (
+                  <div className="text-center py-8 text-gray-400">
+                    No transactions found
+                  </div>
+                ) : (
+                  transactions.map((transaction) => (
+                    <div key={transaction._id} className="flex items-center justify-between p-4 bg-gray-700 rounded-lg">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge className={getTypeColor(transaction.type)}>
+                            {transaction.type}
+                          </Badge>
+                          <Badge className={getStatusColor(transaction.status)}>
+                            {transaction.status}
+                          </Badge>
+                          <span className="text-sm text-gray-300">
+                            {transaction.paymentGateway}
+                          </span>
+                        </div>
+                        <p className="text-white font-medium">{transaction.description}</p>
+                        {transaction.userId && (
+                          <p className="text-sm text-gray-400">
+                            User: {transaction.userId.name} ({transaction.userId.email})
+                          </p>
+                        )}
+                        {transaction.subscriptionPlanId && (
+                          <p className="text-sm text-gray-400">
+                            Plan: {transaction.subscriptionPlanId.name}
+                          </p>
+                        )}
+                        <p className="text-xs text-gray-500">
+                          {new Date(transaction.createdAt).toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-lg font-bold text-green-400">
+                          {formatCurrency(transaction.amount)}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Pagination */}
+              {!transactionsLoading && transactions.length > 0 && (
+                <div className="flex items-center justify-between mt-6">
+                  <Button
+                    variant="outline"
+                    disabled={!transactionPagination.hasPrev}
+                    onClick={() => setTransactionFilters(prev => ({ ...prev, page: prev.page - 1 }))}
+                    className="border-gray-600 text-gray-300"
+                  >
+                    Previous
+                  </Button>
+                  <span className="text-gray-400">
+                    Page {transactionPagination.currentPage} of {transactionPagination.totalPages}
+                  </span>
+                  <Button
+                    variant="outline"
+                    disabled={!transactionPagination.hasNext}
+                    onClick={() => setTransactionFilters(prev => ({ ...prev, page: prev.page + 1 }))}
+                    className="border-gray-600 text-gray-300"
+                  >
+                    Next
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

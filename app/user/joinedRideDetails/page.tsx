@@ -31,7 +31,8 @@ import {
   RefreshCw,
   Search,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  IndianRupee
 } from "lucide-react";
 import * as L from "leaflet";
 import ErrorAlert from "../../features/user/vehicles/ErrorAlert";
@@ -823,7 +824,6 @@ export default function JoinedRideDetails() {
                                     <div>
                                       <p className="text-sm font-medium text-gray-500">Your Cost</p>
                                       <p className="text-lg font-semibold text-green-600 flex items-center gap-1">
-                                        <DollarSign className="h-4 w-4" />
                                         {(ride.costPerPerson ?? 0).toFixed(2)} INR
                                       </p>
                                     </div>
